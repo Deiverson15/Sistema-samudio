@@ -868,10 +868,13 @@ const crearVenta = async (req, res) => {
         }
 
         // 🔥 3. INSERTAR CABECERA DE VENTA (Solo se ejecuta si TODO el inventario anterior fue exitoso)
-        const ventaRes = await client.query(
-            'INSERT INTO ventas (total, cliente_id, fecha, usuario_id) VALUES ($1, $2, NOW(), $3) RETURNING id', 
-            [total, cliente_id || 1, vendedorFinalId]
-        );
+        const idTiendaLocal = parseInt(process.env.TIENDA_ID, 10) || 1;
+
+            const ventaRes = await client.query(
+                'INSERT INTO ventas (total, cliente_id, fecha, usuario_id, tienda_id) VALUES ($1, $2, NOW(), $3, $4) RETURNING id', 
+                [total, cliente_id || 1, vendedorFinalId, idTiendaLocal]
+            );
+
         const ventaId = ventaRes.rows[0].id;
 
         // 4. INSERTAR DETALLES
