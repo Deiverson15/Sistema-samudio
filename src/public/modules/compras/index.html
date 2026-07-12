@@ -1,0 +1,125 @@
+<div class="space-y-8 animate-fade-in">
+    
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 border border-neutral-300 rounded-none">
+        <div>
+            <h2 class="text-3xl md:text-4xl font-black text-neutral-950 tracking-tighter uppercase flex items-center">
+                <i class="fa-solid fa-truck-ramp-box mr-4 text-neutral-400"></i>
+                Recepción y Compras
+            </h2>
+            <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-2">Registro de facturas, costos y control de reposición</p>
+        </div>
+        <div class="flex items-center gap-4 w-full md:w-auto">
+            <button onclick="cargarTabla()" class="w-full md:w-auto bg-neutral-950 hover:bg-neutral-800 text-white px-8 py-4 rounded-none font-black transition-colors flex justify-center items-center gap-3 uppercase tracking-widest text-[10px]">
+                <i class="fa-solid fa-rotate"></i> Actualizar
+            </button>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        
+        <div class="xl:col-span-4">
+            <div class="bg-white p-8 border border-neutral-300 rounded-none sticky top-6 border-t-4 border-t-neutral-950 shadow-none">
+                <h3 class="font-black text-sm uppercase tracking-widest text-neutral-950 mb-8 flex items-center border-b border-neutral-200 pb-4">
+                    <i class="fa-solid fa-file-invoice-dollar mr-3 text-neutral-400"></i>
+                    Registrar Nuevo Lote
+                </h3>
+                
+                <form id="formMaster" class="space-y-6">
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="md:col-span-2">
+                            <label class="text-[10px] font-black text-neutral-500 uppercase tracking-widest block mb-2">N° Factura / Control</label>
+                            <input type="text" id="factura" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none uppercase font-bold tracking-wider text-xs text-neutral-950 transition-colors placeholder-neutral-400" placeholder="FAC-000001" required>
+                        </div>
+                        
+                        <div class="md:col-span-1">
+                            <label class="text-[10px] font-black text-neutral-500 uppercase tracking-widest block mb-2">Fecha Compra</label>
+                            <input type="date" id="fecha_compra" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none text-xs font-bold uppercase tracking-widest text-neutral-950 transition-colors cursor-pointer" required>
+                        </div>
+
+                        <div class="md:col-span-1">
+                            <label class="text-[10px] font-black text-neutral-950 uppercase tracking-widest block mb-2 flex items-center gap-2" title="Fecha límite sugerida para reabastecer">
+                                <i class="fa-solid fa-clock-rotate-left text-neutral-400"></i> Reposición
+                            </label>
+                            <input type="date" id="fecha_reposicion" class="w-full bg-neutral-100 border-2 border-neutral-950 p-4 rounded-none focus:bg-white focus:outline-none text-xs font-black uppercase tracking-widest text-neutral-950 transition-colors cursor-pointer shadow-sm">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="text-[10px] font-black text-neutral-500 uppercase tracking-widest block mb-2">Proveedor</label>
+                        <select id="prov_id" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none text-xs font-bold uppercase tracking-widest text-neutral-950 transition-colors cursor-pointer" required>
+                            <option value="">CARGANDO PROVEEDORES...</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="text-[10px] font-black text-neutral-500 uppercase tracking-widest block mb-2">Costo Total de la Factura ($)</label>
+                        <div class="relative">
+                            <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400 font-black">$</span>
+                            <input type="number" step="0.01" id="costo_total" class="w-full bg-neutral-50 pl-10 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none font-black text-sm text-neutral-950 transition-colors placeholder-neutral-400" placeholder="0.00" required>
+                        </div>
+                    </div>
+
+                    <div class="bg-neutral-100 p-6 border border-neutral-300 mt-6 relative">
+                        <label class="text-[10px] font-black text-neutral-950 block mb-4 text-center uppercase tracking-widest border-b border-neutral-300 pb-2">
+                            Peso Bruto Recibido (KG)
+                        </label>
+                        <div class="relative flex justify-center">
+                            <input type="number" step="0.001" id="peso_total" class="w-full border-2 border-neutral-950 p-4 rounded-none text-center font-black text-3xl text-neutral-950 focus:outline-none bg-white tracking-tighter" placeholder="0.000" required>
+                            <span class="absolute right-4 top-1/2 transform -translate-y-1/2 text-neutral-400 font-black text-xs uppercase tracking-widest">KG</span>
+                        </div>
+                        <p class="text-[9px] font-bold text-neutral-500 text-center mt-4 uppercase tracking-widest">
+                            * El peso ingresado será la base para la distribución interna del almacén.
+                        </p>
+                    </div>
+
+                    <button type="submit" id="btnGuardarMaster" class="w-full bg-neutral-950 text-white font-black py-5 rounded-none hover:bg-neutral-800 transition-colors flex justify-center items-center gap-3 uppercase tracking-widest text-[10px] mt-6">
+                        <i class="fa-solid fa-cloud-arrow-up text-neutral-400"></i> Registrar Lote Maestro
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="xl:col-span-8">
+            <div class="bg-white rounded-none border border-neutral-300 overflow-hidden flex flex-col h-full shadow-none">
+                
+                <div class="p-6 border-b border-neutral-800 bg-neutral-950 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <h3 class="font-black text-white text-sm uppercase tracking-widest flex items-center gap-3">
+                        <i class="fa-solid fa-list-check text-neutral-400"></i>
+                        Inventario de Lotes
+                    </h3>
+                    <div class="text-[10px] font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-4 border border-neutral-800 bg-neutral-900 px-4 py-2">
+                        <span class="flex items-center gap-2"><i class="fa-solid fa-circle text-neutral-100 text-[8px]"></i> Disponible</span>
+                        <span class="w-px h-3 bg-neutral-700"></span>
+                        <span class="flex items-center gap-2"><i class="fa-solid fa-circle text-neutral-500 text-[8px]"></i> Procesando</span>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto flex-1 bg-neutral-50">
+                    <table class="min-w-full text-sm text-left">
+                        <thead class="bg-neutral-100 text-[10px] uppercase font-black text-neutral-950 tracking-widest border-b border-neutral-300">
+                            <tr>
+                                <th class="px-6 py-5">Info Compra</th>
+                                <th class="px-6 py-5 text-center">Límite Reposición</th>
+                                <th class="px-6 py-5 text-center">Costo Total</th>
+                                <th class="px-6 py-5 text-center">Peso Lote</th>
+                                <th class="px-6 py-5 text-center">Restante</th>
+                                <th class="px-6 py-5 text-center">Estado</th>
+                                <th class="px-6 py-5 text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listaLotesMaster" class="divide-y divide-neutral-200 bg-white font-medium text-neutral-800">
+                            </tbody>
+                    </table>
+                </div>
+
+                <div id="emptyState" class="hidden flex-col items-center justify-center p-20 text-neutral-400 bg-white border-t border-neutral-200">
+                    <i class="fa-solid fa-box-open text-6xl mb-6 text-neutral-200"></i>
+                    <p class="text-[10px] font-black uppercase tracking-widest">No hay facturas ni lotes registrados en el sistema.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<datalist id="listaProductosDistribucion"></datalist>

@@ -1,0 +1,84 @@
+<div class="space-y-8 animate-fade-in">
+
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 border border-neutral-300 rounded-none">
+        <div>
+            <h2 class="text-3xl md:text-4xl font-black text-neutral-950 tracking-tighter uppercase flex items-center">
+                <i class="fa-solid fa-truck-field mr-4 text-neutral-400"></i>
+                Proveedores
+            </h2>
+            <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-2">Directorio y registro de empresas asociadas</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <div class="lg:col-span-4 space-y-6">
+            <div class="bg-white p-8 border border-neutral-300 rounded-none border-t-4 border-t-neutral-950 shadow-none">
+                <h3 class="font-black text-sm uppercase tracking-widest text-neutral-950 mb-6 flex items-center border-b border-neutral-200 pb-4">
+                    <i class="fa-solid fa-building mr-3 text-neutral-400"></i> Nuevo Proveedor
+                </h3>
+                
+                <form id="formProveedor" class="space-y-5">
+    <div>
+        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Documento / RIF</label>
+        <input type="text" id="documento" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none uppercase font-bold text-xs text-neutral-950 transition-colors placeholder-neutral-400" placeholder="EJ: J-12345678-0" required>
+    </div>
+
+    <div>
+        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Empresa / Razón Social</label>
+        <input type="text" id="empresa" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none uppercase font-bold text-xs text-neutral-950 transition-colors placeholder-neutral-400" placeholder="EJ: DIOR INC." required>
+    </div>
+    
+    <div>
+        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Contacto Principal</label>
+        <input type="text" id="contacto" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none uppercase font-bold text-xs text-neutral-950 transition-colors placeholder-neutral-400" placeholder="EJ: JUAN PÉREZ">
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+             <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Teléfono</label>
+             <input type="text" id="telefono" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none font-bold text-xs text-neutral-950 transition-colors placeholder-neutral-400" placeholder="0000-0000000">
+        </div>
+        <div>
+             <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Email</label>
+             <input type="email" id="email" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none font-bold text-xs text-neutral-950 transition-colors placeholder-neutral-400" placeholder="CORREO@EMP.COM">
+        </div>
+    </div>
+    
+    <div>
+        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Dirección Física</label>
+        <textarea id="direccion" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none font-bold text-xs text-neutral-950 transition-colors placeholder-neutral-400 resize-none uppercase" placeholder="DIRECCIÓN COMPLETA..." rows="3"></textarea>
+    </div>
+    
+    <button type="submit" class="w-full bg-neutral-950 text-white font-black py-4 rounded-none hover:bg-neutral-800 transition-colors uppercase tracking-widest text-[10px] mt-4">
+        Guardar Registro
+    </button>
+</form>
+            </div>
+        </div>
+
+        <div class="lg:col-span-8 bg-white border border-neutral-300 rounded-none shadow-none overflow-hidden flex flex-col h-full">
+            <div class="p-6 border-b border-neutral-800 bg-neutral-950 flex justify-between items-center">
+                <h3 class="font-black text-white text-sm uppercase tracking-widest flex items-center gap-3">
+                    <i class="fa-solid fa-address-book text-neutral-400"></i> Directorio Activo
+                </h3>
+            </div>
+            
+            <div class="overflow-x-auto flex-1 bg-neutral-50">
+                <table class="min-w-full text-sm text-left">
+                    <thead class="bg-neutral-100 text-[10px] uppercase font-black text-neutral-950 tracking-widest border-b border-neutral-300">
+                        <tr>
+                            <th class="px-6 py-5">Empresa</th>
+                            <th class="px-6 py-5">Contacto</th>
+                            <th class="px-6 py-5">Información</th>
+                            <th class="px-6 py-5 text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaProveedores" class="divide-y divide-neutral-200 bg-white font-medium text-neutral-800">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+        
+    </div>
+</div>

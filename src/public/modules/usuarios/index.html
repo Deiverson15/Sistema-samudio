@@ -1,0 +1,172 @@
+<div class="space-y-8 animate-fade-in pb-8">
+
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 border border-neutral-300 rounded-none">
+        <div>
+            <h2 class="text-3xl md:text-4xl font-black text-neutral-950 tracking-tighter uppercase flex items-center">
+                <i class="fa-solid fa-users-gear mr-4 text-neutral-400"></i>
+                Gestión de Usuarios
+            </h2>
+            <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-2">Control de accesos, roles y monitor de actividad</p>
+        </div>
+    </div>
+
+    <div class="flex flex-col lg:flex-row gap-6 h-[calc(100vh-200px)] min-h-[700px]">
+        
+        <div class="lg:w-7/12 flex flex-col h-full bg-white rounded-none border border-neutral-300 shadow-none overflow-hidden">
+            <div class="p-6 border-b border-neutral-800 bg-neutral-950 flex justify-between items-center shrink-0">
+                <div>
+                    <h3 class="font-black text-white text-sm uppercase tracking-widest flex items-center gap-3">
+                        <i class="fa-solid fa-people-group text-neutral-400"></i> Equipo de Trabajo
+                    </h3>
+                </div>
+                <span class="bg-white text-neutral-950 text-[10px] px-3 py-1 rounded-none font-black uppercase tracking-widest border border-neutral-300" id="totalUsersBadge">0 Usuarios</span>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-0 bg-neutral-50">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-neutral-100 text-[10px] uppercase font-black text-neutral-950 tracking-widest border-b border-neutral-300 sticky top-0 z-10">
+                        <tr>
+                            <th class="p-5 px-6">Usuario</th>
+                            <th class="p-5 px-6 text-center">Rol</th>
+                            <th class="p-5 px-6 text-center">Tienda</th> 
+                            <th class="p-5 px-6 text-center">Estado</th>
+                            <th class="p-5 px-6 text-center">Actividad</th>
+                            <th class="p-5 px-6 text-right">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaUsuarios" class="divide-y divide-neutral-200 text-sm font-medium text-neutral-800 bg-white">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="lg:w-5/12 flex flex-col gap-6 h-full">
+            
+            <div class="bg-white p-8 rounded-none border border-neutral-300 border-t-4 border-t-neutral-950 shrink-0">
+                <h3 class="font-black text-sm uppercase tracking-widest text-neutral-950 mb-6 flex items-center gap-3 border-b border-neutral-200 pb-4">
+                    <i class="fa-solid fa-user-plus text-neutral-400"></i> Nuevo Usuario
+                </h3>
+                <form id="formUsuario" class="space-y-5">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Nombre</label>
+                            <input type="text" id="nombreUser" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none text-xs font-bold uppercase tracking-wider text-neutral-950 transition-colors placeholder-neutral-400" placeholder="NOMBRE COMPLETO" required>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Rol</label>
+                            <select id="rolUser" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none text-xs font-bold uppercase tracking-wider text-neutral-950 transition-colors appearance-none cursor-pointer">
+                                <option value="vendedor">Vendedor</option>
+                                <option value="gerente">Gerente</option> 
+                                <option value="admin">Administrador</option>
+                                <option value="superadmin">Super Administrador</option>
+
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Sucursal / Tienda</label>
+                        <div class="relative">
+                            <select id="usuarioTienda" class="w-full bg-neutral-50 border border-neutral-300 pl-12 pr-4 py-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none text-xs font-bold uppercase tracking-wider text-neutral-950 transition-colors appearance-none cursor-pointer" required>
+                                <option value="">CARGANDO TIENDAS...</option>
+                            </select>
+                            <i class="fa-solid fa-store absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400"></i>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Dirección Personal</label>
+                        <input type="text" id="direccionUser" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none text-xs font-bold uppercase tracking-wider text-neutral-950 transition-colors placeholder-neutral-400" placeholder="AVENIDA, CALLE..." required>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Email (Acceso)</label>
+                            <input type="email" id="emailUser" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none text-xs font-bold uppercase tracking-wider text-neutral-950 transition-colors placeholder-neutral-400" placeholder="USUARIO@EMPRESA.COM" required>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Contraseña</label>
+                            <input type="password" id="passUser" class="w-full bg-neutral-50 border border-neutral-300 p-4 rounded-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none text-xs font-bold uppercase tracking-wider text-neutral-950 transition-colors placeholder-neutral-400" placeholder="••••••••" required>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full bg-neutral-950 text-white font-black py-4 mt-4 rounded-none hover:bg-neutral-800 transition-colors uppercase tracking-widest text-[10px] flex justify-center items-center gap-3">
+                        <i class="fa-solid fa-shield-halved text-neutral-400"></i> Crear y Asignar Usuario
+                    </button>
+                </form>
+            </div>
+
+            <div class="bg-white rounded-none border border-neutral-300 flex flex-col shadow-none overflow-hidden h-[350px]"> 
+                <div class="p-6 bg-neutral-950 border-b border-neutral-800 shrink-0 flex justify-between items-center sticky top-0 z-10">
+                    <h3 class="font-black text-white text-sm uppercase tracking-widest flex items-center gap-3">
+                        <i class="fa-solid fa-eye text-neutral-400"></i> Monitor Actividad
+                    </h3>
+                    <span id="monitorTarget" class="text-[9px] bg-white text-neutral-950 border border-neutral-300 px-3 py-1 rounded-none uppercase tracking-widest font-black">Selecciona Usuario</span>
+                </div>
+                
+                <div id="listaActividadUsuario" class="flex-1 overflow-y-auto p-6 space-y-4 bg-neutral-50" style="scrollbar-width: thin; scrollbar-color: #a3a3a3 #f8fafc;">
+                    <div class="flex flex-col items-center justify-center h-full text-neutral-400 text-[10px] font-black uppercase tracking-widest text-center">
+                        <i class="fa-solid fa-arrow-pointer text-3xl mb-4 opacity-50 text-neutral-500"></i>
+                        <p>Haz clic en "Ver Actividad" en la tabla<br>para auditar el historial.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div id="modalEditarUsuario" class="fixed inset-0 z-[60] hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4">
+    <div class="bg-white w-full max-w-lg rounded-none shadow-2xl overflow-hidden flex flex-col border border-neutral-400">
+        <div class="bg-neutral-950 text-white px-6 py-4 flex justify-between items-center border-b border-neutral-800">
+            <h3 class="font-black text-sm uppercase tracking-widest flex items-center gap-3">
+                <i class="fa-solid fa-user-pen text-neutral-400"></i> Editar Usuario
+            </h3>
+            <button onclick="cerrarModalEditarUsuario()" class="text-neutral-400 hover:text-white transition-colors">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+        
+        <div class="p-6 space-y-4 bg-neutral-50">
+            <input type="hidden" id="editUserId">
+            
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-1">Nombre</label>
+                    <input type="text" id="editNombre" class="w-full bg-white border border-neutral-300 p-3 rounded-none focus:border-neutral-950 outline-none text-xs font-bold uppercase">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-1">Rol</label>
+                    <select id="editRol" class="w-full bg-white border border-neutral-300 p-3 rounded-none focus:border-neutral-950 outline-none text-xs font-bold uppercase">
+                        <option value="vendedor">Vendedor</option>
+                        <option value="gerente">Gerente</option>
+                        <option value="admin">Administrador</option>
+                        <option value="superadmin">Super Administrador</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-1">Email</label>
+                    <input type="email" id="editEmail" class="w-full bg-white border border-neutral-300 p-3 rounded-none focus:border-neutral-950 outline-none text-xs font-bold uppercase">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-1">Sucursal</label>
+                    <select id="editTienda" class="w-full bg-white border border-neutral-300 p-3 rounded-none focus:border-neutral-950 outline-none text-xs font-bold uppercase">
+                        </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-1">Dirección</label>
+                <input type="text" id="editDireccion" class="w-full bg-white border border-neutral-300 p-3 rounded-none focus:border-neutral-950 outline-none text-xs font-bold uppercase">
+            </div>
+        </div>
+
+        <div class="px-6 py-4 bg-white border-t border-neutral-300 flex justify-end gap-3">
+            <button onclick="cerrarModalEditarUsuario()" class="px-6 py-3 bg-white border border-neutral-300 text-neutral-900 font-black uppercase tracking-widest text-[10px] hover:bg-neutral-50">Cancelar</button>
+            <button onclick="guardarEdicionUsuario()" class="px-6 py-3 bg-neutral-950 text-white font-black uppercase tracking-widest text-[10px] hover:bg-neutral-800">Guardar Cambios</button>
+        </div>
+    </div>
+</div>

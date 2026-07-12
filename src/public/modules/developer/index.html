@@ -1,0 +1,211 @@
+<div class="bg-slate-900 rounded-xl shadow-2xl border border-slate-700 p-8 max-w-6xl mx-auto mt-10 text-white animate-fade-in">
+    
+    <div class="flex flex-col md:flex-row justify-between md:items-end gap-4 mb-8 border-b border-slate-700 pb-6">
+        <div class="flex items-center gap-4">
+            <i class="fa-solid fa-user-astronaut text-5xl text-indigo-500 drop-shadow-[0_0_15px_rgba(99,102,241,0.8)]"></i>
+            <div>
+                <h2 class="text-3xl font-black text-white tracking-widest uppercase">Panel Dev <span class="text-indigo-500">PRO</span></h2>
+                <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">Control de Núcleo • Licenciamiento • Telemetría Activa</p>
+            </div>
+        </div>
+        <div class="bg-slate-950 border border-slate-800 px-4 py-2 rounded text-[10px] font-mono text-green-400 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> SOCKET_IO: CONECTADO
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+        
+        <div class="lg:col-span-5 space-y-6">
+            <div class="bg-slate-950 p-6 rounded-xl border border-slate-800 relative overflow-hidden group hover:border-slate-600 transition-colors">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-bl-full -z-0 group-hover:bg-red-500/10 transition-colors"></div>
+                <h3 class="text-sm font-black mb-1 flex items-center gap-2 text-white uppercase tracking-widest relative z-10">
+                    <i class="fa-solid fa-power-off text-red-500"></i> Kill Switch Global
+                </h3>
+                <p class="text-[10px] text-slate-500 mb-6 uppercase tracking-widest relative z-10 font-bold">Corta el acceso a todos los nodos inmediatamente.</p>
+                
+                <div class="flex flex-col gap-4 relative z-10">
+                    <div id="status-indicator" class="flex items-center justify-center gap-3 font-black text-sm uppercase tracking-widest p-4 bg-slate-900 rounded border border-slate-800">
+                        <i class="fa-solid fa-circle-notch fa-spin text-slate-500"></i> Analizando Núcleo...
+                    </div>
+                    <div class="flex gap-3">
+                        <button id="btn-activar" class="hidden w-full bg-green-600/20 text-green-500 border border-green-500/50 hover:bg-green-600 hover:text-white py-3 rounded font-black tracking-widest text-xs uppercase transition-all duration-300">
+                            <i class="fa-solid fa-bolt mr-2"></i> Reactivar Red
+                        </button>
+                        <button id="btn-bloquear" class="hidden w-full bg-red-600/20 text-red-500 border border-red-500/50 hover:bg-red-600 hover:text-white py-3 rounded font-black tracking-widest text-xs uppercase transition-all duration-300 shadow-[0_0_15px_rgba(220,38,38,0.2)] hover:shadow-[0_0_25px_rgba(220,38,38,0.6)]">
+                            <i class="fa-solid fa-skull mr-2"></i> Ejecutar Bloqueo
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-slate-950 p-6 rounded-xl border border-slate-800">
+                <h3 class="text-sm font-black mb-1 flex items-center gap-2 text-white uppercase tracking-widest">
+                    <i class="fa-solid fa-calendar-check text-blue-500"></i> Vigencia de Licencia
+                </h3>
+                <p class="text-[10px] text-slate-500 mb-4 uppercase tracking-widest font-bold">Auto-suspensión al expirar la fecha.</p>
+                
+                <div class="flex gap-2">
+                    <input type="date" id="inputFechaPago" class="flex-1 p-3 bg-slate-900 border border-slate-700 text-white rounded font-mono text-sm outline-none focus:border-blue-500 transition">
+                    <button onclick="guardarFechaPago()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded font-black uppercase text-xs tracking-widest transition">
+                        Fijar
+                    </button>
+                </div>
+                <div id="estadoSistemaTxt" class="mt-4"></div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-7 space-y-6 flex flex-col">
+            <div class="bg-slate-950 p-6 rounded-xl border border-slate-800 h-full flex flex-col relative overflow-hidden">
+                <div class="absolute inset-0 opacity-[0.03] pointer-events-none" style="background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px); background-size: 20px 20px;"></div>
+                
+                <h3 class="text-sm font-black mb-6 flex justify-between items-center text-white uppercase tracking-widest relative z-10 border-b border-slate-800 pb-3">
+                    <span class="flex items-center gap-2"><i class="fa-solid fa-satellite-dish text-green-400 animate-pulse"></i> Radar de Telemetría</span>
+                    <span class="text-[9px] text-slate-500 font-mono" id="server-time">00:00:00</span>
+                </h3>
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 relative z-10">
+                    <div class="bg-slate-900 p-3 rounded border border-slate-800 text-center relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-indigo-500"></div>
+                        <i class="fa-solid fa-users text-lg text-indigo-400 mb-1 block"></i>
+                        <div class="text-2xl font-black text-white font-mono" id="contador-usuarios">0</div>
+                        <div class="text-[9px] text-slate-500 uppercase tracking-widest mt-1 font-bold">Tráfico Vivo</div>
+                    </div>
+                    
+                    <div class="bg-slate-900 p-3 rounded border border-slate-800 text-center relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>
+                        <i class="fa-solid fa-database text-lg text-emerald-400 mb-1 block"></i>
+                        <div class="text-2xl font-black text-emerald-400 font-mono flex items-center justify-center gap-1">
+                            <span id="db-ping">12</span><span class="text-sm text-emerald-600">ms</span>
+                        </div>
+                        <div class="text-[9px] text-slate-500 uppercase tracking-widest mt-1 font-bold">Latencia BD</div>
+                    </div>
+
+                    <div class="bg-slate-900 p-3 rounded border border-slate-800 text-center relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-amber-500"></div>
+                        <i class="fa-solid fa-microchip text-lg text-amber-400 mb-1 block"></i>
+                        <div class="text-2xl font-black text-amber-400 font-mono flex items-center justify-center gap-1">
+                            <span id="ram-usage">142</span><span class="text-sm text-amber-600">MB</span>
+                        </div>
+                        <div class="text-[9px] text-slate-500 uppercase tracking-widest mt-1 font-bold">Carga RAM</div>
+                    </div>
+
+                    <div class="bg-slate-900 p-3 rounded border border-slate-800 text-center relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-cyan-500"></div>
+                        <i class="fa-solid fa-clock text-lg text-cyan-400 mb-1 block"></i>
+                        <div class="text-lg font-black text-cyan-400 font-mono mt-1" id="uptime-counter">00:00:00</div>
+                        <div class="text-[9px] text-slate-500 uppercase tracking-widest mt-1 font-bold">Uptime</div>
+                    </div>
+                </div>
+
+                <div class="flex-1 bg-[#0a0a0a] rounded border border-slate-800 p-4 font-mono text-[10px] relative z-10 flex flex-col">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-2 mb-2">
+                        <span class="text-slate-500 uppercase tracking-widest font-bold">/var/log/sys_events.log</span>
+                        <div class="flex gap-1">
+                            <div class="w-2 h-2 rounded-full bg-red-500"></div>
+                            <div class="w-2 h-2 rounded-full bg-yellow-500"></div>
+                            <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                        </div>
+                    </div>
+                    <div id="terminal-output" class="flex-1 overflow-y-auto space-y-1 text-slate-400 custom-scrollbar pr-2 h-32">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-slate-950 p-6 rounded-xl border border-slate-800">
+        <h3 class="text-sm font-black mb-4 flex items-center gap-2 text-white uppercase tracking-widest border-b border-slate-800 pb-3">
+            <i class="fas fa-database text-purple-500"></i> Gestor Directo de Base de Datos
+        </h3>
+        
+        <div class="mb-6">
+            <label for="tabla-selector" class="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">Punto de Extracción (Tabla):</label>
+            <select id="tabla-selector" class="w-full p-3 bg-slate-900 border border-slate-700 text-white rounded font-mono text-sm outline-none focus:border-purple-500 transition cursor-pointer">
+                <option value="" selected disabled>Selecciona una tabla para volcado...</option>
+                <option value="ventas">Ventas (Facturas)</option>
+                <option value="productos">Productos</option>
+                <option value="lotes">Lotes</option>
+                <option value="cierres_caja">Cierres de Caja</option>
+                <option value="usuarios">Usuarios</option>
+                <option value="clientes">Clientes</option>
+            </select>
+        </div>
+
+        <div class="overflow-x-auto custom-scrollbar bg-slate-900 rounded border border-slate-800">
+            <table class="w-full text-left border-collapse font-mono text-xs whitespace-nowrap">
+                <thead id="super-crud-thead" class="bg-slate-950 text-slate-400">
+                    </thead>
+                <tbody id="super-crud-tbody" class="text-slate-300 divide-y divide-slate-800">
+                    <tr>
+                        <td colspan="100%" class="text-center text-slate-500 py-8 italic">
+                            Esperando selección de tabla...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<div class="modal fade" id="modal-super-crud" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content bg-slate-900 border border-slate-700 text-white">
+            <div class="modal-header border-b border-slate-700">
+                <h5 class="modal-title font-black uppercase tracking-widest text-sm flex items-center gap-2">
+                    <i class="fas fa-edit text-yellow-500"></i> Alterar Registro de BD
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-6">
+                <form id="form-edicion-dinamico" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    </form>
+            </div>
+            <div class="modal-footer border-t border-slate-700">
+                <button type="button" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded font-bold uppercase text-xs tracking-widest transition" data-bs-dismiss="modal">Abortar</button>
+                <button type="button" id="btn-guardar-cambios" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded font-black uppercase text-xs tracking-widest transition">Forzar Cambio</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="bg-slate-950 p-6 rounded-xl border border-red-900/50 mt-6 shadow-[0_0_15px_rgba(220,38,38,0.05)]">
+        <h3 class="text-sm font-black mb-4 flex items-center gap-2 text-white uppercase tracking-widest border-b border-red-900/30 pb-3">
+            <i class="fas fa-radiation text-red-500"></i> Protocolo de Anulación de Tickets
+        </h3>
+        
+        <div class="flex gap-2 mb-6">
+            <input type="text" id="buscador-anulacion" class="flex-1 p-3 bg-slate-900 border border-slate-700 text-white rounded font-mono text-sm outline-none focus:border-red-500 transition placeholder-slate-500" placeholder="Buscar N° Factura o Cliente para anular...">
+            <button onclick="buscarVentasAnulacion()" class="bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded font-black uppercase text-xs tracking-widest transition">
+                <i class="fas fa-search"></i> Filtrar
+            </button>
+            
+            <button onclick="verBovedaAnulaciones()" class="bg-indigo-900/40 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/50 px-6 py-3 rounded font-black uppercase text-xs tracking-widest transition">
+                <i class="fas fa-vault"></i> Ver Bóveda (Restaurar)
+            </button>
+        </div>
+
+        <div class="overflow-x-auto custom-scrollbar bg-slate-900 rounded border border-slate-800 max-h-80">
+            <table class="w-full text-left border-collapse font-mono text-xs whitespace-nowrap">
+                <thead class="bg-slate-950 text-slate-400 sticky top-0">
+                    <tr>
+                        <th class="py-3 px-4">N° Ticket</th>
+                        <th class="py-3 px-4">Fecha</th>
+                        <th class="py-3 px-4">Cliente</th>
+                        <th class="py-3 px-4 text-right">Monto ($)</th>
+                        <th class="py-3 px-4 text-center">Acción</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-anulacion" class="text-slate-300 divide-y divide-slate-800">
+                    <tr><td colspan="5" class="text-center text-slate-500 py-8 italic">Ingresa un criterio de búsqueda...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+<style>
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #020617; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+</style>

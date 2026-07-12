@@ -1,0 +1,445 @@
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-140px)] animate-fade-in">
+    
+    <div class="lg:col-span-7 flex flex-col h-full bg-white rounded-none shadow-none border border-neutral-300 overflow-hidden">
+        
+        <div class="flex flex-col border-b border-neutral-300 bg-neutral-100 z-10">
+            
+            <div class="flex px-6 pt-4 gap-6 bg-white border-b border-neutral-300">
+                <button onclick="cambiarModo('productos')" id="tabProductos" class="pb-4 border-b-4 border-neutral-950 font-black text-neutral-950 text-[10px] uppercase tracking-widest transition-colors flex items-center gap-3 px-2 select-none cursor-pointer">
+                    <i class="fa-solid fa-box-open text-neutral-500"></i> 
+                    <span>Productos</span>
+                </button>
+                <button onclick="cambiarModo('esencias')" id="tabEsencias" class="pb-4 border-b-4 border-transparent text-neutral-400 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center gap-3 px-2 select-none cursor-pointer hover:text-neutral-950 hover:border-neutral-300">
+                    <i class="fa-solid fa-flask"></i> 
+                    <span>Preparar Esencias</span>
+                </button>
+                <button onclick="cambiarModo('recargas')" id="tabRecargas" class="pb-4 border-b-4 border-transparent text-neutral-400 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center gap-3 px-2 select-none cursor-pointer hover:text-neutral-950 hover:border-neutral-300">
+                    <i class="fa-solid fa-recycle"></i> 
+                    <span>Recargas</span>
+                </button>
+                <button id="btn-modo-insumos" onclick="cambiarModo('insumos')" class="px-6 py-3 rounded-lg font-bold text-xs uppercase tracking-wider transition-all text-slate-500 bg-slate-100 hover:bg-slate-200">
+                    <i class="fa-solid fa-box-open mr-2"></i>Insumos
+                </button>
+            </div>
+        
+            <div class="p-6 flex flex-col md:flex-row gap-4 items-center justify-between bg-white">
+                <div class="relative flex-1 group w-full">
+                    <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400 group-focus-within:text-neutral-950 transition-colors">
+                        <i class="fa-solid fa-search"></i>
+                    </span>
+                    <input type="text" id="buscadorVenta" 
+                        class="w-full pl-12 pr-4 py-4 bg-neutral-50 border border-neutral-300 rounded-none outline-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 font-black text-neutral-900 text-xs uppercase tracking-wider transition-colors placeholder-neutral-400" 
+                        placeholder="BUSCAR PRODUCTO O CÓDIGO..." 
+                        autofocus>
+                </div>
+                
+                <!-- 🔥 BOTÓN NUEVO: CARGA MASIVA DESDE INVENTARIO -->
+                <!-- <button onclick="abrirModalBajarMasa()" class="w-full md:w-auto bg-neutral-950 text-white px-6 py-4 rounded-none font-black hover:bg-neutral-800 transition-colors flex items-center justify-center gap-3 uppercase tracking-widest text-[10px]" title="Bajar mercancía a los estantes en lote">
+                    <i class="fa-solid fa-truck-ramp-box text-amber-400"></i>
+                    <span>Carga Masiva</span>
+                </button>-->
+
+                <button onclick="repararStockFacturacion()" class="w-full md:w-auto bg-white text-neutral-950 px-6 py-4 rounded-none font-black hover:bg-neutral-100 transition-colors flex items-center justify-center gap-3 border border-neutral-300 uppercase tracking-widest text-[10px]" title="Reparar errores de inventario">
+                    <i class="fa-solid fa-wand-magic-sparkles text-neutral-500"></i>
+                    <span class="hidden md:inline">Sincronizar Stock</span>
+                </button>
+            </div>
+        </div>
+
+        <div id="gridProductos" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto p-6 content-start flex-1 bg-neutral-50">
+            </div>
+
+        <div id="paginacionContainer" class="p-4 border-t border-neutral-300 bg-white flex justify-between items-center text-xs font-bold uppercase tracking-widest text-neutral-500 shadow-none z-10 hidden rounded-none">
+            </div>
+    </div>
+
+    <div class="lg:col-span-5 bg-white rounded-none shadow-none border border-neutral-300 flex flex-col h-full overflow-hidden">
+        
+        <div class="p-6 bg-neutral-950 border-b border-neutral-800 flex justify-between items-center shrink-0">
+            <div class="font-black text-white text-sm uppercase tracking-widest flex items-center">
+                <i class="fa-solid fa-receipt mr-3 text-neutral-400"></i> Ticket de Venta
+            </div>
+            <button onclick="limpiarCarrito()" class="text-[10px] text-neutral-400 hover:text-white font-bold uppercase tracking-widest transition-colors flex items-center gap-2">
+                <i class="fa-solid fa-trash-can"></i> Limpiar
+            </button>
+        </div>
+
+        <div class="px-6 py-4 bg-neutral-100 border-b border-neutral-300 flex justify-between items-center shrink-0">
+            <div>
+                <div class="text-[10px] text-neutral-500 font-black uppercase tracking-widest mb-1">Cliente Asignado</div>
+                <div id="infoCliente" class="font-black text-neutral-950 text-xs uppercase tracking-wider truncate w-48">Consumidor Final</div>
+                <div id="docCliente" class="text-[10px] text-neutral-500 font-mono mt-1">00000000</div>
+            </div>
+            <button onclick="abrirModalCliente()" class="bg-white border border-neutral-300 text-neutral-950 hover:bg-neutral-950 hover:text-white px-4 py-2 rounded-none text-[10px] font-black transition-colors flex items-center gap-2 uppercase tracking-widest">
+                <i class="fa-solid fa-user-pen text-neutral-400"></i> Cambiar
+            </button>
+        </div>
+        
+        <div id="listaCarrito" class="flex-1 overflow-y-auto p-6 space-y-4 bg-white custom-scrollbar">
+            </div>
+
+        <div class="p-1 bg-neutral-950 text-white rounded-none z-20 shrink-0 border-t-4 border-neutral-800">
+            <div class="flex justify-between items-end mb-2">
+                <span class="text-neutral-400 text-[10px] font-black uppercase tracking-widest">Total a Pagar</span>
+                <span class="text-4xl font-black tracking-tighter" id="totalMonto">$0.00</span>
+            </div>
+            <div class="flex justify-between text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-6 pb-6 border-b border-neutral-800">
+                <span id="totalItems">0 Artículos</span>
+                <span id="totalBs" class="font-mono text-neutral-300">Bs 0.00</span>
+            </div>
+            <button onclick="procesarVenta()" class="w-full bg-white hover:bg-neutral-200 text-neutral-950 font-black py-5 rounded-none transition-colors flex justify-center items-center gap-3 text-sm uppercase tracking-widest">
+                <i class="fa-solid fa-cash-register text-neutral-500"></i>
+                <span>Procesar Cobro</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- =======================================================================
+         MODALES DE INTERFAZ
+         ======================================================================= -->
+
+    <div id="modalCliente" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4">
+        <div class="bg-white w-full max-w-lg rounded-none shadow-2xl overflow-hidden transform transition-all scale-100 border border-neutral-400">
+            <div class="bg-neutral-950 p-6 text-white flex justify-between items-center border-b border-neutral-800">
+                <h3 class="font-black text-sm uppercase tracking-widest flex items-center gap-3"><i class="fa-solid fa-users text-neutral-400"></i> Directorio de Clientes</h3>
+                <button onclick="cerrarModalCliente()" class="text-neutral-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            
+            <div class="p-8">
+                <div class="flex border-b border-neutral-300 mb-6">
+                    <button id="tabBuscar" class="flex-1 pb-4 border-b-4 border-neutral-950 font-black text-neutral-950 text-[10px] uppercase tracking-widest transition-colors" onclick="switchTab('buscar')">Buscar</button>
+                    <button id="tabCrear" class="flex-1 pb-4 border-b-4 border-transparent text-neutral-400 hover:text-neutral-950 font-bold text-[10px] uppercase tracking-widest transition-colors" onclick="switchTab('crear')">Nuevo Registro</button>
+                </div>
+
+                <div id="viewBuscar">
+                    <div class="relative mb-4 group">
+                        <i class="fa-solid fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400 group-focus-within:text-neutral-950 transition-colors"></i>
+                        <input type="text" id="inputBuscarCliente" class="w-full pl-12 p-4 border border-neutral-300 bg-neutral-50 outline-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 text-xs font-bold uppercase tracking-wider rounded-none transition-colors placeholder-neutral-400" placeholder="NOMBRE O CÉDULA...">
+                    </div>
+                    <div id="listaResultadosClientes" class="h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar"></div>
+                </div>
+
+                <div id="viewCrear" class="hidden space-y-4">
+                    <input type="text" id="newDoc" class="w-full p-4 border border-neutral-300 text-xs font-bold uppercase tracking-wider bg-neutral-50 focus:bg-white transition-colors outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 rounded-none placeholder-neutral-400" placeholder="CÉDULA / RIF *">
+                    <input type="text" id="newNombre" class="w-full p-4 border border-neutral-300 text-xs font-bold uppercase tracking-wider bg-neutral-50 focus:bg-white transition-colors outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 rounded-none placeholder-neutral-400" placeholder="NOMBRE COMPLETO *">
+                    <input type="text" id="newTel" class="w-full p-4 border border-neutral-300 text-xs font-bold uppercase tracking-wider bg-neutral-50 focus:bg-white transition-colors outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 rounded-none placeholder-neutral-400" placeholder="TELÉFONO">
+                    <input type="text" id="newDir" class="w-full p-4 border border-neutral-300 text-xs font-bold uppercase tracking-wider bg-neutral-50 focus:bg-white transition-colors outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 rounded-none placeholder-neutral-400" placeholder="DIRECCIÓN">
+                    <button onclick="guardarNuevoCliente()" class="w-full bg-neutral-950 text-white py-4 mt-4 rounded-none font-black hover:bg-neutral-800 transition-colors uppercase tracking-widest text-[10px]">Guardar Cliente</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalCobro" class="fixed inset-0 z-[60] hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4">
+        <div class="bg-white w-full max-w-4xl rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-neutral-400">
+            
+            <div class="bg-neutral-950 p-6 text-white flex justify-between items-center border-b border-neutral-800 shrink-0">
+                <div>
+                    <h3 class="font-black text-sm uppercase tracking-widest flex items-center gap-3">
+                        <i class="fa-solid fa-cash-register text-neutral-400"></i> Terminal de Pago
+                    </h3>
+                    <div class="text-neutral-500 text-[10px] font-bold uppercase tracking-widest mt-2">Monto Requerido: <span class="text-white font-black text-lg tracking-tight ml-2" id="cobroTotalUSD">$0.00</span></div>
+                </div>
+                <button onclick="cerrarModalCobro()" class="text-neutral-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-2xl"></i></button>
+            </div>
+
+            <div class="flex flex-col md:flex-row flex-1 overflow-hidden">
+                <div class="w-full md:w-1/2 p-8 bg-neutral-50 border-r border-neutral-300 overflow-y-auto custom-scrollbar">
+                    
+                    <div class="mb-6 bg-white text-neutral-950 px-4 py-3 border border-neutral-300 text-[10px] font-black uppercase tracking-widest flex justify-between items-center rounded-none shadow-sm">
+                        <span class="flex items-center gap-3 text-neutral-500">
+                            <i class="fa-solid fa-money-bill-transfer"></i> Tasa BCV:
+                        </span>
+                        <div class="flex items-center gap-3">
+                            <input type="number" id="tasaCobro" class="bg-neutral-100 border border-neutral-300 p-2 text-right font-black w-24 outline-none focus:border-neutral-950 rounded-none transition-colors text-neutral-950" disabled>
+                            <button onclick="toggleEditarTasa()" class="text-neutral-400 hover:text-neutral-950 transition-colors" title="Editar Tasa">
+                                <i class="fa-solid fa-pen-to-square text-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Atendido Por</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-user-tag absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400"></i>
+                            <input type="text" id="inputVendedorCobro" class="w-full pl-12 pr-4 py-4 bg-white border border-neutral-300 rounded-none text-xs font-bold uppercase tracking-wider text-neutral-950 outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 transition-colors placeholder-neutral-400" placeholder="NOMBRE DEL VENDEDOR..." autocomplete="off">
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-between items-center mb-4 mt-8">
+                        <h4 class="font-black text-neutral-950 text-[10px] uppercase tracking-widest">Método de Ingreso</h4>
+                        <button onclick="limpiarPagos()" class="text-[10px] text-neutral-500 hover:text-neutral-950 font-black uppercase tracking-widest flex items-center gap-2 px-3 py-2 border border-transparent hover:border-neutral-300 bg-white transition-colors rounded-none">
+                            <i class="fa-solid fa-eraser"></i> Reiniciar
+                        </button>
+                    </div>
+
+                    <div class="mb-6">
+                        <div class="grid grid-cols-2 gap-4">
+                            <label class="cursor-pointer border border-neutral-300 bg-white rounded-none p-4 flex items-center gap-3 hover:bg-neutral-100 transition-colors relative">
+                                <input type="radio" name="tipoDocumento" id="radioNota" value="NOTA" class="accent-neutral-950 w-4 h-4" checked>
+                                <div>
+                                    <div class="font-black text-[10px] uppercase tracking-widest text-neutral-950">Nota de Entrega</div>
+                                    <div class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-1">Uso Interno</div>
+                                </div>
+                            </label>
+
+                            <label class="cursor-pointer border border-neutral-300 bg-white rounded-none p-4 flex items-center gap-3 hover:bg-neutral-100 transition-colors relative">
+                                <input type="radio" name="tipoDocumento" id="radioFactura" value="FACTURA" class="accent-neutral-950 w-4 h-4">
+                                <div>
+                                    <div class="font-black text-[10px] uppercase tracking-widest text-neutral-950">Factura / Ticket</div>
+                                    <div class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-1">Para Cliente</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-4 mb-6">
+                        <button onclick="setMoneda('USD')" id="btnUSD" class="flex-1 py-4 border border-neutral-950 bg-neutral-950 text-white font-black text-[10px] uppercase tracking-widest transition-colors rounded-none">Dólares ($)</button>
+                        <button onclick="setMoneda('BS')" id="btnBS" class="flex-1 py-4 border border-neutral-300 bg-white text-neutral-500 hover:text-neutral-950 hover:bg-neutral-100 font-bold text-[10px] uppercase tracking-widest transition-colors rounded-none">Bolívares (Bs)</button>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Monto a Registrar</label>
+                        <div class="relative">
+                            <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400 font-black text-xl" id="simboloMoneda">$</span>
+                            <input type="number" id="montoPago" oninput="actualizarEquivalencia()" class="w-full pl-12 pr-4 py-4 border border-neutral-300 bg-white text-2xl font-black tracking-tight text-neutral-950 outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 rounded-none transition-colors" placeholder="0.00" step="0.01">
+                        </div>
+                        <div class="text-right text-[10px] font-bold text-neutral-400 mt-2 uppercase tracking-widest" id="equiPago">≈ Bs 0.00</div>
+                    </div>
+
+                    <div class="mb-8">
+                         <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Referencia de Operación</label>
+                         <input type="text" id="refPago" class="w-full p-4 border border-neutral-300 bg-white text-xs font-bold uppercase tracking-wider focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none rounded-none transition-colors placeholder-neutral-400" placeholder="REF PARA PAGO MÓVIL/ZELLE">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <button onclick="agregarPago('Efectivo')" class="p-4 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2"><i class="fa-solid fa-money-bill"></i> Efectivo</button>
+                        <button onclick="agregarPago('Zelle')" class="p-4 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2"><i class="fa-brands fa-usps"></i> Zelle</button>
+                        <button onclick="agregarPago('Pago Móvil')" class="p-4 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2"><i class="fa-solid fa-mobile-screen"></i> P. Móvil</button>
+                        <button onclick="agregarPago('Punto Venta')" class="p-4 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2"><i class="fa-solid fa-credit-card"></i> Punto</button>
+                    </div>
+                </div>
+
+                <div class="w-full md:w-1/2 p-8 flex flex-col bg-white overflow-y-auto custom-scrollbar">
+                    <h4 class="font-black text-neutral-950 mb-6 text-[10px] uppercase tracking-widest border-b border-neutral-300 pb-2">Registro de Pagos</h4>
+                    
+                    <div id="listaPagos" class="flex-1 overflow-y-auto space-y-3 mb-6 pr-1 custom-scrollbar">
+                        <div class="text-center text-neutral-400 font-bold text-[10px] uppercase tracking-widest py-10">Esperando ingresos...</div>
+                    </div>
+
+                    <div class="border-t-4 border-neutral-950 pt-6 space-y-3 text-xs bg-white rounded-none">
+        
+                        <div class="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-neutral-500">
+                            <span>Base Imponible:</span>
+                            <span id="resumenBase">$0.00</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-neutral-500 border-b border-neutral-200 pb-3 mb-3">
+                            <span>IVA (16%):</span>
+                            <span id="resumenIVA">$0.00</span>
+                        </div>
+
+                        <div class="flex justify-between items-center">
+                            <span class="text-neutral-500 font-black text-[10px] uppercase tracking-widest">Subtotal:</span>
+                            <div class="text-right">
+                                <div class="font-black text-neutral-950" id="resumenSubtotal">$0.00</div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-between items-center text-neutral-500 mt-2" id="rowIGTF">
+                            <span class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest"><i class="fa-solid fa-coins text-neutral-400"></i> I.G.T.F (3%):</span>
+                            <div class="text-right font-mono font-bold text-neutral-950" id="resumenIGTF">$0.00</div>
+                        </div>
+
+                        <div class="flex justify-between items-center border-t border-neutral-300 pt-4 mt-4">
+                            <span class="text-neutral-950 font-black text-sm uppercase tracking-widest">Total a Pagar:</span>
+                            <div class="text-right">
+                                <div class="font-black text-neutral-950 text-2xl tracking-tight" id="resumenTotalDefinitivo">$0.00</div>
+                                <div class="text-[10px] text-neutral-500 font-mono mt-1" id="resumenTotalDefinitivoBs">Bs 0.00</div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 pt-4 border-t border-dashed border-neutral-400">
+                            <div class="flex justify-between items-center">
+                                <span class="text-neutral-400 font-black text-[10px] uppercase tracking-widest">Ingresado:</span>
+                                <span class="font-black text-neutral-950" id="resumenAbonado">$0.00</span>
+                            </div>
+                            
+                            <div class="flex justify-between items-center mt-3 bg-neutral-100 p-4 border border-neutral-300 rounded-none">
+                                <span id="labelRestante" class="text-neutral-500 font-black text-[10px] uppercase tracking-widest">Diferencia:</span>
+                                <div class="text-right">
+                                    <div id="resumenRestante" class="text-neutral-950 font-black text-xl tracking-tight">$0.00</div>
+                                    <div id="resumenRestanteBs" class="text-neutral-500 font-bold text-[10px] font-mono mt-1">Bs 0.00</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="btnFinalizarVenta" onclick="finalizarVentaBackend()" class="w-full mt-6 bg-neutral-300 text-neutral-500 font-black py-5 rounded-none shadow-none cursor-not-allowed transition-colors uppercase tracking-widest text-[10px]" disabled>
+                        <i class="fa-solid fa-check-circle mr-3"></i> Confirmar Operación
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalSeleccionFormula" class="fixed inset-0 z-[70] hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4 animate-fade-in">
+        <div class="bg-white w-full max-w-lg rounded-none shadow-2xl overflow-hidden transform transition-all scale-100 border border-neutral-400 flex flex-col max-h-[85vh]">
+            
+            <div class="bg-neutral-950 p-6 text-white text-center relative border-b border-neutral-800 shrink-0">
+                <h3 class="font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3">
+                    <i class="fa-solid fa-flask text-neutral-400"></i> Dosificación y Despacho
+                </h3>
+                <p class="text-[10px] font-bold text-amber-400 uppercase tracking-widest mt-2" id="lblNombreProducto">Perfume Seleccionado</p>
+                <button onclick="cerrarModalFormula()" class="absolute right-6 top-6 text-neutral-400 hover:text-white transition-colors">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-1 p-1 bg-neutral-100 border-b border-neutral-300 shrink-0">
+                <button type="button" id="tabModalEstandar" onclick="cambiarTabModal('ESTANDAR')" class="py-3 text-[10px] font-black uppercase tracking-widest text-center transition-all duration-200 bg-white text-neutral-950 border border-neutral-200">
+                    📐 Medidas Estándar
+                </button>
+                <button type="button" id="tabModalPromo" onclick="cambiarTabModal('PROMO')" class="py-3 text-[10px] font-black uppercase tracking-widest text-center transition-all duration-200 text-neutral-500 hover:text-neutral-950">
+                    🔥 Combos Especiales
+                </button>
+            </div>
+
+            <div class="p-6 bg-white overflow-y-auto flex-1 space-y-4">
+                
+                <div class="p-4 border border-neutral-300 bg-neutral-50 shadow-none flex flex-col md:flex-row gap-4 items-center shrink-0">
+                    <div class="flex-1 w-full">
+                        <label class="block text-[9px] font-black text-neutral-500 uppercase tracking-widest mb-1">Gramos Extra Esencia</label>
+                        <div class="relative group">
+                            <i class="fa-solid fa-droplet absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400"></i>
+                            <input type="number" id="extraGramosEsencia" placeholder="Gramos (Ej: 5)" class="w-full pl-10 pr-3 py-2.5 bg-white border border-neutral-300 text-xs font-bold focus:border-neutral-950 outline-none transition-colors text-neutral-900 rounded-none" min="0" step="0.1">
+                        </div>
+                    </div>
+                    <div class="flex-1 w-full">
+                        <label class="block text-[9px] font-black text-neutral-500 uppercase tracking-widest mb-1">Costo Gramo Extra ($)</label>
+                        <div class="relative group">
+                            <i class="fa-solid fa-dollar-sign absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400"></i>
+                            <input type="number" id="precioGramoExtra" placeholder="Precio (Ej: 1.50)" class="w-full pl-10 pr-3 py-2.5 bg-white border border-neutral-300 text-xs font-bold focus:border-neutral-950 outline-none transition-colors text-neutral-900 rounded-none" min="0" step="0.01">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="wrapperBuscadorModalPromo" class="relative hidden">
+                    <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400 text-xs">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </span>
+                    <input type="text" id="inputBuscarPromoModal" oninput="filtrarPromosModal()" placeholder="BUSCAR COMBO ESPECÍFICO (EJ: 4X40)..." class="w-full pl-11 pr-4 py-3 bg-neutral-50 border border-neutral-300 rounded-none outline-none focus:bg-white focus:border-neutral-950 font-bold text-neutral-900 text-[11px] uppercase tracking-wider transition-colors placeholder-neutral-400">
+                </div>
+                
+                <div id="contenedorFormulas" class="space-y-3">
+                </div>
+                
+                <div id="contenedorSeleccionEsenciasPromo" class="hidden flex-col h-full animate-fade-in border-t border-neutral-300 pt-4 mt-2">
+                    
+                    <div class="mb-4 bg-neutral-100 p-4 border border-neutral-300 flex justify-between items-center rounded-none shrink-0">
+                        <span class="text-[10px] font-black uppercase tracking-widest text-neutral-500">Progreso de Promo:</span>
+                        <span class="text-lg font-black text-neutral-950 tracking-tighter">
+                            <span id="promoContadorActual">0</span> / <span id="promoContadorMaximo">0</span>
+                        </span>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row gap-2 items-end mb-4 shrink-0">
+                        <div class="flex-1 w-full relative">
+                            <label class="block text-[9px] font-black uppercase tracking-widest text-neutral-400 mb-1">Buscar Esencia</label>
+                            <div class="relative">
+                                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400"></i>
+                                <input type="text" id="inputBusquedaEsenciaPromo" oninput="filtrarEsenciasLote(this.value)" autocomplete="off" class="w-full pl-11 pr-4 py-4 border border-neutral-300 font-black text-xs uppercase bg-white text-neutral-950 outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 rounded-none transition-colors" placeholder="ESCRIBE LA FRAGANCIA...">
+                            </div>
+                            
+                            <div id="dropdownResultadosEsencia" class="absolute z-50 w-full mt-1 bg-white border border-neutral-300 shadow-2xl max-h-56 overflow-y-auto hidden custom-scrollbar">
+                            </div>
+                            
+                            <input type="hidden" id="selectEsenciaPromo">
+                        </div>
+
+                        <div class="w-full sm:w-28">
+                            <label class="block text-[9px] font-black uppercase tracking-widest text-neutral-400 mb-1">Cantidad</label>
+                            <input type="number" id="cantidadEsenciaPromo" min="1" value="1" class="w-full p-4 border border-neutral-300 font-black text-center text-lg bg-white text-neutral-950 outline-none focus:border-neutral-950 rounded-none">
+                        </div>
+
+                        <button type="button" onclick="agregarEsenciaEnLote()" class="w-full sm:w-auto bg-neutral-950 text-white px-6 py-4 text-[10px] font-black uppercase tracking-widest hover:bg-neutral-800 transition-colors rounded-none flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-plus text-neutral-400"></i> Añadir
+                        </button>
+                    </div>
+
+                    <div id="listaEsenciasPromoAcumuladas" class="flex-1 min-h-[120px] overflow-y-auto space-y-2 border border-neutral-300 bg-neutral-50 p-3 mb-4 custom-scrollbar">
+                    </div>
+
+                   <div class="grid grid-cols-2 gap-2 shrink-0">
+                        <button type="button" onclick="guardarPedidoBD()" class="border border-neutral-300 bg-neutral-100 hover:bg-neutral-200 text-neutral-600 font-black text-[10px] uppercase tracking-widest py-3 transition-colors flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-floppy-disk text-neutral-400"></i> Guardar Temporal
+                        </button>
+                        <button type="button" onclick="cargarPedidosBD()" class="border border-amber-500 bg-amber-50 hover:bg-amber-100 text-amber-700 font-black text-[10px] uppercase tracking-widest py-3 transition-colors flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-folder-open text-amber-500"></i> Ver Pedidos
+                        </button>
+                        
+                        <button type="button" onclick="cancelarSeleccionPromo()" class="border border-neutral-300 bg-white text-neutral-500 font-black text-[10px] uppercase tracking-widest py-4 hover:bg-neutral-100 transition-colors">Volver a Promos</button>
+                        <button type="button" id="btnConfirmarPromoLote" onclick="confirmarPromoLote()" class="border border-neutral-950 bg-neutral-950 text-white font-black text-[10px] uppercase tracking-widest py-4 hover:bg-neutral-800 transition-colors opacity-50 cursor-not-allowed" disabled>Inyectar a Factura</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🔥 NUEVA MODAL MAESTRA: DESPACHO MASIVO A ESTANTES DESDE INVENTARIO -->
+    <div id="modalBajarInventarioMasa" class="fixed inset-0 bg-neutral-950/80 hidden flex items-center justify-center z-[70] backdrop-blur-sm p-4 animate-fade-in">
+        <div class="bg-white w-full max-w-md rounded-none shadow-2xl overflow-hidden border border-neutral-400">
+            
+            <div class="bg-neutral-950 p-6 text-white flex justify-between items-center border-b border-neutral-800 shrink-0">
+                <h3 class="font-black text-xs uppercase tracking-widest flex items-center gap-3">
+                    <i class="fa-solid fa-truck-ramp-box text-amber-400"></i> Despacho Masivo a Estantes
+                </h3>
+                <button onclick="document.getElementById('modalBajarInventarioMasa').classList.add('hidden')" class="text-neutral-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+
+            <div class="p-8 bg-neutral-50 space-y-5">
+                
+                <div class="relative w-full">
+                    <label class="block text-[9px] font-black uppercase tracking-widest text-neutral-400 mb-1">Buscar Producto o Esencia</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400"></i>
+                        <input type="text" id="inputBuscarProdMasa" oninput="filtrarProductosMasaPOS(this.value)" autocomplete="off" class="w-full pl-11 pr-4 py-4 border border-neutral-300 font-black text-xs uppercase bg-white text-neutral-950 outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 rounded-none transition-colors placeholder-neutral-400" placeholder="Escribe el nombre de la fragancia...">
+                    </div>
+                    
+                    <div id="dropdownProdsMasa" class="absolute z-50 w-full mt-1 bg-white border border-neutral-300 shadow-2xl max-h-48 overflow-y-auto hidden custom-scrollbar"></div>
+                    <input type="hidden" id="idProdMasaSeleccionado">
+                </div>
+
+                <div>
+                    <label class="block text-[9px] font-black text-neutral-500 uppercase tracking-widest mb-1">Cantidad de Botellas a Bajar</label>
+                    <input type="number" id="cantBotellasMasa" min="1" class="w-full bg-white border border-neutral-300 p-4 rounded-none text-center font-black text-xl text-neutral-950 focus:border-neutral-950 outline-none" placeholder="EJ: 10" required>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[9px] font-black text-neutral-500 uppercase tracking-widest mb-1">Estante Destino</label>
+                        <select id="destinoEstanteMasa" class="w-full bg-white border border-neutral-300 p-3 rounded-none font-bold text-xs uppercase text-neutral-950 outline-none focus:border-neutral-950">
+                            <option value="A">Estante A (Piso)</option>
+                            <option value="B">Estante B (Reserva)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-[9px] font-black text-neutral-500 uppercase tracking-widest mb-1">Seleccionar Piso</label>
+                        <select id="pisoEstanteMasa" class="w-full bg-white border border-neutral-300 p-3 rounded-none font-bold text-xs uppercase text-neutral-950 outline-none focus:border-neutral-950">
+                            <option value="1">Nivel 1 (Arriba)</option>
+                            <option value="2">Nivel 2</option>
+                            <option value="3">Nivel 3</option>
+                            <option value="4">Nivel 4</option>
+                            <option value="5">Nivel 5</option>
+                            <option value="6">Nivel 6 (Abajo)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button onclick="procesarBajarMercanciaMasa()" class="w-full bg-neutral-950 hover:bg-neutral-800 text-white font-black py-4 rounded-none transition-colors uppercase tracking-widest text-[10px] mt-2 flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-bolt text-amber-400"></i> Procesar Traslado Completo
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>

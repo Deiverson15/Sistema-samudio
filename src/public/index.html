@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión | Inventario</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⬛</text></svg>">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <script>
+        // Si no hay token, lo sacamos INMEDIATAMENTE antes de que cargue la página
+        if (!localStorage.getItem('token')) {
+            window.location.href = '/login.html';
+        }
+    </script>
+    <style>
+        /* Tipografía corporativa estricta */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        
+        /* Scrollbar industrial (cuadrado y gris) */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f5f5f5; }
+        ::-webkit-scrollbar-thumb { background: #d4d4d4; border-radius: 0px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a3a3a3; }
+        
+        /* Enlace activo: Negro sobre negro con borde gris claro */
+        .active-link { background-color: #171717; border-right: 4px solid #ffffff; color: white; }
+        .glass-overlay { backdrop-filter: blur(4px); }
+        
+        /* Asegura que los iconos estén centrados cuando el texto se oculta */
+        .sidebar-collapsed .nav-link { justify-content: center; }
+        .sidebar-collapsed .nav-link i { margin-right: 0 !important; }
+    </style>
+</head>
+<body class="bg-neutral-50 font-sans h-screen flex overflow-hidden">
+
+    <div id="sidebar-overlay" class="fixed inset-0 bg-neutral-950/70 z-20 hidden glass-overlay transition-opacity md:hidden" onclick="toggleSidebar()"></div>
+
+    <aside id="sidebar" class="fixed inset-y-0 left-0 w-64 bg-neutral-950 text-neutral-400 flex flex-col z-30 
+                           transform -translate-x-full md:translate-x-0 transition-all duration-300 ease-in-out 
+                           md:relative md:w-64 md:flex border-r border-neutral-800">
+        
+        <div class="p-6 relative">
+            <div class="flex items-center gap-3 text-white mb-6">
+                <div class="w-10 h-10 bg-white flex items-center justify-center text-xl font-black text-neutral-950 shrink-0">
+                    <i class="fa-solid fa-box-open"></i>
+                </div>
+                <div class="sidebar-text flex flex-col min-w-0 overflow-hidden justify-center">
+                    <h1 class="font-black text-lg tracking-widest uppercase leading-none mb-1.5">Sistema.</h1>
+                    <div id="nombreSedeActual" class="flex items-center gap-1.5 px-2 py-1 bg-neutral-900 border border-neutral-800 w-fit rounded-none transition-colors">
+                        <i class="fa-solid fa-store text-[9px] text-neutral-500"></i>
+                        <span class="text-[9px] text-neutral-400 font-bold uppercase tracking-widest leading-none truncate">
+                            Cargando Sede...
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <button id="toggle-desktop" class="hidden md:flex items-center justify-center w-8 h-8 hover:bg-neutral-800 text-neutral-400 absolute right-[-16px] top-8 transition-colors border border-neutral-800 bg-neutral-950 z-50 rounded-none" title="Colapsar Menú">
+                <i class="fa-solid fa-chevron-left text-sm"></i>
+            </button>
+
+            <button class="md:hidden text-neutral-400 hover:text-white transition absolute top-6 right-6" onclick="toggleSidebar()">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+
+        <div id="bannerMensajePago" class="hidden bg-red-600 text-white text-center py-2 px-4 text-[10px] font-black uppercase tracking-widest">
+            <span id="textoMensajePago"></span>
+        </div>
+
+        <div class="p-6 border-b border-neutral-900 flex items-center gap-3 sidebar-profile overflow-hidden min-w-0">
+            <div id="avatarLetra" class="w-10 h-10 min-w-[40px] min-h-[40px] bg-neutral-800 border border-neutral-700 flex items-center justify-center text-white font-bold shrink-0">
+                U
+            </div>
+            <div class="sidebar-text min-w-0 flex-1 overflow-hidden">
+                <p id="textoRol" class="text-white text-sm font-bold uppercase tracking-wider truncate" title="Cargando...">Cargando...</p>
+                <p class="text-[10px] text-neutral-500 font-semibold uppercase tracking-widest flex items-center mt-1">
+                    <i class="fa-solid fa-circle text-[8px] mr-1 text-green-500"></i>En línea
+                </p>
+            </div>
+        </div>
+
+
+        <nav class="flex-1 overflow-y-auto py-4 overflow-x-hidden">
+            <ul class="space-y-1">
+                <li id="menu-dashboard">
+                    <a href="dashboard" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-chart-pie w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Resumen</span>
+                    </a>
+                </li>
+                <li id="menu-inventario">
+                    <a href="inventario" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-boxes-stacked w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Inventario</span>
+                    </a>
+                </li>
+                <li id="menu-estante">
+                    <a href="estante" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-store w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Mi Estante</span>
+                    </a>
+                </li>
+                <li id="menu-facturacion">
+                    <a href="facturacion" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-cash-register w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Nota de Entrega</span>
+                    </a>
+                </li>
+                <li id="menu-preparacion">
+                    <a href="preparacion" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-spray-can w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Preparación</span>
+                    </a>
+                </li>
+                <li id="menu-ventas">
+                    <a href="ventas" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-clock-rotate-left w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Historial Ventas</span>
+                    </a>
+                </li>
+                <li id="menu-compras">
+                    <a href="compras" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-dolly w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Compras / Lotes</span>
+                    </a>
+                </li>
+                <li id="menu-proveedores">
+                    <a href="proveedores" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-truck-fast w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Proveedores</span>
+                    </a>
+                </li>
+                <li id="menu-reportes">
+                    <a href="reportes" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-file-invoice-dollar w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Reportes</span>
+                    </a>
+                </li>
+                <li id="menu-ajustes">
+                    <a href="ajustes" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-wrench w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Ajustes / Mermas</span>
+                    </a>
+                </li>
+                <li id="menu-auditoria">
+                    <a href="auditoria" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-clipboard-check w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Control y Auditoría</span>
+                    </a>
+                </li>
+                <li id="menu-usuarios">
+                    <a href="usuarios" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-users-gear w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Gestión Usuarios</span>
+                    </a>
+                </li>
+                <li id="menu-tiendas">
+                    <a href="tiendas" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-semibold tracking-wider">
+                        <i class="fa-solid fa-building w-6 group-hover:text-white mr-3 text-center text-neutral-500"></i>
+                        <span class="sidebar-text">Tiendas</span>
+                    </a>
+                </li>
+
+                <li id="menu-developer" style="display: none;">
+                    <a href="developer" class="nav-link flex items-center px-6 py-4 hover:bg-neutral-900 text-neutral-500 hover:text-white transition group border-l-4 border-transparent uppercase text-xs font-black tracking-widest">
+                        <i class="fa-solid fa-terminal w-6 mr-3 text-center"></i>
+                        <span class="sidebar-text">Panel Dev</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <div class="p-6 bg-neutral-950 border-t border-neutral-900">
+            <button onclick="logout()" class="w-full flex items-center justify-center gap-2 border border-neutral-800 hover:bg-neutral-100 hover:text-neutral-950 text-neutral-400 py-3 transition text-xs font-bold uppercase tracking-widest nav-link">
+                <i class="fa-solid fa-right-from-bracket"></i> <span class="sidebar-text">Cerrar Sesión</span>
+            </button>
+        </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col h-screen overflow-hidden relative">
+        
+        <header class="h-20 bg-white border-b border-neutral-200 flex items-center justify-between px-8 z-10 sticky top-0">
+            <button class="md:hidden text-neutral-900 text-2xl hover:text-neutral-500 transition" onclick="toggleSidebar()">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+
+            <h2 id="page-title" class="text-2xl font-black text-neutral-950 tracking-tight uppercase ml-2 md:ml-0">Resumen General</h2>
+            
+            <script src="/js/notificaciones.js"></script>
+
+            <div class="relative">
+                <button id="btnCampana" onclick="toggleNotificaciones()" class="text-neutral-900 hover:text-neutral-500 transition relative p-2">
+                    <i class="fa-solid fa-bell text-xl"></i>
+                    <span id="notifBadge" class="hidden absolute top-0 right-0 bg-neutral-950 text-white text-[10px] font-bold px-1.5 py-0.5 border border-white">0</span>
+                </button>
+
+                <div id="menuNotificaciones" class="hidden absolute right-0 mt-4 w-80 bg-white shadow-2xl border border-neutral-200 z-50 overflow-hidden rounded-none">
+                    <div class="p-4 bg-neutral-50 border-b border-neutral-200">
+                        <span class="text-xs font-bold text-neutral-900 uppercase tracking-widest">Notificaciones</span>
+                    </div>
+                    <div id="listaNotificaciones" class="max-h-80 overflow-y-auto">
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-x-hidden overflow-y-auto bg-neutral-50 p-6 md:p-10" id="main-content">
+        </main>
+    </div>
+
+    <script>
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        const toggleDesktopBtn = document.getElementById('toggle-desktop');
+        
+        // Función para abrir/cerrar menú en móvil
+        function toggleSidebar() {
+            sidebar.classList.toggle('-translate-x-full');
+            overlay.classList.toggle('hidden');
+        }
+        window.toggleSidebar = toggleSidebar; // Exponer globalmente
+
+        // Lógica de colapso de escritorio
+        function toggleDesktopCollapse() {
+            document.body.classList.toggle('sidebar-collapsed');
+            
+            // Cambiar ancho del sidebar
+            sidebar.classList.toggle('md:w-64');
+            sidebar.classList.toggle('md:w-20');
+
+            // Ocultar/Mostrar texto
+            document.querySelectorAll('.sidebar-text').forEach(el => {
+                 el.classList.toggle('md:hidden');
+            });
+            
+            // Rotar flecha
+            const icon = toggleDesktopBtn.querySelector('i');
+            if (icon) {
+                icon.classList.toggle('fa-chevron-left');
+                icon.classList.toggle('fa-chevron-right');
+            }
+
+            // Ajustar padding de los links para que se centren los iconos
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.toggle('md:justify-center');
+                link.classList.toggle('md:px-6');
+                link.classList.toggle('px-0'); // Ajuste fino
+            });
+        }
+        
+        // Eventos
+        if(toggleDesktopBtn) toggleDesktopBtn.addEventListener('click', toggleDesktopCollapse);
+        if(overlay) overlay.addEventListener('click', toggleSidebar);
+        
+        // Cerrar menú al hacer click en un link (en móvil)
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth < 768) {
+                    toggleSidebar();
+                }
+            });
+        });
+
+        // Función logout global (por si no está en otro script)
+        // Función logout global (Con Confirmación Visual)
+        function logout() {
+            Swal.fire({
+                title: '¿Cerrar Sesión?',
+                text: 'Saldrás del sistema y tendrás que ingresar tus credenciales nuevamente.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#0f172a', // Color oscuro corporativo
+                cancelButtonColor: '#94a3b8',  // Gris neutro
+                confirmButtonText: '<i class="fa-solid fa-right-from-bracket"></i> Sí, salir del sistema',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Animación de salida (opcional)
+                    Swal.fire({
+                        title: 'Cerrando sesión...',
+                        showConfirmButton: false,
+                        timer: 800,
+                        timerProgressBar: true,
+                        didOpen: () => { Swal.showLoading() }
+                    }).then(() => {
+                        // Limpieza de datos y redirección
+                        localStorage.removeItem('token');
+                        localStorage.removeItem('usuario');
+                        window.location.href = '/login.html';
+                    });
+                }
+            });
+        }
+    </script>
+
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            aplicarPermisosVisuales();
+        });
+
+        function aplicarPermisosVisuales() {
+            const usuarioData = localStorage.getItem('usuario');
+            if (!usuarioData) return;
+                
+            const usuario = JSON.parse(usuarioData);
+            
+            // 🔥 EL ESCUDO: Forzamos el rol a minúsculas para que no choque si dice "Dev" o "Developer"
+            const rol = usuario.rol ? usuario.rol.toLowerCase() : '';
+            
+            // Definición de qué ocultar para cada quien
+            const ocultarParaVendedor = [
+                'menu-dashboard', 'menu-inventario', 'menu-preparacion',
+                'menu-compras', 'menu-proveedores', 'menu-reportes', 
+                'menu-usuarios', 'menu-ajustes', 'menu-auditoria', 'menu-tiendas'
+            ];
+                
+            const ocultarParaGerente = [
+                'menu-usuarios', 'menu-ajustes', 'menu-auditoria', 'menu-tiendas'
+            ];
+
+            const ocultarParaAdmin = [
+                'menu-tiendas' 
+            ];
+
+            const ocultarParaSuperAdmin = [
+                'menu-usuarios' 
+            ];
+                
+            let idsOcultar = [];
+
+            // Lógica de asignación por rol
+            if (rol === 'vendedor') {
+                idsOcultar = ocultarParaVendedor;
+            } else if (rol === 'gerente') {
+                idsOcultar = ocultarParaGerente;
+            } else if (rol === 'admin') {
+                idsOcultar = ocultarParaAdmin;
+            } else if (rol === 'superadmin') {
+                idsOcultar = ocultarParaSuperAdmin; 
+            }
+
+            // Aplicar el ocultamiento
+            idsOcultar.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+
+            // REGLA ESPECIAL PARA DEVELOPER (Panel Secreto)
+            const devMenu = document.getElementById('menu-developer');
+            if (rol === 'developer' || rol === 'dev') {
+                if (devMenu) devMenu.style.display = 'block'; 
+            } else {
+                if (devMenu) devMenu.style.display = 'none';  
+            }
+        }
+
+        // ==========================================
+        // 🔒 SISTEMA EN TIEMPO REAL (KILL SWITCH)
+        // ==========================================
+        if (typeof io !== 'undefined') {
+            const socket = io();
+            
+            socket.on('cambio_estado_sistema', (data) => {
+                const usuarioData = localStorage.getItem('usuario');
+                if (!usuarioData) return;
+                
+                const usuario = JSON.parse(usuarioData);
+                
+                // Si el sistema se bloquea y NO eres el developer -> BLOQUEO INSTANTÁNEO
+                if (!data.activo && usuario.rol !== 'developer') {
+                    // Diseño del bloqueo adaptado a la nueva vibra corporativa
+                    document.body.innerHTML = `
+                        <div class="bg-neutral-950 text-white h-screen w-screen flex flex-col justify-center items-center text-center p-10 fixed inset-0 z-50">
+                            <i class="fa-solid fa-lock text-7xl mb-8 text-neutral-500"></i>
+                            <h1 class="text-5xl font-black mb-4 uppercase tracking-tighter">Acceso Restringido.</h1>
+                            <p class="text-sm text-neutral-400 max-w-lg mb-10 tracking-widest uppercase">El acceso a este software ha sido suspendido. Por favor, póngase en contacto con el desarrollador para regularizar el estado del sistema.</p>
+                            <a href="/login.html" class="bg-white text-neutral-950 hover:bg-neutral-200 px-8 py-4 font-bold transition uppercase tracking-widest text-xs">Volver al Inicio</a>
+                        </div>`;
+                } 
+                // Si tú reactivas el sistema y ellos estaban bloqueados -> RECARGA INSTANTÁNEA
+                else if (data.activo && usuario.rol !== 'developer') {
+                    window.location.reload();
+                }
+            });
+        } else {
+            console.error("Error: El cliente de Socket.io no se cargó correctamente.");
+        }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script type="module">
+        import { initSessionManager } from './js/session.js';
+        initSessionManager(); 
+    </script>
+    
+    <script type="module" src="js/router.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+</body>
+</html>

@@ -1,0 +1,213 @@
+<div class="animate-fade-in space-y-8 relative">
+    
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-neutral-300 pb-4 mb-6 gap-4">
+        <div>
+            <h1 class="text-3xl md:text-4xl font-black text-neutral-950 uppercase tracking-tighter">Resumen Ejecutivo</h1>
+            <p class="text-neutral-500 text-xs font-bold uppercase tracking-widest mt-1">Panorama general de tu negocio</p>
+        </div>
+        <span id="labelRango" class="text-[10px] bg-neutral-950 text-white px-4 py-2 font-bold border border-neutral-950 uppercase tracking-widest shadow-none">
+            <i class="fa-regular fa-calendar mr-2"></i> Cargando...
+        </span>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        
+        <div class="bg-white p-6 border border-neutral-300 hover:border-neutral-950 transition-colors relative group rounded-none">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <p class="text-[10px] text-neutral-500 font-bold tracking-widest uppercase" id="dashLabelVentas">Ventas Netas</p>
+                    <h3 class="text-3xl font-black text-neutral-950 mt-1 tracking-tight" id="dashVentasHoy">$0.00</h3>
+                </div>
+                <div class="p-3 bg-neutral-100 text-neutral-900 group-hover:bg-neutral-950 group-hover:text-white transition-colors rounded-none">
+                    <i class="fa-solid fa-dollar-sign text-xl"></i>
+                </div>
+            </div>
+            <div class="flex items-center text-[10px] font-bold mt-4 uppercase tracking-wider">
+                <span id="trendArrow" class="flex items-center gap-1 px-2 py-1 mr-2 bg-neutral-200 text-neutral-800">
+                    --
+                </span>
+                <span class="text-neutral-500" id="labelVs">vs periodo anterior</span>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 border border-neutral-300 hover:border-neutral-950 transition-colors relative group rounded-none">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <p class="text-[10px] text-neutral-500 font-bold tracking-widest uppercase">Transacciones</p>
+                    <h3 class="text-3xl font-black text-neutral-950 mt-1 tracking-tight" id="dashTransacciones">0</h3>
+                </div>
+                <div class="p-3 bg-neutral-100 text-neutral-900 group-hover:bg-neutral-950 group-hover:text-white transition-colors rounded-none">
+                    <i class="fa-solid fa-receipt text-xl"></i>
+                </div>
+            </div>
+            <div class="text-[10px] text-neutral-500 font-bold uppercase tracking-wider mt-4">
+                Operaciones registradas
+            </div>
+        </div>
+
+        <div class="bg-white p-6 border border-neutral-300 hover:border-neutral-950 transition-colors relative group rounded-none">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <p class="text-[10px] text-neutral-500 font-bold tracking-widest uppercase">Capital en Stock</p>
+                    <h3 class="text-2xl font-black text-neutral-950 mt-1 tracking-tight" id="dashValorTotal">$0.00</h3>
+                </div>
+                <div class="p-3 bg-neutral-100 text-neutral-900 group-hover:bg-neutral-950 group-hover:text-white transition-colors rounded-none">
+                    <i class="fa-solid fa-sack-dollar text-xl"></i>
+                </div>
+            </div>
+            <div class="text-[10px] text-neutral-500 font-bold uppercase tracking-wider mt-4">
+                Costo total (Inversión Activa)
+            </div>
+        </div>
+
+        <div class="bg-neutral-950 p-6 border border-neutral-950 hover:bg-neutral-900 transition-colors relative group cursor-pointer rounded-none" onclick="abrirModalCritico()">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <p class="text-[10px] text-neutral-400 font-bold tracking-widest uppercase">Stock Crítico</p>
+                    <h3 class="text-3xl font-black text-white mt-1 tracking-tight" id="dashLowStock">0</h3>
+                </div>
+                <div class="p-3 bg-white text-neutral-950 transition-colors rounded-none">
+                    <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+                </div>
+            </div>
+            <div class="text-[10px] text-white font-bold mt-4 uppercase tracking-widest hover:underline flex items-center">
+                Ver lista de alertas <i class="fa-solid fa-arrow-right ml-2"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
+        
+        <div class="lg:col-span-8 bg-white p-8 border border-neutral-300 rounded-none">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+                <h3 class="font-black text-neutral-950 text-sm uppercase tracking-widest flex items-center">
+                    <i class="fa-solid fa-chart-area mr-3 text-neutral-400"></i> Desempeño Financiero
+                </h3>
+                <select id="rangoTiempo" onchange="cambiarRango(this.value)" class="text-xs font-bold border border-neutral-300 rounded-none px-4 py-2 text-neutral-900 outline-none bg-neutral-50 cursor-pointer focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 uppercase tracking-wider">
+                    <option value="7d">Últimos 7 días</option>
+                    <option value="30d">Últimos 30 días</option>
+                    <option value="1y">Este Año (Mes a Mes)</option>
+                    <option value="custom">Rango Personalizado</option>
+                </select>
+            </div>
+            
+            <!-- Contenedor técnico con desbordamiento controlado para proteger el lienzo gráfico -->
+            <div class="w-full overflow-x-auto overflow-y-hidden p-0 m-0">
+                <div id="canvasViewport" class="h-80 w-full relative">
+                    <canvas id="dashFinanzasChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-4 space-y-6">
+            
+            <div class="bg-white p-8 border border-neutral-300 rounded-none">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="font-black text-neutral-950 text-sm uppercase tracking-widest">Distribución</h3>
+                    
+                    <div class="flex bg-neutral-100 p-1 border border-neutral-200">
+                        <button onclick="switchChart('top')" id="btnChartTop" class="px-4 py-1 text-[10px] font-bold bg-white text-neutral-900 shadow-sm border border-neutral-300 uppercase tracking-widest transition rounded-none">Top</button>
+                        <button onclick="switchChart('cat')" id="btnChartCat" class="px-4 py-1 text-[10px] font-bold text-neutral-500 hover:text-neutral-900 uppercase tracking-widest transition rounded-none">Categorías</button>
+                    </div>
+                </div>
+
+                <div class="h-64 relative">
+                    <canvas id="dashDistribucionChart"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white p-8 border border-neutral-300 rounded-none space-y-3">
+                <h3 class="font-black text-neutral-950 text-sm uppercase tracking-widest mb-4">Acciones Rápidas</h3>
+                
+                <button onclick="navegarA('facturacion')" class="w-full flex items-center justify-between bg-white text-neutral-900 p-4 font-bold hover:bg-neutral-950 hover:text-white transition-colors group border border-neutral-300 text-[10px] uppercase tracking-widest rounded-none">
+                    <div class="flex items-center gap-3"><i class="fa-solid fa-cash-register text-neutral-400 group-hover:text-white transition-colors"></i> Nota de Entrega</div>
+                    <i class="fa-solid fa-arrow-right text-xs"></i>
+                </button>
+
+                <button onclick="navegarA('compras')" class="w-full flex items-center justify-between bg-white text-neutral-900 p-4 font-bold hover:bg-neutral-950 hover:text-white transition-colors group border border-neutral-300 text-[10px] uppercase tracking-widest rounded-none">
+                    <div class="flex items-center gap-3"><i class="fa-solid fa-truck text-neutral-400 group-hover:text-white transition-colors"></i> Registrar Compra</div>
+                    <i class="fa-solid fa-arrow-right text-xs"></i>
+                </button>
+                
+                <button onclick="navegarA('auditoria')" class="w-full flex items-center justify-between bg-white text-neutral-900 p-4 font-bold hover:bg-neutral-950 hover:text-white transition-colors group border border-neutral-300 text-[10px] uppercase tracking-widest rounded-none">
+                    <div class="flex items-center gap-3"><i class="fa-solid fa-shield-halved text-neutral-400 group-hover:text-white transition-colors"></i> Auditoría</div>
+                    <i class="fa-solid fa-arrow-right text-xs"></i>
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 mt-6">
+        <div class="bg-white p-8 border-t-4 border-neutral-950 border-l border-r border-b border-neutral-300 rounded-none">
+            <h3 class="font-black text-neutral-950 mb-6 flex items-center text-sm uppercase tracking-widest">
+                <i class="fa-solid fa-box-archive mr-3 text-neutral-400"></i> Análisis de Estancamiento
+                <span class="ml-4 text-[10px] font-bold text-neutral-500 bg-neutral-100 border border-neutral-200 px-3 py-1 uppercase tracking-widest">
+                    Inventario sin rotación
+                </span>
+            </h3>
+            
+            <div class="overflow-x-auto border border-neutral-200">
+                <table class="min-w-full text-sm text-left">
+                    <thead class="text-[10px] text-neutral-950 font-black uppercase tracking-widest bg-neutral-100 border-b border-neutral-300">
+                        <tr>
+                            <th class="px-6 py-4">Producto</th>
+                            <th class="px-6 py-4">Categoría</th>
+                            <th class="px-6 py-4 text-center">Stock Estancado</th>
+                            <th class="px-6 py-4 text-center">Dinero Dormido</th>
+                            <th class="px-6 py-4 text-right">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaHuesos" class="text-neutral-700 font-medium divide-y divide-neutral-200">
+                        <tr><td colspan="5" class="text-center py-8 text-neutral-500 text-xs uppercase tracking-widest">Procesando datos del inventario...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalCritico" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm transition-opacity" aria-hidden="true" onclick="cerrarModalCritico()"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+            <div class="inline-block align-bottom bg-white text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full border border-neutral-400 rounded-none">
+                
+                <div class="bg-neutral-950 px-6 py-4 border-b border-neutral-800 flex justify-between items-center">
+                    <h3 class="text-sm font-black text-white uppercase tracking-widest flex items-center" id="modal-title">
+                        <i class="fa-solid fa-triangle-exclamation mr-3 text-white"></i> Reporte: Déficit de Inventario
+                    </h3>
+                    <button type="button" class="text-neutral-400 hover:text-white transition-colors focus:outline-none" onclick="cerrarModalCritico()">
+                        <i class="fa-solid fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <div class="bg-white px-6 pt-6 pb-6 sm:p-8 max-h-[60vh] overflow-y-auto">
+                    <p class="text-xs font-bold text-neutral-500 uppercase tracking-widest mb-6">Los siguientes SKUs se encuentran por debajo del umbral mínimo operativo.</p>
+                    
+                    <div class="border border-neutral-300">
+                        <table class="min-w-full divide-y divide-neutral-300 text-sm">
+                            <thead class="bg-neutral-100">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-[10px] font-black text-neutral-950 uppercase tracking-widest">Producto</th>
+                                    <th class="px-6 py-3 text-center text-[10px] font-black text-neutral-950 uppercase tracking-widest">Stock Real</th>
+                                    <th class="px-6 py-3 text-center text-[10px] font-black text-neutral-950 uppercase tracking-widest">Mínimo</th>
+                                    <th class="px-6 py-3 text-center text-[10px] font-black text-neutral-950 uppercase tracking-widest">Déficit</th>
+                                </tr>
+                            </thead>
+                            <tbody id="listaCriticos" class="bg-white divide-y divide-neutral-200 font-medium text-neutral-800">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg-neutral-100 px-6 py-4 border-t border-neutral-300 flex justify-end">
+                    <button type="button" class="bg-neutral-950 hover:bg-neutral-800 text-white font-bold py-3 px-8 text-xs uppercase tracking-widest transition-colors rounded-none" onclick="cerrarModalCritico()">
+                        Entendido
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>

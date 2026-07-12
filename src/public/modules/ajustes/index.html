@@ -1,0 +1,218 @@
+<div class="space-y-8 animate-fade-in pb-8">
+
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 border border-neutral-300 rounded-none">
+        <div>
+            <h2 class="text-3xl md:text-4xl font-black text-neutral-950 tracking-tighter uppercase flex items-center">
+                <i class="fa-solid fa-sliders mr-4 text-neutral-400"></i>
+                Ajustes de Sistema
+            </h2>
+            <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-2">Configuración global y control manual de stock</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <div class="lg:col-span-4 space-y-6">
+            
+            <div class="bg-white border border-neutral-300 rounded-none border-t-4 border-t-neutral-950 shadow-none p-8">
+                <div class="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 class="font-black text-sm uppercase tracking-widest text-neutral-950">Tasa Global ($)</h3>
+                        <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Referencia cambiaria del sistema</p>
+                    </div>
+                    <div class="text-neutral-400">
+                        <i class="fa-solid fa-money-bill-trend-up text-2xl"></i>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    <div class="relative flex-1">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 font-black text-sm uppercase tracking-widest">Bs</span>
+                        <input type="number" id="inputTasaGlobal" 
+                               class="w-full pl-12 pr-4 py-4 bg-neutral-50 border border-neutral-300 rounded-none text-xl font-black text-neutral-950 focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none transition-colors" 
+                               placeholder="0.00" step="0.01">
+                    </div>
+                    <button onclick="guardarTasaGlobal()" 
+                            class="bg-neutral-950 hover:bg-neutral-800 text-white px-6 py-4 rounded-none transition-colors shadow-none text-xs">
+                        <i class="fa-solid fa-rotate"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-neutral-950 border border-neutral-800 rounded-none p-8 text-white relative overflow-hidden">
+                <div class="absolute -right-6 -top-6 text-white/5 text-9xl">
+                    <i class="fa-solid fa-scale-balanced"></i>
+                </div>
+                <h4 class="font-black text-xs uppercase tracking-widest mb-3 relative z-10 flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info text-neutral-400"></i> Normativa de Ajustes
+                </h4>
+                <p class="text-[10px] text-neutral-400 font-bold uppercase tracking-widest relative z-10 leading-relaxed mb-6">
+                    Gestión manual de discrepancias de inventario.
+                </p>
+                
+                <div class="bg-neutral-900 p-4 border border-neutral-800 relative z-10 mb-4 rounded-none">
+                    <p class="text-[10px] text-white font-black mb-2 uppercase tracking-widest border-b border-neutral-700 pb-2">Unidades de Medida</p>
+                    <p class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">El sistema detectará automáticamente si el producto requiere <span class="text-white font-black">GRAMOS (G)</span> o <span class="text-white font-black">UNIDADES (U)</span>.</p>
+                </div>
+
+                <ul class="mt-4 space-y-3 text-[9px] font-black uppercase tracking-widest text-neutral-400 relative z-10 border-t border-neutral-800 pt-4">
+                    <li class="flex items-center gap-3"><div class="w-2 h-2 bg-neutral-500"></div> Salidas (Mermas, Roturas, Consumo)</li>
+                    <li class="flex items-center gap-3"><div class="w-2 h-2 bg-white"></div> Entradas (Sobrantes, Ajustes positivos)</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="lg:col-span-8">
+            <div class="bg-white border border-neutral-300 rounded-none shadow-none flex flex-col h-full">
+                
+                <div class="p-6 border-b border-neutral-800 flex flex-col md:flex-row justify-between items-start md:items-center bg-neutral-950 gap-4">
+                    <div>
+                        <h2 class="font-black text-sm uppercase tracking-widest text-white flex items-center gap-3">
+                            <i class="fa-solid fa-wrench text-neutral-400"></i>
+                            <span id="tituloAccion">Ajuste Manual</span>
+                        </h2>
+                        <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Registra movimientos forzados en el inventario</p>
+                    </div>
+                    
+                    <div class="bg-neutral-900 p-1 flex gap-1 border border-neutral-700 rounded-none">
+                        <label class="cursor-pointer relative">
+                            <input type="radio" name="tipo" value="SALIDA" class="peer sr-only" checked>
+                            <div class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-neutral-500 peer-checked:bg-white peer-checked:text-neutral-950 transition-colors flex items-center gap-2 rounded-none">
+                                <i class="fa-solid fa-minus"></i> Salida
+                            </div>
+                        </label>
+                        <label class="cursor-pointer relative">
+                            <input type="radio" name="tipo" value="ENTRADA" class="peer sr-only">
+                            <div class="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-neutral-500 peer-checked:bg-white peer-checked:text-neutral-950 transition-colors flex items-center gap-2 rounded-none">
+                                <i class="fa-solid fa-plus"></i> Entrada
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <form id="formAjuste" class="p-8 space-y-8 flex-1 bg-neutral-50">
+                    
+                    <div class="relative bg-white p-6 border border-neutral-300">
+                        <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-4 border-b border-neutral-200 pb-2">1. Producto Afectado</label>
+                        <div class="flex gap-0 border border-neutral-300 rounded-none focus-within:border-neutral-950 transition-colors bg-neutral-50">
+                            <div class="px-4 flex items-center justify-center border-r border-neutral-300">
+                                <i class="fa-solid fa-box text-neutral-400"></i>
+                            </div>
+                            <input type="text" id="nombreProductoDisplay" 
+                                   class="w-full p-4 bg-transparent text-neutral-950 font-black text-xs uppercase tracking-wider outline-none cursor-pointer placeholder-neutral-400" 
+                                   placeholder="CLICK AQUÍ PARA SELECCIONAR PRODUCTO..." readonly onclick="abrirModalSeleccion()">
+                            <button type="button" onclick="abrirModalSeleccion()" 
+                                    class="bg-neutral-950 text-white px-8 font-black hover:bg-neutral-800 transition-colors uppercase tracking-widest text-[10px]">
+                                Buscar
+                            </button>
+                        </div>
+                        <input type="hidden" id="producto_id">
+                        
+                        <div id="stockBadge" class="hidden mt-4 bg-neutral-100 text-neutral-950 text-[10px] px-4 py-3 border border-neutral-300 font-black uppercase tracking-widest flex items-center justify-between">
+                            <span>Inventario Registrado:</span>
+                            <span class="flex items-center gap-2">
+                                <span id="stockValue" class="text-sm tracking-tight">0</span> 
+                                <span id="stockUnitBadge" class="text-neutral-500"></span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div id="panelLotes" class="hidden p-6 border border-neutral-300 bg-white transition-all duration-300">
+                        
+                        <div id="selectorLoteContainer" class="hidden space-y-4">
+                            <div class="flex justify-between items-center border-b border-neutral-200 pb-2">
+                                <label class="text-[10px] font-black uppercase tracking-widest text-neutral-950">
+                                    2. Origen (Descuento de Lote)
+                                </label>
+                                <span class="text-[9px] font-black bg-neutral-950 text-white px-3 py-1 uppercase tracking-widest">Modo Salida</span>
+                            </div>
+                            <select id="loteSeleccion" class="w-full p-4 border border-neutral-300 bg-neutral-50 text-neutral-950 text-xs font-bold uppercase tracking-wider focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none transition-colors rounded-none">
+                                <option value="">-- AUTOMÁTICO (FIFO - MÁS ANTIGUO PRIMERO) --</option>
+                            </select>
+                            <p class="text-[9px] font-bold text-neutral-500 uppercase tracking-widest">
+                                <i class="fa-solid fa-circle-info mr-2 text-neutral-400"></i>
+                                Por defecto el sistema descontará del lote con fecha de ingreso más antigua.
+                            </p>
+                        </div>
+
+                        <div id="inputLoteManualContainer" class="hidden space-y-4">
+                            <div class="flex justify-between items-center border-b border-neutral-200 pb-2">
+                                <label class="text-[10px] font-black uppercase tracking-widest text-neutral-950">
+                                    2. Identificador de Lote (Opcional)
+                                </label>
+                                <span class="text-[9px] font-black border border-neutral-950 text-neutral-950 px-3 py-1 uppercase tracking-widest bg-white">Modo Entrada</span>
+                            </div>
+                            <input type="text" id="codigoLoteManual" 
+                                   class="w-full p-4 border border-neutral-300 bg-neutral-50 text-xs font-bold uppercase tracking-wider placeholder-neutral-400 focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none transition-colors rounded-none" 
+                                   placeholder="EJ: IMPORT-001 O AJUSTE-INV">
+                            <p class="text-[9px] font-bold text-neutral-500 uppercase tracking-widest">
+                                <i class="fa-solid fa-tag mr-2 text-neutral-400"></i>
+                                Si se omite, el sistema generará un código correlativo interno.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-6 border border-neutral-300">
+                        <div>
+                            <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-4 border-b border-neutral-200 pb-2">3. Magnitud</label>
+                            <div class="relative">
+                                <input type="number" id="cantidad" step="0.01" class="w-full p-4 border border-neutral-300 bg-neutral-50 rounded-none text-center font-black text-2xl text-neutral-950 outline-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 transition-colors" placeholder="0.00" min="0.01">
+                                <span id="labelUnidad" class="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black bg-neutral-200 text-neutral-600 px-3 py-1 uppercase tracking-widest border border-neutral-300">
+                                    UND
+                                </span>
+                            </div>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-4 border-b border-neutral-200 pb-2">4. Justificación Operativa</label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                    <i class="fa-solid fa-pen-to-square text-neutral-400"></i>
+                                </div>
+                                <select id="motivo" class="w-full pl-12 pr-10 p-4 border border-neutral-300 bg-neutral-50 text-neutral-950 font-bold text-xs uppercase tracking-wider focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none transition-colors appearance-none rounded-none cursor-pointer">
+                                    </select>
+                                <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                                    <i class="fa-solid fa-chevron-down text-neutral-500 text-xs"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pt-6 border-t border-neutral-300">
+                        <button type="submit" id="btnSubmit" class="w-full bg-neutral-950 text-white font-black py-5 rounded-none hover:bg-neutral-800 transition-colors flex items-center justify-center gap-4 uppercase tracking-widest text-[10px] disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span>Procesar Ajuste de Inventario</span>
+                            <i class="fa-solid fa-check"></i>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="modalBusqueda" class="fixed inset-0 z-[60] hidden">
+    <div class="absolute inset-0 bg-neutral-950/80 backdrop-blur-sm transition-opacity" onclick="cerrarModalSeleccion()"></div>
+    
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl bg-white rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-neutral-400">
+        
+        <div class="p-6 border-b border-neutral-800 flex items-center gap-4 bg-neutral-950">
+            <i class="fa-solid fa-magnifying-glass text-neutral-400 text-xl"></i>
+            <input type="text" id="inputFiltroModal" 
+                   class="flex-1 bg-transparent text-sm font-black uppercase tracking-wider outline-none text-white placeholder-neutral-600" 
+                   placeholder="BUSCAR PRODUCTO O CÓDIGO..." autocomplete="off">
+            <button onclick="cerrarModalSeleccion()" class="p-2 hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-0 bg-white" id="listaResultadosModal">
+            <div class="text-center py-16 text-neutral-400">
+                <i class="fa-solid fa-magnifying-glass mb-4 text-4xl opacity-50"></i>
+                <p class="text-[10px] font-black uppercase tracking-widest">Ingrese un término para iniciar la búsqueda</p>
+            </div>
+        </div>
+        
+        <div class="p-4 bg-neutral-100 border-t border-neutral-300 text-center text-[10px] font-bold uppercase tracking-widest text-neutral-500">
+            Seleccione el ítem haciendo click en la fila correspondiente
+        </div>
+    </div>
+</div>

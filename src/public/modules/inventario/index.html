@@ -1,0 +1,649 @@
+<div class="space-y-8 animate-fade-in">
+    
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 bg-white p-8 border border-neutral-300 rounded-none">
+    <div>
+        <h2 class="text-3xl md:text-4xl font-black text-neutral-950 tracking-tighter uppercase">Inventario General</h2>
+        <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Gestión de productos, insumos y existencias</p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+        <!-- NUEVO BOTÓN PARA ABRIR EL MODAL DEL EXCEL -->
+        <button onclick="abrirModalExcel()" class="w-full sm:w-auto bg-white text-neutral-950 px-6 py-4 rounded-none font-black hover:bg-neutral-100 border border-neutral-300 transition-colors flex items-center justify-center gap-3 uppercase tracking-widest text-[10px]">
+            <i class="fa-solid fa-file-excel text-green-600 text-sm"></i>
+            <span>Gestión Excel</span>
+        </button>
+
+        <button onclick="abrirModalVaciadoTotal()" class="w-full sm:w-auto bg-neutral-950 text-white px-6 py-4 rounded-none font-black hover:bg-neutral-800 transition-colors flex items-center justify-center gap-3 uppercase tracking-widest text-[10px]">
+            <i class="fa-solid fa-boxes-packing text-amber-400 text-sm"></i>
+            <span>Carga Masiva Total</span>
+        </button>
+
+        <button onclick="abrirModalDescargaExterna()" class="w-full sm:w-auto bg-amber-500 text-neutral-950 px-6 py-4 rounded-none font-black hover:bg-amber-400 border border-amber-600 transition-colors flex items-center justify-center gap-3 uppercase tracking-widest text-[10px]">
+            <i class="fa-solid fa-bolt text-sm"></i> 
+            <span>Sincronizar Externa</span>
+        </button>
+
+        <button onclick="abrirModalHistorialSincro()" class="bg-white text-neutral-950 px-6 py-4 rounded-none font-black hover:bg-neutral-100 border border-neutral-300 transition-colors flex items-center justify-center gap-3 uppercase tracking-widest text-[10px] w-full sm:w-auto">
+            <i class="fa-solid fa-clock-rotate-left"></i> Historial Sincro
+        </button>
+        
+        <button onclick="abrirModalCrear()" class="w-full sm:w-auto bg-neutral-950 text-white px-8 py-4 rounded-none font-bold hover:bg-neutral-800 transition-colors flex items-center justify-center gap-3 shadow-none uppercase tracking-widest text-[10px]">
+            <i class="fa-solid fa-plus text-sm"></i> 
+            <span>Nuevo Producto</span>
+        </button>
+    </div>
+</div>
+
+    <div class="bg-white p-6 border border-neutral-300 rounded-none flex flex-col md:flex-row gap-4 items-center justify-between">
+        
+        <div class="relative w-full md:w-96 group">
+            <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400 group-focus-within:text-neutral-950 transition-colors"></i>
+            <input type="text" id="buscador" class="w-full pl-12 pr-4 py-4 rounded-none bg-neutral-50 border border-neutral-300 focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 transition-all outline-none font-bold text-neutral-900 uppercase text-xs tracking-wider placeholder-neutral-400" placeholder="BUSCAR POR NOMBRE, CÓDIGO O MARCA...">
+        </div>
+
+        <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+            <label class="cursor-pointer select-none">
+                <input type="checkbox" id="checkBajoStock" class="peer sr-only" onchange="toggleBajoStock()">
+                <div class="px-6 py-4 rounded-none border border-neutral-300 text-[10px] text-neutral-500 font-black bg-white peer-checked:bg-neutral-950 peer-checked:text-white peer-checked:border-neutral-950 transition-colors flex items-center gap-3 uppercase tracking-widest hover:bg-neutral-50 peer-checked:hover:bg-neutral-800">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <span>Ver Bajo Stock</span>
+                </div>
+            </label>
+        </div>
+
+        <div class="flex items-center gap-4 bg-neutral-50 px-4 py-2 border border-neutral-200 rounded-none" id="paginacionContainer">
+            </div>
+    </div>
+
+    <div class="bg-white border border-neutral-300 overflow-hidden rounded-none">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead class="bg-neutral-100 text-neutral-950 text-[10px] uppercase font-black tracking-widest border-b border-neutral-300">
+                    <tr>
+                        <th class="px-6 py-5">Código</th>
+                        <th class="px-6 py-5">Producto</th>
+                        <th class="px-6 py-5 text-center">Stock Real</th>
+                        <th class="px-6 py-5 text-center">Lotes</th>
+                        <th class="px-6 py-5 text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaProductos" class="divide-y divide-neutral-200 text-sm font-medium text-neutral-800">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="modalProducto" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4 transition-all duration-300">
+    <div id="modalPanel" class="bg-white w-full max-w-5xl rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-neutral-400 transform transition-transform duration-300 translate-x-full">
+        
+        <div class="px-8 py-6 border-b border-neutral-800 flex justify-between items-center bg-neutral-950">
+            <h3 class="font-black text-sm text-white uppercase tracking-widest" id="modalTitulo">Nuevo Producto</h3>
+            <button onclick="cerrarModal()" class="w-8 h-8 text-neutral-400 hover:text-white flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+
+        <div class="p-8 overflow-y-auto custom-scrollbar bg-neutral-50">
+            <form id="formProducto" class="space-y-8">
+                <input type="hidden" id="producto_id_edicion">
+
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+                    <div class="md:col-span-3">
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Código</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-barcode absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400"></i>
+                            <input type="text" id="codigo" class="w-full pl-12 border border-neutral-300 bg-white p-4 rounded-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none font-mono font-bold uppercase transition-colors text-xs" placeholder="AUTO">
+                        </div>
+                    </div>
+                    <div class="md:col-span-6">
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Nombre</label>
+                        <input type="text" id="nombre" class="w-full border border-neutral-300 bg-white p-4 rounded-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none font-bold text-neutral-900 transition-colors text-xs uppercase" placeholder="EJ: ESENCIA DE VAINILLA" required>
+                    </div>
+                    <div class="md:col-span-3">
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Marca</label>
+                        <input type="text" id="marca" class="w-full border border-neutral-300 bg-white p-4 rounded-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none font-bold text-neutral-900 transition-colors text-xs uppercase" placeholder="OPCIONAL">
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 border border-neutral-300 rounded-none">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                        <div>
+                            <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-2">Clasificación Principal</label>
+                            <select id="categoria" class="w-full border border-neutral-300 bg-neutral-50 p-4 rounded-none font-bold text-neutral-900 text-xs uppercase outline-none cursor-pointer focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 transition-colors">
+                                <option value="" disabled selected>-- SELECCIONAR CLASE --</option>
+                                <option value="Perfumes">Perfume Terminado (Venta)</option>
+                                <option value="Alcohol">Alcohol (Materia Prima)</option>
+                                <option value="Esencias">Esencia (Materia Prima)</option>
+                                <option value="Fijador">Fijador (Materia Prima)</option>
+                                <option value="Envases">Envases / Frascos (Vacíos)</option>
+                            </select>
+                        </div>
+                        <div id="dynamicControls" class="w-full"></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    <div>
+                        <label id="lblStockInput" class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Stock Actual</label>
+                        <input type="number" id="input_cantidad_visual" class="w-full bg-white border border-neutral-300 p-4 rounded-none text-center font-black text-lg focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none transition-colors" placeholder="0">
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Alerta Mínima</label>
+                        <input type="number" id="stock_minimo" class="w-full bg-white border border-neutral-300 p-4 rounded-none text-center font-bold text-sm focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none transition-colors" value="5">
+                    </div>
+
+                    <div>
+                        <label id="lblCosto" class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Costo ($)</label>
+                        <input type="number" step="0.01" id="costo" class="w-full bg-white border border-neutral-300 p-4 rounded-none text-right font-bold text-sm focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none transition-colors" placeholder="0.00">
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-2">Precio Venta ($)</label>
+                        <input type="number" step="0.01" id="precio_venta" class="w-full bg-neutral-100 border-2 border-neutral-950 p-4 rounded-none text-right font-black text-lg focus:outline-none transition-colors" placeholder="0.00">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                     <div>
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Ubicación Física</label>
+                        <input type="text" id="ubicacion" class="w-full bg-white border border-neutral-300 p-4 rounded-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none text-xs font-bold uppercase transition-colors" placeholder="EJ: ESTANTE A1">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Notas / Descripción</label>
+                        <textarea id="notas" rows="1" class="w-full bg-white border border-neutral-300 p-4 rounded-none resize-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none text-xs font-bold uppercase transition-colors" placeholder="DETALLES ADICIONALES..."></textarea>
+                    </div>
+                </div>
+
+                <input type="hidden" id="unidad_medida" value="UNIDAD"> 
+                <input type="hidden" id="stock_real_calculado"> 
+                <input type="hidden" id="peso"> 
+
+                <div class="pt-8 flex justify-end gap-4 border-t border-neutral-300 mt-8">
+                    <button type="button" onclick="cerrarModal()" class="px-8 py-4 rounded-none font-bold text-neutral-500 hover:text-neutral-950 hover:bg-neutral-200 transition-colors uppercase tracking-widest text-xs border border-transparent hover:border-neutral-300">
+                        Cancelar
+                    </button>
+                    <button type="submit" id="btnGuardar" class="bg-neutral-950 text-white px-10 py-4 rounded-none font-black hover:bg-neutral-800 transition-colors uppercase tracking-widest text-xs">
+                        Guardar Producto
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="modalKardex" class="fixed inset-0 z-[60] hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4 animate-fade-in">
+    <div class="bg-white w-full max-w-5xl rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-neutral-400">
+        
+        <div class="p-6 bg-neutral-950 flex justify-between items-center shrink-0 border-b border-neutral-800">
+            <div>
+                <h3 class="font-black text-sm text-white uppercase tracking-widest flex items-center gap-3">
+                    <i class="fa-solid fa-clock-rotate-left text-neutral-400"></i> Registro de Movimientos
+                </h3>
+                <p class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mt-1" id="kardexProductoTitle">CARGANDO...</p>
+            </div>
+            <button onclick="document.getElementById('modalKardex').classList.add('hidden')" class="w-8 h-8 hover:bg-neutral-800 flex items-center justify-center transition-colors text-neutral-400 hover:text-white rounded-none">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+
+        <div class="overflow-y-auto flex-1 p-0 bg-white">
+            <table class="w-full text-sm text-left border-collapse">
+                <thead class="bg-neutral-100 text-neutral-950 text-[10px] uppercase font-black tracking-widest sticky top-0 border-b border-neutral-300 z-10">
+                    <tr>
+                        <th class="p-5">Fecha</th>
+                        <th class="p-5">Tipo Movimiento</th>
+                        <th class="p-5 text-center">Cantidad</th>
+                        <th class="p-5 text-center">Stock Resultante</th>
+                        <th class="p-5">Motivo / Detalle</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaKardex" class="divide-y divide-neutral-200 text-neutral-800 font-medium">
+                    </tbody>
+            </table>
+        </div>
+        
+        <div class="p-4 bg-neutral-100 border-t border-neutral-300 text-center text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
+            Mostrando los últimos 50 movimientos registrados
+        </div>
+    </div>
+</div>
+
+<div id="modalCargaMasiva" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4">
+    <div class="bg-white w-full max-w-lg rounded-none shadow-2xl p-10 border border-neutral-400">
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 bg-neutral-950 text-white flex items-center justify-center mx-auto mb-6 text-2xl rounded-none">
+                <i class="fa-solid fa-file-csv"></i>
+            </div>
+            <h3 class="text-xl font-black text-neutral-950 uppercase tracking-widest">Carga Masiva</h3>
+            <p class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mt-2">Sube un archivo Excel (.xlsx) o CSV.</p>
+        </div>
+
+        <form id="formCargaMasiva" class="space-y-6">
+            <div class="border-2 border-dashed border-neutral-300 bg-neutral-50 p-10 text-center hover:bg-neutral-100 hover:border-neutral-950 transition-colors cursor-pointer relative rounded-none">
+                <input type="file" id="archivoExcel" accept=".csv, .xlsx, .xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" required>
+                <div class="space-y-3">
+                    <i class="fa-solid fa-cloud-arrow-up text-4xl text-neutral-400"></i>
+                    <p class="text-xs font-black text-neutral-950 uppercase tracking-widest">Click para seleccionar archivo</p>
+                    <p class="text-[10px] font-bold text-neutral-500 uppercase tracking-wider" id="nombreArchivoSeleccionado">Ningún archivo seleccionado</p>
+                </div>
+            </div>
+
+            <div class="flex gap-4 pt-6 border-t border-neutral-200">
+                <button type="button" onclick="document.getElementById('modalCargaMasiva').classList.add('hidden')" class="flex-1 py-4 border border-neutral-300 rounded-none font-bold text-neutral-500 hover:bg-neutral-100 uppercase tracking-widest text-xs transition-colors">Cancelar</button>
+                <button type="submit" class="flex-1 bg-neutral-950 text-white py-4 rounded-none font-black hover:bg-neutral-800 uppercase tracking-widest text-xs transition-colors">Procesar Carga</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="modalMerma" class="hidden fixed inset-0 bg-neutral-950/80 backdrop-blur-sm flex items-center justify-center z-[70] animate-fade-in p-4">
+    <div class="bg-white rounded-none shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100 border border-neutral-400">
+        
+        <div class="bg-neutral-950 p-6 flex justify-between items-center text-white border-b border-neutral-800">
+            <h3 class="font-black text-sm uppercase tracking-widest flex items-center">
+                <i class="fa-solid fa-triangle-exclamation mr-3 text-neutral-400"></i> Reportar Merma
+            </h3>
+            <button onclick="cerrarModalMerma()" class="text-neutral-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        
+        <div class="p-8 space-y-6">
+            <input type="hidden" id="merma_producto_id">
+            
+            <div class="bg-neutral-100 text-neutral-950 p-4 rounded-none text-[10px] font-black border-l-4 border-neutral-950 uppercase tracking-widest">
+                Atención: Esta acción da de baja el producto y afecta directamente los costos y auditorías.
+            </div>
+
+            <div class="grid grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Cantidad</label>
+                    <input type="number" id="merma_cantidad" class="w-full bg-white border border-neutral-300 p-3 rounded-none outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 font-bold text-sm text-center transition-colors" placeholder="0" min="1">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Ubicación</label>
+                    <select id="merma_ubicacion" class="w-full bg-white border border-neutral-300 p-3 rounded-none outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 font-bold text-[10px] uppercase tracking-wider transition-colors">
+                        <option value="ALMACEN">Almacén (Bodega)</option>
+                        <option value="ESTANTE">Estante (Piso)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Motivo Principal</label>
+                <select id="merma_motivo" class="w-full bg-white border border-neutral-300 p-4 rounded-none outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 font-bold text-xs uppercase tracking-wider transition-colors">
+                    <option value="ROTURA">Rotura / Daño físico</option>
+                    <option value="VENCIMIENTO">Vencimiento / Caducidad</option>
+                    <option value="ROBO">Robo / Pérdida desconocida</option>
+                    <option value="USO_INTERNO">Uso Interno / Muestras</option>
+                    <option value="DEFECTO">Defecto de Fábrica</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Observaciones</label>
+                <textarea id="merma_observaciones" rows="3" class="w-full bg-white border border-neutral-300 p-4 rounded-none outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 resize-none font-bold text-xs uppercase transition-colors" placeholder="DETALLES DE LA PÉRDIDA..."></textarea>
+            </div>
+
+            <div class="flex justify-end gap-4 mt-8 pt-6 border-t border-neutral-200">
+                <button onclick="cerrarModalMerma()" class="px-6 py-4 border border-transparent hover:border-neutral-300 text-neutral-500 hover:text-neutral-950 hover:bg-neutral-100 rounded-none font-bold uppercase tracking-widest text-[10px] transition-colors">Cancelar</button>
+                <button onclick="guardarMerma()" class="px-8 py-4 bg-neutral-950 text-white rounded-none font-black hover:bg-neutral-800 transition-colors uppercase tracking-widest text-[10px]">
+                    Confirmar Baja
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="fixed bottom-6 right-6 bg-white border border-neutral-300 text-neutral-500 text-[10px] uppercase tracking-widest px-6 py-3 rounded-none shadow-2xl opacity-80 hover:opacity-100 transition-opacity duration-300 pointer-events-none hidden md:flex items-center gap-4 z-40 font-bold">
+    <span class="text-neutral-950 font-black">Sistema:</span> 
+    <span class="flex items-center gap-2"><kbd class="bg-neutral-100 border border-neutral-300 text-neutral-950 px-2 py-1 rounded-none font-black shadow-sm">Alt</kbd> + <kbd class="bg-neutral-100 border border-neutral-300 text-neutral-950 px-2 py-1 rounded-none font-black shadow-sm">N</kbd> Nuevo</span>
+    <span class="w-px h-4 bg-neutral-300"></span>
+    <span class="flex items-center gap-2"><kbd class="bg-neutral-100 border border-neutral-300 text-neutral-950 px-2 py-1 rounded-none font-black shadow-sm">/</kbd> Buscar</span>
+    <span class="w-px h-4 bg-neutral-300"></span>
+    <span class="flex items-center gap-2"><kbd class="bg-neutral-100 border border-neutral-300 text-neutral-950 px-2 py-1 rounded-none font-black shadow-sm">Esc</kbd> Cancelar</span>
+</div>
+
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+</div>
+
+
+
+<div id="modalDescargaExterna" class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 transition-all duration-300">
+    <div class="bg-white w-full max-w-5xl border border-neutral-300 shadow-2xl flex flex-col max-h-[90vh] animate-fade-in rounded-none">
+        
+        <div class="p-6 border-b border-neutral-900 bg-neutral-950 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+                <h3 class="font-black text-sm text-white uppercase tracking-widest flex items-center gap-3">
+                    <i class="fa-solid fa-calculator text-neutral-400"></i> Sincronización y Despacho de Lotes Externos
+                </h3>
+                <p class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mt-1">Vaciado directo de materia prima por comandas unificadas</p>
+            </div>
+            
+            <div class="bg-neutral-900 p-1 flex gap-1 border border-neutral-800 w-full sm:w-auto">
+                <button id="btnOrigenAlmacen" onclick="cambiarOrigenDescarga('ALMACEN')" class="px-4 py-2 text-[10px] font-black uppercase tracking-widest bg-white text-neutral-950 transition-all duration-200">
+                    📦 Almacén (Prioridad)
+                </button>
+                <button id="btnOrigenEstante" onclick="cambiarOrigenDescarga('ESTANTE')" class="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-neutral-400 hover:text-white transition-all duration-200">
+                    🧴 Estante Solo
+                </button>
+            </div>
+        </div>
+        
+        <div class="p-6 bg-neutral-50 border-b border-neutral-200 flex flex-col gap-4">
+            
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                <div class="md:col-span-4">
+                    <label class="block text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-2">1. Medida / Receta Base</label>
+                    <select id="selectFormulaExterna" class="w-full p-3.5 border border-neutral-300 rounded-none text-xs bg-white text-neutral-900 font-bold uppercase outline-none focus:border-neutral-950 transition-colors cursor-pointer"></select>
+                </div>
+                
+                <div class="md:col-span-5 relative">
+                    <label class="block text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-2">2. Buscar Fragancia (Filtro Activo)</label>
+                    <div class="relative flex items-center">
+                        <i class="fa-solid fa-magnifying-glass absolute left-4 text-neutral-400"></i>
+                        <input type="text" id="inputEsenciaBuscador" list="esenciasDatalist" placeholder="EJ: DIOR SAUVAGE, VAINILLA..." class="w-full pl-11 pr-4 py-3.5 border border-neutral-300 rounded-none text-xs bg-white text-neutral-900 font-bold uppercase outline-none focus:border-neutral-950 transition-all placeholder-neutral-400">
+                    </div>
+                    <datalist id="esenciasDatalist"></datalist>
+                </div>
+                
+                <div class="md:col-span-3">
+                    <label class="block text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-2">Cantidad Vendida</label>
+                    <input type="number" id="cantidadFormulaExterna" value="1" min="1" class="w-full p-3.5 border border-neutral-300 rounded-none text-sm text-center font-black text-neutral-950 bg-white outline-none focus:border-neutral-950">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-center bg-white p-4 border border-neutral-300 mt-2">
+                <div class="md:col-span-3">
+                    <label class="block text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-2">+ Esencia Extra</label>
+                    <div class="relative flex items-center">
+                        <i class="fa-solid fa-plus absolute left-4 text-neutral-400"></i>
+                        <input type="number" id="inputGramosExtraExterna" min="0" step="0.1" placeholder="Ej: 4g" class="w-full pl-11 pr-4 py-3 border border-neutral-300 rounded-none text-xs bg-white text-neutral-900 font-bold outline-none focus:border-neutral-950 transition-all bg-amber-50">
+                    </div>
+                </div>
+                
+                <div class="md:col-span-3">
+                    <label class="block text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-2">+ Fijador Extra</label>
+                    <div class="relative flex items-center">
+                        <i class="fa-solid fa-plus absolute left-4 text-neutral-400"></i>
+                        <input type="number" id="inputFijadorExtraExterna" min="0" step="0.1" placeholder="Ej: 2g" class="w-full pl-11 pr-4 py-3 border border-neutral-300 rounded-none text-xs bg-white text-neutral-900 font-bold outline-none focus:border-neutral-950 transition-all bg-blue-50">
+                    </div>
+                </div>
+
+                <div class="md:col-span-3 flex items-center pt-2 md:pt-6 h-full justify-center">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" id="checkRecargaExterna" class="accent-neutral-950 w-5 h-5 cursor-pointer">
+                        <span class="text-[10px] font-black uppercase tracking-widest text-neutral-950">ES RECARGA (No envase)</span>
+                    </label>
+                </div>
+
+                <div class="md:col-span-3 pt-2 md:pt-6">
+                    <button onclick="agregarAlGrupoDescarga()" class="w-full bg-neutral-950 hover:bg-neutral-800 text-white text-[10px] font-black uppercase tracking-widest py-3 px-4 rounded-none transition-colors shadow-lg h-[42px]">
+                        <i class="fa-solid fa-check mr-2 text-amber-400"></i> Añadir Lote
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-6 overflow-y-auto flex-1 bg-white">
+            <div class="border border-neutral-300 rounded-none overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-neutral-100 border-b border-neutral-300 text-[10px] font-black uppercase tracking-widest text-neutral-950">
+                            <th class="py-4 px-6">Medida de Envase</th>
+                            <th class="py-4 px-6">Esencia / Fragancia</th>
+                            <th class="py-4 px-6 text-center">Extras / Tipo</th>
+                            <th class="py-4 px-6 text-center">Volumen</th>
+                            <th class="py-4 px-6 text-center">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyListaDescarga" class="divide-y divide-neutral-200 text-xs font-bold uppercase tracking-wide text-neutral-800">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="p-6 border-t border-neutral-200 bg-neutral-50 flex justify-end gap-3">
+            <button onclick="cerrarModalDescargaExterna()" class="px-6 py-4 border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-600 rounded-none font-bold text-xs uppercase tracking-widest transition-colors">
+                Cancelar
+            </button>
+            <button onclick="procesarDescargaExterna()" class="px-8 py-4 bg-neutral-950 hover:bg-neutral-800 text-white font-black rounded-none text-xs uppercase tracking-widest shadow-none transition-colors flex items-center gap-2">
+                <i class="fa-solid fa-bolt"></i> Procesar e Inyectar Vaciado
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 📦 MODAL MAESTRA: TRASLADO DE INVENTARIO A ESTANTES EN MASA -->
+<div id="modalVaciadoInventario" class="fixed inset-0 bg-neutral-950/80 hidden flex items-center justify-center z-[70] backdrop-blur-sm p-4 animate-fade-in">
+    <div class="bg-white w-full max-w-lg rounded-none shadow-2xl overflow-hidden border border-neutral-400 flex flex-col h-[85vh]">
+        
+        <div class="bg-neutral-950 p-6 text-white flex justify-between items-center border-b border-neutral-800 shrink-0">
+            <h3 class="font-black text-xs uppercase tracking-widest flex items-center gap-3">
+                <i class="fa-solid fa-boxes-packing text-amber-400"></i> Traslado Total a Mostrador
+            </h3>
+            <button onclick="document.getElementById('modalVaciadoInventario').classList.add('hidden')" class="text-neutral-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+
+        <div class="p-4 bg-neutral-100 border-b border-neutral-300 flex justify-between items-center shrink-0">
+            <label class="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-neutral-700 cursor-pointer select-none">
+                <input type="checkbox" id="checkTodoVaciado" onchange="toggleSeleccionarTodoVaciado(this.checked)" class="accent-neutral-950 w-5 h-5 cursor-pointer">
+                <span>Seleccionar Todo el Inventario</span>
+            </label>
+            <span id="contadorSeleccionadosVaciado" class="bg-neutral-950 text-white font-mono text-[10px] font-black px-2.5 py-1">0 Sel.</span>
+        </div>
+
+        <div id="listaChecklistVaciado" class="flex-1 overflow-y-auto p-4 bg-white divide-y divide-neutral-100 custom-scrollbar">
+            </div>
+
+        <div class="p-6 bg-neutral-50 border-t border-neutral-300 space-y-4 shrink-0">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[9px] font-black text-neutral-500 uppercase tracking-widest mb-1">Estante Destino</label>
+                    <select id="destinoVaciado" class="w-full bg-white border border-neutral-300 p-3 rounded-none font-bold text-xs uppercase text-neutral-950 outline-none focus:border-neutral-950">
+                        <option value="A">Estante A (Piso)</option>
+                        <option value="B">Estante B (Reserva)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[9px] font-black text-neutral-500 uppercase tracking-widest mb-1">Seleccionar Piso</label>
+                    <select id="pisoVaciado" class="w-full bg-white border border-neutral-300 p-3 rounded-none font-bold text-xs uppercase text-neutral-950 outline-none focus:border-neutral-950">
+                        <option value="1">Nivel 1 (Arriba)</option>
+                        <option value="2">Nivel 2</option>
+                        <option value="3">Nivel 3</option>
+                        <option value="4">Nivel 4</option>
+                        <option value="5">Nivel 5</option>
+                        <option value="6">Nivel 6 (Abajo)</option>
+                    </select>
+                </div>
+            </div>
+
+            <button onclick="procesarVaciadoTotalAbajo()" class="w-full bg-neutral-950 hover:bg-neutral-800 text-white font-black py-4 rounded-none transition-colors uppercase tracking-widest text-[10px] flex justify-center items-center gap-2 shadow-lg">
+                <i class="fa-solid fa-bolt text-amber-400"></i> Mover Todo Abajo (Vaciar Depósito)
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL DE GESTIÓN DE EXCEL -->
+<div id="modalExcel" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4 transition-all duration-300">
+    <div class="bg-white w-full max-w-4xl rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-neutral-400 transform transition-transform duration-300">
+        
+        <!-- Cabecera del Modal -->
+        <div class="px-8 py-6 border-b border-neutral-800 flex justify-between items-center bg-neutral-950">
+            <h3 class="font-black text-sm text-white uppercase tracking-widest">
+                <i class="fa-solid fa-file-csv mr-2"></i> Gestión Masiva
+            </h3>
+            <button onclick="cerrarModalExcel()" class="w-8 h-8 text-neutral-400 hover:text-white flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+
+        <!-- Contenedor scrolleable -->
+        <div class="overflow-y-auto custom-scrollbar bg-neutral-50 flex-1">
+            
+            <!-- Pestañas -->
+            <div class="flex border-b border-neutral-300 bg-white sticky top-0 z-20">
+                <button id="btnTabCargar" class="flex-1 py-4 text-[10px] font-black text-white bg-neutral-950 uppercase tracking-widest transition-colors border-r border-neutral-300">
+                    <i class="fa-solid fa-file-arrow-up mr-2"></i> Cargar Archivo
+                </button>
+                <button id="btnTabMovimientos" class="flex-1 py-4 text-[10px] font-bold text-neutral-500 hover:text-neutral-900 bg-transparent uppercase tracking-widest transition-colors">
+                    <i class="fa-solid fa-clock-rotate-left mr-2"></i> Historial / Rentabilidad
+                </button>
+            </div>
+
+            <!-- PESTAÑA 1: CARGAR EXCEL -->
+            <div id="tabCargarExcel" class="p-8 block animate-fade-in">
+                <div class="mb-6">
+                    <h3 class="text-xs font-black text-neutral-950 uppercase tracking-widest mb-1">Importar Inventario</h3>
+                    <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">La columna "proveedor" se vinculará automáticamente al registro.</p>
+                </div>
+                
+                <div class="border-2 border-dashed border-neutral-300 bg-neutral-50 p-8 text-center hover:border-neutral-950 transition-colors relative group">
+                    <input type="file" id="inputExcelFile" accept=".xlsx, .xls, .csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                    <i class="fa-solid fa-cloud-arrow-up text-3xl text-neutral-400 mb-3 group-hover:text-neutral-950 transition-colors"></i>
+                    <p class="text-[10px] font-black text-neutral-900 uppercase tracking-widest" id="excelFileName">Arrastra o haz clic para subir (.xlsx)</p>
+                </div>
+
+                <div class="mt-6 flex justify-end">
+                    <button id="btnProcesarExcel" class="bg-neutral-950 text-white px-8 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-neutral-800 transition-colors rounded-none hidden">
+                        Procesar Archivo
+                    </button>
+                </div>
+            </div>
+
+            <!-- PESTAÑA 2: MOVIMIENTOS Y RENTABILIDAD -->
+            <div id="tabMovimientosExcel" class="p-8 hidden animate-fade-in">
+                
+                <div class="mb-6">
+                    <h3 class="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-3">Métricas Globales de Importación</h3>
+                    <div id="gridRentabilidad" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <!-- Las tarjetas se inyectan con JS -->
+                    </div>
+                </div>
+
+                <h3 class="text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-3 border-b border-neutral-200 pb-2">Registro de Operaciones</h3>
+                
+                <div class="border border-neutral-200">
+                    <table class="min-w-full text-left">
+                        <thead class="text-[9px] text-neutral-950 font-black uppercase tracking-widest bg-neutral-100 border-b border-neutral-300">
+                            <tr>
+                                <th class="px-4 py-3">Fecha</th>
+                                <th class="px-4 py-3">Archivo</th>
+                                <th class="px-4 py-3 text-center">Estado</th>
+                                <th class="px-4 py-3 text-right">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaHistorialExcel" class="text-neutral-700 divide-y divide-neutral-200">
+                            <tr><td colspan="4" class="text-center py-6 text-neutral-500 text-[10px] font-bold uppercase tracking-widest">Cargando movimientos...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- MODAL DE SINCRONIZACIÓN EXTERNA -->
+<div id="modalDescargaExterna" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4 transition-all duration-300">
+    <div class="bg-white w-full max-w-4xl rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-neutral-400 transform transition-transform duration-300">
+        
+        <!-- Cabecera del Modal -->
+        <div class="px-8 py-6 border-b border-neutral-800 flex justify-between items-center bg-neutral-950">
+            <h3 class="font-black text-sm text-white uppercase tracking-widest">
+                <i class="fa-solid fa-bolt mr-2 text-amber-400"></i> Hub de Sincronización Externa
+            </h3>
+            <button onclick="cerrarModalDescargaExterna()" class="w-8 h-8 text-neutral-400 hover:text-white flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+
+        <div class="overflow-y-auto custom-scrollbar bg-neutral-50 flex-1 p-8">
+            
+            <div class="mb-8 bg-amber-50 border border-amber-200 p-6 flex items-start gap-4">
+                <i class="fa-solid fa-circle-info text-amber-500 text-xl mt-1"></i>
+                <div>
+                    <h4 class="text-xs font-black text-amber-900 uppercase tracking-widest">Historial de Descargas por Lotes</h4>
+                    <p class="text-[10px] text-amber-700 font-bold uppercase tracking-wider mt-1">Cada vez que sincronices ventas de la tienda online o descargues mercancía, se agrupará aquí como un lote independiente para que no se mezclen los datos.</p>
+                </div>
+            </div>
+
+            <!-- Acordeón / Lista de Historial -->
+            <div id="contenedorHistorialSincronizacion" class="space-y-4">
+                <div class="text-center py-8 text-neutral-500 text-xs font-bold uppercase tracking-widest">
+                    Cargando lotes sincronizados...
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+
+<!-- MODAL EXCLUSIVO PARA EL HISTORIAL DE SINCRONIZACIÓN -->
+<div id="modalHistorialSincro" class="fixed inset-0 z-[60] hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4 transition-all duration-300">
+    <div class="bg-white w-full max-w-4xl rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-neutral-400 transform transition-transform duration-300">
+        
+        <div class="px-8 py-6 border-b border-neutral-800 flex justify-between items-center bg-neutral-950">
+            <h3 class="font-black text-sm text-white uppercase tracking-widest">
+                <i class="fa-solid fa-clock-rotate-left mr-2 text-amber-400"></i> Historial de Sincronizaciones
+            </h3>
+            <button onclick="cerrarModalHistorialSincro()" class="w-8 h-8 text-neutral-400 hover:text-white flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+
+        <div class="overflow-y-auto custom-scrollbar bg-neutral-50 flex-1 p-8">
+            <div class="mb-8 bg-amber-50 border border-amber-200 p-6 flex items-start gap-4">
+                <i class="fa-solid fa-circle-info text-amber-500 text-xl mt-1"></i>
+                <div>
+                    <h4 class="text-xs font-black text-amber-900 uppercase tracking-widest">Lotes de Descarga</h4>
+                    <p class="text-[10px] text-amber-700 font-bold uppercase tracking-wider mt-1">Cada vez que sincronizas, el sistema agrupa los artículos descargados en bloques independientes para tu control.</p>
+                </div>
+            </div>
+
+            <div id="contenedorHistorialSincro" class="space-y-6">
+                <div class="text-center py-8 text-neutral-500 text-xs font-bold uppercase tracking-widest">
+                    Cargando historial...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- MODAL DE LOTES ACTIVO -->
+<div id="modalLotes" class="fixed inset-0 z-[70] hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4 transition-all duration-300">
+    <div class="bg-white w-full max-w-2xl rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-neutral-400 transform transition-transform duration-300">
+        
+        <!-- Cabecera -->
+        <div class="px-8 py-6 border-b border-neutral-800 flex justify-between items-center bg-neutral-950">
+            <h3 class="font-black text-sm text-white uppercase tracking-widest">
+                <i class="fa-solid fa-boxes-stacked mr-2 text-purple-400"></i> Lotes: <span id="lotesProductoTitle" class="text-neutral-400 font-bold"></span>
+            </h3>
+            <button onclick="cerrarModalLotes()" class="w-8 h-8 text-neutral-400 hover:text-white flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+
+        <!-- Contenido -->
+        <div class="overflow-y-auto custom-scrollbar bg-neutral-50 flex-1 p-8">
+            <div class="border border-neutral-200 bg-white">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-neutral-100 text-neutral-950 text-[10px] uppercase font-black tracking-widest border-b border-neutral-300">
+                        <tr>
+                            <th class="p-4">Código de Lote</th>
+                            <th class="p-4 text-center">Cantidad Restante</th>
+                            <th class="p-4 text-center">Fecha de Vencimiento</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaLotes" class="divide-y divide-neutral-200 text-sm font-medium text-neutral-800">
+                        <!-- Las filas se inyectan con JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

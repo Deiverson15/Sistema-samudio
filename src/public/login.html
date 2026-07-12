@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Sistema de Inventario</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-100 h-screen flex justify-center items-center">
+
+    <div class="bg-white p-8 rounded-lg shadow-lg w-96 animate-fade-in-down">
+        <div class="text-center mb-6">
+            <div class="w-16 h-16 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto mb-2 text-2xl">
+                <i class="fa-solid fa-cube"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-800">Bienvenido</h1>
+            <p class="text-gray-500 text-sm">Ingresa tus credenciales</p>
+        </div>
+
+        <form id="loginForm">
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="email">
+                    Correo Electrónico
+                </label>
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                        <i class="fa-solid fa-envelope"></i>
+                    </span>
+                    <input 
+                        class="pl-10 shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" 
+                        id="email" 
+                        type="email" 
+                        placeholder="admin@empresa.com"
+                        required>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="password">
+                    Contraseña
+                </label>
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                        <i class="fa-solid fa-lock"></i>
+                    </span>
+                    <input 
+                        class="pl-10 shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" 
+                        id="password" 
+                        type="password" 
+                        placeholder="******************"
+                        required>
+                </div>
+            </div>
+
+            <div id="errorMsg" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded relative mb-4 text-xs font-bold text-center">
+            </div>
+
+            <div class="flex items-center justify-between">
+                <button 
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition transform hover:scale-105" 
+                    type="submit">
+                    Ingresar
+                </button>
+            </div>
+        </form>
+        
+        <p class="text-center text-gray-400 text-xs mt-6">
+            &copy; 2026 Sistema de Inventario V1.0
+        </p>
+    </div>
+
+    <script>
+        // --- CAMBIO 2: LÓGICA JAVASCRIPT ---
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('email').value; // Ahora leemos el email
+            const password = document.getElementById('password').value;
+            const errorMsg = document.getElementById('errorMsg');
+            const btn = e.target.querySelector('button');
+
+            // Feedback visual de carga
+            const textoOriginal = btn.innerText;
+            btn.innerText = 'Cargando...';
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            errorMsg.classList.add('hidden');
+
+            try {
+                // 1. Aquí definimos la variable como "res"
+                const res = await fetch('/api/auth/login', { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await res.json(); // Usamos res
+
+                // 2. Aquí DEBES usar "res", no "response"
+                if (res.ok) {
+    localStorage.setItem('token', data.token);
+    // IMPORTANTE: Guardar todo el objeto 'user' que ahora trae tienda_id y tienda_nombre
+    localStorage.setItem('usuario', JSON.stringify(data.user)); 
+    
+    window.location.href = '/index.html';
+
+
+                } else {
+                    // Mostrar error
+                    errorMsg.innerText = data.error || 'Credenciales inválidas';
+                    errorMsg.classList.remove('hidden');
+                    
+                    // Restaurar botón
+                    btn.innerText = textoOriginal;
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            } catch (error) {
+                console.error(error);
+                errorMsg.innerText = 'Error de conexión con el servidor';
+                errorMsg.classList.remove('hidden');
+                
+                btn.innerText = textoOriginal;
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        });
+    </script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            // Creamos un endpoint simple o usamos el de mensaje-pago para ver el estado
+            const res = await fetch('/api/ajustes/mensaje-pago'); 
+            const data = await res.json();
+            
+            // Si el sistema responde con error 402 o indica bloqueo en su lógica
+            // (Necesitarás un endpoint público que devuelva solo el estado)
+        } catch (e) { console.error(e); }
+    });
+</script>
+</body>
+</html>
