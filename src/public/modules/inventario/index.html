@@ -59,14 +59,15 @@
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
                 <thead class="bg-neutral-100 text-neutral-950 text-[10px] uppercase font-black tracking-widest border-b border-neutral-300">
-                    <tr>
-                        <th class="px-6 py-5">Código</th>
-                        <th class="px-6 py-5">Producto</th>
-                        <th class="px-6 py-5 text-center">Stock Real</th>
-                        <th class="px-6 py-5 text-center">Lotes</th>
-                        <th class="px-6 py-5 text-center">Acciones</th>
-                    </tr>
-                </thead>
+                        <tr>
+                            <th class="px-6 py-5">Referencia</th>
+                            <th class="px-6 py-5">Producto</th>
+                            <th class="px-6 py-5 text-center">Precios ($)</th>
+                            <th class="px-6 py-5 text-center">Stock Real</th>
+                            <th class="px-6 py-5 text-center">Lotes</th>
+                            <th class="px-6 py-5 text-center">Acciones</th>
+                        </tr>
+                    </thead>
                 <tbody id="tablaProductos" class="divide-y divide-neutral-200 text-sm font-medium text-neutral-800">
                     </tbody>
             </table>
@@ -107,7 +108,7 @@
                 </div>
 
                 <div class="bg-white p-6 border border-neutral-300 rounded-none">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
                         <div>
                             <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-2">Clasificación Principal</label>
                             <select id="categoria" class="w-full border border-neutral-300 bg-neutral-50 p-4 rounded-none font-bold text-neutral-900 text-xs uppercase outline-none cursor-pointer focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 transition-colors">
@@ -119,6 +120,17 @@
                                 <option value="Envases">Envases / Frascos (Vacíos)</option>
                             </select>
                         </div>
+                        
+                        <!-- 🔥 NUEVO SELECTOR DE GÉNERO CORPORATIVO -->
+                        <div>
+                            <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-2">Género / Perfil</label>
+                            <select id="genero" class="w-full border border-neutral-300 bg-neutral-50 p-4 rounded-none font-bold text-neutral-900 text-xs uppercase outline-none cursor-pointer focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 transition-colors">
+                                <option value="UNISEX" selected>UNISEX / INSUMO</option>
+                                <option value="DAMA">DAMA</option>
+                                <option value="CABALLERO">CABALLERO</option>
+                            </select>
+                        </div>
+                        
                         <div id="dynamicControls" class="w-full"></div>
                     </div>
                 </div>
@@ -497,7 +509,15 @@
             <div id="tabCargarExcel" class="p-8 block animate-fade-in">
                 <div class="mb-6">
                     <h3 class="text-xs font-black text-neutral-950 uppercase tracking-widest mb-1">Importar Inventario</h3>
-                    <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">La columna "proveedor" se vinculará automáticamente al registro.</p>
+                    <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Asegúrate de indicar el proveedor para mantener los cálculos de rentabilidad organizados.</p>
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-2">Proveedor / Mayorista</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-truck-field absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400"></i>
+                        <input type="text" id="inputProveedorExcel" class="w-full pl-12 border border-neutral-300 bg-white p-4 rounded-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none font-bold uppercase transition-colors text-xs" placeholder="EJ: INVERSIONES PERFUMIX C.A. (OPCIONAL)">
+                    </div>
                 </div>
                 
                 <div class="border-2 border-dashed border-neutral-300 bg-neutral-50 p-8 text-center hover:border-neutral-950 transition-colors relative group">

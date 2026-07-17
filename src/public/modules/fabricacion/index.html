@@ -1,0 +1,228 @@
+<div class="flex flex-col h-full gap-6 animate-fade-in">
+    
+    <!-- ENCABEZADO SUPERIOR -->
+    <div class="bg-white border border-neutral-300 p-6 flex flex-col md:flex-row justify-between items-start md:items-center rounded-none gap-4">
+        <div>
+            <h2 class="text-3xl md:text-4xl font-black text-neutral-950 tracking-tighter uppercase flex items-center">
+                <i class="fa-solid fa-industry text-neutral-400 mr-4"></i> Módulo de Fabricación
+            </h2>
+            <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-2">Control de Laboratorio y Órdenes de Producción</p>
+        </div>
+        
+        <button onclick="abrirModalNuevaOrden()" class="w-full md:w-auto bg-neutral-950 hover:bg-neutral-800 text-white px-8 py-4 rounded-none font-black transition-colors uppercase tracking-widest text-[10px] shadow-lg">
+            <i class="fa-solid fa-plus mr-2"></i> Crear Orden de Producción
+        </button>
+        <button onclick="abrirModalHistorialInsumos()" class="w-full md:w-auto bg-white hover:bg-neutral-100 text-neutral-950 px-6 py-4 rounded-none font-black transition-colors border border-neutral-300 uppercase tracking-widest text-[10px]">
+                <i class="fa-solid fa-clock-rotate-left mr-2 text-neutral-500"></i> Historial Insumos
+            </button>
+    </div>
+
+    <!-- TABLERO KANBAN DE ÓRDENES -->
+    <div class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-hidden min-h-[500px]">
+        
+        <!-- COLUMNA 1: EN PROCESO -->
+        <div class="bg-neutral-100 border-2 border-dashed border-neutral-300 flex flex-col rounded-none h-full">
+            <div class="p-4 border-b border-neutral-300 bg-neutral-200">
+                <h3 class="font-black text-neutral-950 text-xs uppercase tracking-widest flex items-center justify-between">
+                    <span class="flex items-center gap-2"><i class="fa-solid fa-spinner fa-spin text-amber-600"></i> En Laboratorio (Procesando)</span>
+                    <span id="badgeProcesando" class="bg-neutral-950 text-white text-[10px] px-2 py-1 font-black">0</span>
+                </h3>
+            </div>
+            <div id="listaProcesando" class="flex-1 overflow-y-auto p-4 space-y-4 bg-neutral-50">
+                <!-- Tarjetas Inyectadas por JS -->
+            </div>
+        </div>
+
+        <!-- COLUMNA 2: HISTORIAL COMPLETADAS -->
+        <div class="bg-white border border-neutral-300 flex flex-col rounded-none h-full">
+            <div class="p-4 border-b border-neutral-300 bg-neutral-950">
+                <h3 class="font-black text-white text-xs uppercase tracking-widest flex items-center justify-between">
+                    <span class="flex items-center gap-2"><i class="fa-solid fa-check-double text-neutral-400"></i> Lotes Completados</span>
+                    <span id="badgeCompletadas" class="bg-neutral-800 text-white text-[10px] px-2 py-1 font-black border border-neutral-700">0</span>
+                </h3>
+            </div>
+            <div id="listaCompletadas" class="flex-1 overflow-y-auto p-4 space-y-4">
+                <!-- Tarjetas Inyectadas por JS -->
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MODAL 1: NUEVA ORDEN -->
+<!-- MODAL 1: NUEVA ORDEN MULTI-ESENCIA (ANCHO EXPANDIDO) -->
+<div id="modalNuevaOrden" class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 transition-all duration-300">
+    <!-- 🔥 CORRECCIÓN: Cambiado de max-w-xl a max-w-3xl para dar el doble de espacio horizontal -->
+    <div class="bg-white w-full max-w-3xl border border-neutral-400 shadow-2xl flex flex-col rounded-none animate-fade-in max-h-[90vh]">
+        <div class="p-6 border-b border-neutral-800 bg-neutral-950 flex justify-between items-center text-white">
+            <h3 class="font-black text-xs uppercase tracking-widest flex items-center gap-2">
+                <i class="fa-solid fa-layer-group text-neutral-400"></i> Planificar Lote Surtido Multi-Fragancia
+            </h3>
+            <button onclick="cerrarModalNuevaOrden()" class="text-neutral-400 hover:text-white transition-colors">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+        
+        <form id="formNuevaOrden" class="p-6 space-y-5 bg-neutral-50 overflow-y-auto flex-1">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Formato (Receta Base)</label>
+                    <select id="selectFormula" class="w-full bg-white border border-neutral-300 p-3 text-xs font-bold uppercase tracking-wider outline-none focus:border-neutral-950" required>
+                        <option value="" disabled selected>-- SELECCIONAR --</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Meta Total a Fabricar (Perfumes)</label>
+                    <input type="number" id="cantPlanificada" class="w-full bg-white border border-neutral-300 p-3 text-center font-black text-sm text-neutral-950 outline-none focus:border-neutral-950" min="1" placeholder="EJ: 500" required>
+                </div>
+            </div>
+
+            <!-- BUSCADOR E INYECTOR A LA LISTA (MÁS ANCHO) -->
+            <div class="bg-white p-5 border border-neutral-300 space-y-3 rounded-none">
+                <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest border-b pb-1">Dosificar Fragancia al Lote</label>
+                <div class="flex flex-col md:flex-row gap-3">
+                    <!-- El buscador ahora se expande para nombres largos -->
+                    <select id="selectEsencia" class="flex-1 bg-neutral-50 border border-neutral-300 p-3 text-xs font-bold uppercase outline-none focus:bg-white focus:border-neutral-950">
+                        <option value="" disabled selected>-- BUSCAR FRAGANCIA --</option>
+                    </select>
+                    <!-- Cantidad y botón firmes a la derecha -->
+                    <div class="flex gap-2 shrink-0 w-full md:w-auto">
+                        <input type="number" id="cantEsenciaFila" class="w-24 bg-neutral-50 border border-neutral-300 p-3 text-center text-xs font-black text-neutral-950 outline-none focus:bg-white" min="1" placeholder="CANT">
+                        <button type="button" onclick="agregarEsenciaALista()" class="flex-1 md:flex-none bg-neutral-950 hover:bg-neutral-800 text-white font-black text-[10px] uppercase tracking-widest px-6 py-3 rounded-none transition-colors">
+                            + Agregar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MARCADOR DE CONTROL MATEMÁTICO REAL-TIME -->
+            <div class="grid grid-cols-3 gap-2 text-center text-[10px] font-black uppercase tracking-wider border border-neutral-300 bg-white p-3">
+                <div class="border-r">Meta: <span id="txtMetaControl" class="text-neutral-950">0</span></div>
+                <div class="border-r">Asignado: <span id="txtAsignadoControl" class="text-neutral-600">0</span></div>
+                <div>Restante: <span id="txtRestanteControl" class="text-amber-600">0</span></div>
+            </div>
+
+            <!-- TABLA DE ESENCIAS AGREGADAS -->
+            <div class="border border-neutral-300 max-h-48 overflow-y-auto bg-white">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead class="bg-neutral-100 border-b border-neutral-300 text-[9px] font-black uppercase tracking-widest text-neutral-900 sticky top-0">
+                        <tr>
+                            <th class="p-3 pl-4">Fragancia Seleccionada</th>
+                            <th class="p-3 text-center w-28">Cantidad</th>
+                            <th class="p-3 text-center w-16">Acción</th>
+                        </tr>
+                    </thead>  
+                    <tbody id="bodyHistorialInsumos" class="divide-y divide-neutral-200 font-bold text-neutral-800 bg-white">
+    <!-- El JS inyectará el historial aquí. Puedes dejarlo vacío o con este placeholder: -->
+    <tr>
+        <td colspan="4" class="p-6 text-center text-neutral-400 uppercase text-[9px] tracking-widest">
+            Abre el historial para cargar los datos...
+        </td>
+    </tr>
+</tbody>
+                </table>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Notas de Planificación</label>
+                <textarea id="notasPlan" rows="2" class="w-full bg-white border border-neutral-300 p-3 text-xs font-bold uppercase outline-none focus:border-neutral-950 resize-none" placeholder="Justificación del lote mixto..."></textarea>
+            </div>
+            
+            <div class="pt-2 flex gap-3 border-t border-neutral-200">
+                <button type="button" onclick="cerrarModalNuevaOrden()" class="flex-1 py-4 border border-neutral-300 bg-white text-neutral-600 font-bold text-[10px] uppercase tracking-widest hover:bg-neutral-100 transition-colors">Cancelar</button>
+                <button type="submit" class="flex-1 py-4 bg-neutral-950 text-white font-black text-[10px] uppercase tracking-widest hover:bg-neutral-800 transition-colors">Bloquear y Fabricar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+    <!-- MODAL 2: COMPLETAR Y REPORTAR MERMA -->
+    <div id="modalCompletarOrden" class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 transition-all duration-300">
+        <div class="bg-white w-full max-w-md border border-neutral-400 shadow-2xl flex flex-col rounded-none animate-fade-in">
+            <div class="p-6 border-b border-neutral-800 bg-neutral-950 flex justify-between items-center text-white">
+                <h3 class="font-black text-xs uppercase tracking-widest flex items-center gap-2">
+                    <i class="fa-solid fa-clipboard-check text-neutral-400"></i> Cierre de Producción
+                </h3>
+                <button onclick="cerrarModalCompletar()" class="text-neutral-400 hover:text-white transition-colors">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="formCompletarOrden" class="p-6 space-y-5 bg-neutral-50">
+                <input type="hidden" id="ordenIdCierre">
+                <div class="bg-neutral-950 p-4 text-center border border-neutral-800">
+                    <p class="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Planificado Original</p>
+                    <p class="font-black text-2xl text-white" id="lblPlanificado">0</p>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2 text-center">Unidades Listas</label>
+                        <input type="number" id="cantCompletada" class="w-full bg-white border border-neutral-300 p-3 text-center font-black text-lg text-green-700 outline-none focus:border-green-600" required>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2 text-center">Merma / Fallas</label>
+                        <input type="number" id="cantMerma" class="w-full bg-neutral-100 border border-neutral-300 p-3 text-center font-black text-lg text-red-600 outline-none" readonly>
+                    </div>
+                </div>
+
+                <div id="divAccionMerma" class="hidden space-y-2 p-3 bg-red-50 border border-red-200">
+                    <label class="block text-[10px] font-black text-red-800 uppercase tracking-widest">¿Qué pasó con el material de la merma?</label>
+                    <select id="accionMerma" class="w-full bg-white border border-red-300 p-2 text-xs font-bold uppercase outline-none text-red-900">
+                        <option value="PERDIDA">Se derramó / Dañó (Descontar inventario)</option>
+                        <option value="SOBRANTE">No se usó (Regresar al almacén)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Observaciones del Cierre</label>
+                    <textarea id="notasCierre" rows="2" class="w-full bg-white border border-neutral-300 p-3 text-xs font-bold uppercase outline-none focus:border-neutral-950 resize-none" placeholder="Justifique la merma o deje en blanco..."></textarea>
+                </div>
+                <div class="pt-2">
+                    <button type="submit" class="w-full py-4 bg-neutral-950 text-white font-black text-[10px] uppercase tracking-widest hover:bg-neutral-800 transition-colors">Confirmar Empaquetado</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+</div>
+
+<!-- 🔥 MODAL 3: HISTORIAL EXCLUSIVO DE INSUMOS DESCONTADOS -->
+    <div id="modalHistorialInsumos" class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 transition-all duration-300">
+        <div class="bg-white w-full max-w-3xl border border-neutral-400 shadow-2xl flex flex-col rounded-none animate-fade-in max-h-[85vh]">
+            <div class="p-6 border-b border-neutral-800 bg-neutral-950 flex justify-between items-center text-white">
+                <div>
+                    <h3 class="font-black text-xs uppercase tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-calculator text-neutral-400"></i> Auditoría de Insumos Descontados
+                    </h3>
+                    <p class="text-[9px] font-bold text-neutral-500 uppercase tracking-widest mt-1">Histórico real de esencias, alcohol y fijadores consumidos</p>
+                </div>
+                <button onclick="cerrarModalHistorialInsumos()" class="text-neutral-400 hover:text-white transition-colors">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Tabla de visualización interna -->
+            <div class="p-0 overflow-y-auto flex-1 bg-neutral-50">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead class="bg-neutral-100 border-b border-neutral-300 text-[9px] font-black uppercase tracking-widest text-neutral-900 sticky top-0">
+                        <tr>
+                            <th class="p-3 pl-6">Fecha Cierre</th>
+                            <th class="p-3">Orden N°</th>
+                            <th class="p-3">Insumo / Materia Prima</th>
+                            <th class="p-3 text-right pr-6">Cantidad Descontada</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bodyHistorialInsumos" class="divide-y divide-neutral-200 font-bold text-neutral-800 bg-white">
+                        <!-- Carga dinámica por JS -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="p-4 bg-neutral-100 border-t border-neutral-300 flex justify-end">
+                <button onclick="cerrarModalHistorialInsumos()" class="px-6 py-3 bg-neutral-950 hover:bg-neutral-800 text-white font-black text-[10px] uppercase tracking-widest transition-colors rounded-none">
+                    Cerrar Panel
+                </button>
+            </div>
+        </div>
+    </div>

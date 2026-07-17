@@ -32,28 +32,29 @@ export async function init() {
     
 
     await cargarEstante(1);
-
-    // CORRECCIÓN IMPORTANTE:
-    // Ejecutamos siempre los listeners porque al cambiar de pestaña el HTML se reconstruye
     setupEventListeners(); 
 
     // --- AUTO-REFRESCO (Corrección de Seguridad) ---
     if (intervaloRefresco) clearInterval(intervaloRefresco);
     
     intervaloRefresco = setInterval(() => {
-    const modal = document.getElementById('modalGestionEstante');
-    
-    if (!modal) {
-        clearInterval(intervaloRefresco);
-        return;
-    }
+        const modal = document.getElementById('modalGestionEstante');
+        if (!modal) {
+            clearInterval(intervaloRefresco);
+            return;
+        }
+        if (document.body.classList.contains('swal2-shown') || !modal.classList.contains('hidden')) {
+            return;
+        }
+        
+        // 🔥 CORRECCIÓN: Mandar la página actual y la búsqueda actual
+        const inputSearch = document.getElementById('searchInput');
+        const searchTerm = inputSearch ? inputSearch.value.trim() : '';
 
-    if (document.body.classList.contains('swal2-shown') || !modal.classList.contains('hidden')) {
-        return;
-    }
-    
-    cargarEstante(true); // <--- CAMBIA 'cargarEstantes' POR 'cargarEstante' AQUÍ TAMBIÉN
-}, 5000);
+
+        cargarEstante(paginaActual, searchTerm, true); 
+
+    }, 5000);
 }
 
 function setupEventListeners() {
@@ -95,23 +96,24 @@ function aplicarFiltrosYRenderizar() {
     cargarEstante(paginaActual, searchTerm);
 }
 
-function getHTMLBotella(porcentaje, categoria) {
+function getHTMLBotella(porcentaje, categoria, estado) {
     const cat = (categoria || '').toUpperCase();
+    const est = (estado || '').toUpperCase(); // Aquí definimos 'est' usando el parámetro 'estado'
 
-    // 1. Testers: Muestra elegante con una estrellita de lujo
-    if (cat === 'TESTER') {
+    // 1. Testers
+    if (cat === 'TESTER' || est === 'TESTER') {
         return `<div class="relative">
                     <i class="fa-solid fa-vial text-4xl text-amber-500 drop-shadow-md"></i>
                     <i class="fa-solid fa-star absolute -top-1 -right-2 text-[10px] text-amber-300"></i>
                 </div>`;
     }
     
-    // 2. Frascos y Envases vacíos: Spray en color gris / cristal apagado
+    // 2. Frascos y Envases
     if (['FRASCO', 'ENVASES', 'FRASCOS'].includes(cat)) {
         return `<i class="fa-solid fa-spray-can text-4xl text-slate-300 drop-shadow-sm"></i>`;
     }
     
-    // 3. Alcohol y Fijadores: Materiales base (Gota pura y Matraz)
+    // 3. Alcohol y Fijadores
     if (cat === 'ALCOHOL') {
          return `<i class="fa-solid fa-tint text-4xl text-cyan-200 drop-shadow-sm"></i>`;
     }
@@ -119,16 +121,13 @@ function getHTMLBotella(porcentaje, categoria) {
          return `<i class="fa-solid fa-flask text-4xl text-indigo-300 drop-shadow-sm"></i>`;
     }
 
-    // 4. Esencias y Perfumes: Envase tipo SPRAY con colores de alta perfumería
+    // 4. Esencias y Perfumes
     const p = Math.max(0, Math.min(100, Math.floor(porcentaje))); 
-    
-    // Paleta de colores: Rubí, Ámbar y Oro
-    let colorLiquido = '#9f1239'; // Rubí intenso (Crítico < 15%)
-    if (p > 60) colorLiquido = '#d97706'; // Ámbar Oscuro / Oro Viejo (Alto)
-    else if (p > 30) colorLiquido = '#f59e0b'; // Oro Claro (Medio)
-    else if (p > 15) colorLiquido = '#fbbf24'; // Dorado Suave (Bajo)
+    let colorLiquido = '#9f1239'; 
+    if (p > 60) colorLiquido = '#d97706';
+    else if (p > 30) colorLiquido = '#f59e0b';
+    else if (p > 15) colorLiquido = '#fbbf24';
 
-    // Gradiente que simula el nivel del perfume dentro del envase
     const estiloGradiente = `
         background: linear-gradient(to top, ${colorLiquido} ${p}%, #f1f5f9 ${p}%);
         -webkit-background-clip: text;
@@ -137,7 +136,6 @@ function getHTMLBotella(porcentaje, categoria) {
         filter: drop-shadow(0 4px 6px rgba(0,0,0,0.08));
     `;
 
-    // ¡AQUÍ ESTÁ EL CAMBIO! Usamos fa-spray-can (Atomizador)
     return `<i class="fa-solid fa-spray-can text-5xl" style="${estiloGradiente}"></i>`;
 }
 
@@ -202,8 +200,9 @@ function renderizarPendientes(contenedor, botellas) {
         return;
     }
 
-    const usuarioLogueado = JSON.parse(localStorage.getItem('usuario')) || {};
-    const esAdminOGerente = ['admin', 'gerente', 'administrador'].includes((usuarioLogueado.rol || '').toLowerCase());
+    const usuarioLogueado = JSON.parse(localStorage.getItem('usuario')) || {};    
+    const rol = (usuarioLogueado.rol || '').toLowerCase().trim();
+    const esAdminOGerente = ['dev', 'developer', 'admin', 'administrador', 'superadmin', 'gerente general', 'gerente'].includes(rol);
 
     botellas.forEach(botella => {
         const idBotella = botella.botella_id || botella.id;
@@ -255,10 +254,12 @@ function toggleSeleccionarTodoPendientes(checked) {
 let pisosVisibles = 7; 
 
 function renderizarFilas(contenedor, botellas, nombreEstante) {
+
     contenedor.innerHTML = '';
     const usuarioLogueado = JSON.parse(localStorage.getItem('usuario')) || {};
-    const rol = (usuarioLogueado.rol || '').toLowerCase(); 
-    const esAdminOGerente = ['admin', 'gerente', 'administrador'].includes(rol);
+
+    const rol = (usuarioLogueado.rol || '').toLowerCase().trim(); 
+    const esAdminOGerente = ['dev', 'developer', 'admin', 'administrador', 'superadmin', 'gerente', 'gerente general'].includes(rol);
 
     // --- ZONA DE RECEPCIÓN ---
     const sinOrganizar = botellas.filter(b => b.fila == 0 || b.fila === 'SIN_ORGANIZAR');
@@ -274,18 +275,16 @@ function renderizarFilas(contenedor, botellas, nombreEstante) {
         });
     }
 
-    // --- RENDERIZADO OPTIMIZADO POR PISOS ---
+    // --- RENDERIZADO POR PISOS ---
     const inventarioPorPiso = {};
     botellas.forEach(b => {
         if(!inventarioPorPiso[b.fila]) inventarioPorPiso[b.fila] = [];
         inventarioPorPiso[b.fila].push(b);
     });
 
-    // Usamos un bucle estándar pero controlado
     for (let numPiso = 1; numPiso <= 7; numPiso++) {        
         const botellasDelPiso = inventarioPorPiso[numPiso] || [];
         
-        // Si el piso está vacío, lo saltamos visualmente pero mantenemos la estructura
         if (botellasDelPiso.length === 0) continue; 
 
         const pisoDiv = document.createElement('div');
@@ -300,31 +299,43 @@ function renderizarFilas(contenedor, botellas, nombreEstante) {
         const pasilloDiv = document.createElement('div');
         pasilloDiv.className = "flex flex-wrap gap-4"; 
         
-        // AQUI ESTÁ EL CAMBIO: Renderizado eficiente de cada botella
         botellasDelPiso.forEach(botella => {
-        const ID_REAL = botella.botella_id || botella.id;
-        const nombreSeguro = botella.nombre.replace(/'/g, "\\'"); // Escapar comillas
-        const htmlIcono = getHTMLBotella(botella.porcentaje_actual, botella.categoria);
-        
-        const divBotella = document.createElement('div');
-        divBotella.className = "w-32 bg-white border border-slate-200 rounded-2xl p-3 shadow-sm hover:shadow-lg transition-all relative flex flex-col group items-center";
-        divBotella.innerHTML = `
-            <div class="mt-4 mb-2 h-14 flex items-end justify-center">${htmlIcono}</div>
-            <p class="text-[10px] font-black text-slate-800 text-center leading-tight line-clamp-2 h-7 uppercase mb-1 w-full">${botella.nombre}</p>
-            <div class="mb-3 px-2 py-1 bg-slate-50 rounded text-[10px] font-bold text-slate-600">${parseFloat(botella.cantidad).toFixed(0)} u.</div>
+            const ID_REAL = botella.botella_id || botella.id;
+            const nombreSeguro = botella.nombre.replace(/'/g, "\\'"); 
+            const htmlIcono = getHTMLBotella(botella.porcentaje_actual, botella.categoria, botella.estado);
             
-            <!-- BOTONES DE GESTIÓN -->
-            <div class="flex gap-2 w-full justify-center mt-2 border-t pt-2">
-                <button onclick="abrirModalMerma(${ID_REAL}, '${nombreSeguro}')" class="text-neutral-500 hover:text-red-600 p-1" title="Merma">
-                    <i class="fa-solid fa-trash text-[10px]"></i>
-                </button>
-                <button onclick="abrirModalTester(${botella.producto_id}, '${nombreSeguro}')" class="text-neutral-500 hover:text-amber-600 p-1" title="Tester">
-                    <i class="fa-solid fa-spray-can text-[10px]"></i>
-                </button>
-            </div>
-        `;
-        pasilloDiv.appendChild(divBotella);
-    });
+            // 🔥 CORRECCIÓN: Eliminamos la regla de tres del Frontend. 
+            // Ahora lee directamente la cantidad real en gramos de la base de datos (Ej: 30g).
+            const capacidadGramos = parseFloat(botella.cantidad).toFixed(0);
+            
+            let nombreExtraHTML = `<p class="text-[10px] font-black text-slate-800 text-center leading-tight line-clamp-2 h-7 uppercase mb-1 w-full">${botella.nombre}</p>`;
+            
+            if (botella.estado === 'TESTER' || botella.categoria === 'TESTER') {
+                nombreExtraHTML = `
+                    <p class="text-[10px] font-black text-amber-600 text-center leading-tight uppercase mb-0.5 w-full tracking-widest">TESTER ${capacidadGramos}ML</p>
+                    <p class="text-[9px] font-bold text-slate-500 text-center leading-tight line-clamp-1 uppercase mb-1 w-full">${botella.nombre}</p>
+                `;
+            }
+
+            const divBotella = document.createElement('div');
+            divBotella.className = "w-32 bg-white border border-slate-200 rounded-2xl p-3 shadow-sm hover:shadow-lg transition-all relative flex flex-col group items-center";
+            divBotella.innerHTML = `
+                <div class="mt-4 mb-2 h-14 flex items-end justify-center">${htmlIcono}</div>
+                ${nombreExtraHTML}
+                <div class="mb-3 px-2 py-1 bg-slate-50 rounded text-[10px] font-bold text-slate-600">${capacidadGramos} u.</div>
+                
+                <!-- BOTONES DE GESTIÓN -->
+                <div class="flex gap-2 w-full justify-center mt-2 border-t pt-2">
+                    <button onclick="abrirModalMerma(${ID_REAL}, '${nombreSeguro}')" class="text-neutral-500 hover:text-red-600 p-1" title="Merma">
+                        <i class="fa-solid fa-trash text-[10px]"></i>
+                    </button>
+                    <button onclick="abrirModalTester(${botella.producto_id}, '${nombreSeguro}')" class="text-neutral-500 hover:text-amber-600 p-1" title="Tester">
+                        <i class="fa-solid fa-spray-can text-[10px]"></i>
+                    </button>
+                </div>
+            `;
+            pasilloDiv.appendChild(divBotella);
+        });
         
         pisoDiv.appendChild(pasilloDiv);
         contenedor.appendChild(pisoDiv);
@@ -552,7 +563,7 @@ async function moverBotella(id, destinoNombre, cantidadDisponible) {
             if(res.ok) {
                 const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1500 });
                 Toast.fire({ icon: 'success', title: '¡Ubicado en apartamento!' });
-                cargarEstantes(); // Recargar para ver los cambios
+                cargarEstante(); // Recargar para ver los cambios
             } else {
                 Swal.fire('No se pudo mover', data.error, 'warning'); 
             }
@@ -951,39 +962,70 @@ function mostrarCargando(estado) {
     if (overlay) overlay.style.display = estado ? 'flex' : 'none';
 }
 
-async function cargarEstante(page = 1, busqueda = "") {
-    mostrarCargando(true);
+async function cargarEstante(page = 1, busqueda = "", esActualizacionSilenciosa = false) {
+    // 🔥 Solo muestra la pantalla blanca si NO es una recarga de fondo
+    if (!esActualizacionSilenciosa) mostrarCargando(true);
+    
     try {
-        const token = localStorage.getItem('token'); // Recuperamos el token
+        const token = localStorage.getItem('token'); 
         
         const res = await fetch(`/api/productos/estante?page=${page}&search=${encodeURIComponent(busqueda)}`, {
-            headers: { 
-                'Authorization': `Bearer ${token}` // <--- ESTO ES LO QUE FALTABA
-            }
+            headers: { 'Authorization': `Bearer ${token}` }
         });
         
-        // Verificamos si la petición fue exitosa
         if (!res.ok) {
-            if (res.status === 403 || res.status === 401) {
-                throw new Error("Sesión expirada o sin permisos");
-            }
+            if (res.status === 403 || res.status === 401) throw new Error("Sesión expirada o sin permisos");
             throw new Error("Error en el servidor");
         }
 
         const result = await res.json();
-        
         todasLasBotellas = result.data || [];
         
-        // Renderizamos
-        renderizarFilas(document.getElementById('estanteA'), todasLasBotellas.filter(b=>b.ubicacion==='A'), 'A');
-        renderizarFilas(document.getElementById('estanteB'), todasLasBotellas.filter(b=>b.ubicacion==='B'), 'B');
+        const catBtn = document.querySelector('.filter-btn.active');
+        const catFiltro = catBtn && catBtn.dataset.category ? catBtn.dataset.category.toUpperCase() : 'TODOS';
+
+        let botellasVisibles = todasLasBotellas;
+if (catFiltro !== 'TODOS') {
+    botellasVisibles = botellasVisibles.filter(b => {
+        const c = (b.categoria || '').toUpperCase();
+        const est = (b.estado || '').toUpperCase(); // <--- Capturamos el estado
+        
+        if (catFiltro === 'ENVASES') return c.includes('ENVASE') || c.includes('FRASCO');
+        
+        // 🔥 AQUI ESTA EL CAMBIO: Ahora pregunta por categoría O por estado
+        if (catFiltro === 'TESTER') return c.includes('TESTER') || est.includes('TESTER'); 
+        
+        return c.includes(catFiltro);
+    });
+}
+
+        const estanteA = [];
+        const estanteB = [];
+        const pendientes = [];
+
+        botellasVisibles.forEach(b => {
+            const ubi = (b.ubicacion || '').toString().trim().toUpperCase();
+            if (ubi === 'A') estanteA.push(b);
+            else if (ubi === 'B') estanteB.push(b);
+            else pendientes.push(b); 
+        });
+        
+        const domA = document.getElementById('estanteA');
+        const domB = document.getElementById('estanteB');
+        const domPend = document.getElementById('listaPendientes');
+
+        if (domA) renderizarFilas(domA, estanteA, 'A');
+        if (domB) renderizarFilas(domB, estanteB, 'B');
+        if (domPend) renderizarPendientes(domPend, pendientes); 
         
         renderizarPaginacion(result.pagination);
+
     } catch (e) {
         console.error(e);
-        Swal.fire('Error', e.message, 'error');
+        // Si hay error de red, no fastidiamos al usuario cada 5 segundos
+        if (!esActualizacionSilenciosa) Swal.fire('Error', e.message, 'error');
     } finally {
-        mostrarCargando(false);
+        if (!esActualizacionSilenciosa) mostrarCargando(false);
     }
 }
 
@@ -1035,7 +1077,7 @@ window.cambiarPagina = function(nuevaPagina) {
 
 // --- LÓGICA MERMA ---
 window.abrirModalMerma = (id, nombre) => {
-    document.getElementById('merma_id_botella').value = id;
+    document.getElementById('merma_productos_id').value = id;
     document.getElementById('mermaNombre').innerText = nombre;
     document.getElementById('modalMerma').classList.remove('hidden');
 };
@@ -1043,40 +1085,136 @@ window.abrirModalMerma = (id, nombre) => {
 window.cerrarModalMerma = () => document.getElementById('modalMerma').classList.add('hidden');
 
 window.enviarMerma = async () => {
-    const id = document.getElementById('merma_id_botella').value;
+    // 1. Buscamos los elementos usando los IDs exactos de tu HTML
+    const idInput = document.getElementById('merma_productos_id'); // <--- Corrección aquí
+    const cantInput = document.getElementById('merma_cantidad');
+    const obsInput = document.getElementById('merma_observaciones');
+
+    // 2. Validación de seguridad
+    if (!idInput || !cantInput || !obsInput) {
+        console.error("ERROR: No se encontraron los inputs en el HTML. Revisa los IDs.");
+        alert("Error en el formulario. Revisa la consola (F12).");
+        return;
+    }
+
+    const id = idInput.value;
     const data = {
-        cantidad: document.getElementById('merma_cantidad').value,
+        cantidad: cantInput.value,
         motivo: 'MERMA_ESTANTE',
-        observaciones: document.getElementById('merma_observaciones').value,
+        observaciones: obsInput.value,
         ubicacion: 'ESTANTE'
     };
     
-    // Llamada al controller de productos.controller.js -> reportarMerma
-    const res = await fetch(`/api/productos/estante/${id}/gestion`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify({...data, tipo: 'MERMA'})
-    });
-    
-    if(res.ok) { 
-        Swal.fire('¡Merma Registrada!', '', 'success'); 
-        cerrarModalMerma(); 
-        cargarEstante(); 
+    // 3. Envío al backend
+    try {
+        const res = await fetch(`/api/productos/estante/${id}/gestion`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${localStorage.getItem('token')}` 
+            },
+            body: JSON.stringify({...data, tipo: 'MERMA'})
+        });
+        
+        if(res.ok) { 
+            Swal.fire('¡Merma Registrada!', '', 'success'); 
+            cerrarModalMerma(); 
+            // Si tienes una función para refrescar la lista, llámala aquí
+            if(typeof cargarEstante === 'function') cargarEstante();
+        } else {
+            const err = await res.json();
+            Swal.fire('Error', err.error || 'No se pudo reportar la merma', 'error');
+        }
+    } catch (e) {
+        console.error(e);
+        Swal.fire('Error', 'Fallo de conexión', 'error');
     }
 };
 
-// --- LÓGICA TESTER ---
+// --- LÓGICA TESTER INTELIGENTE (FRONTEND) ---
 window.abrirModalTester = async (prodId, nombre) => {
-    document.getElementById('tester_id_prod').value = prodId;
-    document.getElementById('testerNombre').innerText = nombre;
-    
-    // Cargar fórmulas dinámicamente
-    const res = await fetch('/api/formulas', { headers: {'Authorization': `Bearer ${localStorage.getItem('token')}`} });
-    const formulas = await res.json();
-    const select = document.getElementById('select_formula_tester');
-    select.innerHTML = formulas.map(f => `<option value="${f.id}">${f.nombre}</option>`).join('');
-    
-    document.getElementById('modalTester').classList.remove('hidden');
+    try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/formulas', { headers: { 'Authorization': `Bearer ${token}` } });
+        const formulas = await res.json();
+
+        if (formulas.length === 0) return Swal.fire('Error', 'No hay fórmulas configuradas', 'warning');
+
+        // 1. Selector Inteligente
+        const { value: formValues } = await Swal.fire({
+            title: '🧪 Preparar Tester o Muestra',
+            html: `
+                <div class="text-left mb-4 bg-neutral-50 p-4 border border-neutral-200 rounded-none">
+                    <p class="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1">Fragancia Seleccionada</p>
+                    <p class="font-black text-neutral-950 text-sm uppercase">${nombre}</p>
+                </div>
+                
+                <div class="mb-4 text-left">
+                    <label class="block text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-2">Tamaño de la Botella</label>
+                    <select id="swal-formula" class="w-full border border-neutral-300 p-4 outline-none focus:border-neutral-950 text-xs font-bold uppercase cursor-pointer rounded-none bg-white">
+                        <option value="" disabled selected>-- SELECCIONA EL TAMAÑO --</option>
+                        ${formulas.map(f => `<option value="${f.id}">Frasco ${f.volumen_total}ml (Fórmula)</option>`).join('')}
+                    </select>
+                </div>
+
+                <div class="text-left flex items-center gap-3 bg-purple-50 border border-purple-200 p-4 cursor-pointer hover:bg-purple-100 transition-colors rounded-none" onclick="document.getElementById('swal-muestra').click()">
+                    <input type="checkbox" id="swal-muestra" class="w-5 h-5 accent-purple-600 cursor-pointer">
+                    <div>
+                        <p class="text-[10px] font-black text-purple-900 uppercase tracking-widest">Es Solo Muestra Gratis</p>
+                        <p class="text-[9px] font-bold text-purple-600 uppercase mt-1">Se descuenta del estante pero NO crea botella visual.</p>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '<i class="fa-solid fa-check"></i> PROCESAR DESCUENTO',
+            cancelButtonText: 'CANCELAR',
+            confirmButtonColor: '#0a0a0a',
+            customClass: { popup: 'rounded-none border border-neutral-400', confirmButton: 'rounded-none text-[10px] uppercase tracking-widest py-3 px-6', cancelButton: 'rounded-none text-[10px] uppercase tracking-widest py-3 px-6' },
+            preConfirm: () => {
+                const formId = document.getElementById('swal-formula').value;
+                if (!formId) Swal.showValidationMessage('Debes seleccionar un tamaño para procesar.');
+                return {
+                    formula_id: formId,
+                    es_muestra: document.getElementById('swal-muestra').checked
+                };
+            }
+        });
+
+        if (formValues) {
+            Swal.fire({ title: 'Extrayendo insumos...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            
+            // 2. Enviamos al servidor
+            const resTester = await fetch(`/api/productos/estante/${prodId}/tester`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(formValues)
+            });
+
+            const data = await resTester.json();
+
+            if (resTester.ok) {
+                Swal.fire({
+                    icon: 'success',
+                    title: formValues.es_muestra ? 'MUESTRA REGISTRADA' : 'TESTER CREADO',
+                    text: data.mensaje,
+                    confirmButtonColor: '#0a0a0a',
+                    customClass: { popup: 'rounded-none', confirmButton: 'rounded-none text-[10px] uppercase tracking-widest' }
+                });
+                if (typeof cargarEstante === 'function') cargarEstante(1, '', false); // Refresca la pantalla
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'ACCIÓN BLOQUEADA',
+                    text: data.error,
+                    confirmButtonColor: '#0a0a0a',
+                    customClass: { popup: 'rounded-none border-t-4 border-t-red-500', confirmButton: 'rounded-none text-[10px] uppercase tracking-widest' }
+                });
+            }
+        }
+    } catch (e) {
+        console.error(e);
+        Swal.fire('Error', 'Fallo de conexión', 'error');
+    }
 };
 
 window.cerrarModalTester = () => document.getElementById('modalTester').classList.add('hidden');

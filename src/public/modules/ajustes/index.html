@@ -14,6 +14,7 @@
         
         <div class="lg:col-span-4 space-y-6">
             
+            <!-- Tarjeta Tasa Global Modernizada -->
             <div class="bg-white border border-neutral-300 rounded-none border-t-4 border-t-neutral-950 shadow-none p-8">
                 <div class="flex justify-between items-start mb-6">
                     <div>
@@ -25,16 +26,27 @@
                     </div>
                 </div>
 
-                <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
                     <div class="relative flex-1">
                         <span class="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 font-black text-sm uppercase tracking-widest">Bs</span>
                         <input type="number" id="inputTasaGlobal" 
                                class="w-full pl-12 pr-4 py-4 bg-neutral-50 border border-neutral-300 rounded-none text-xl font-black text-neutral-950 focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none transition-colors" 
                                placeholder="0.00" step="0.01">
                     </div>
+                    
+                    <!-- 🔥 NUEVO: Botón Nube para Sincronizar API BCV -->
+                    <button onclick="window.obtenerTasaBCVAutomatica()" 
+                            id="btnSincroBCV"
+                            title="Sincronizar Tasa en vivo desde el BCV"
+                            class="bg-neutral-800 hover:bg-neutral-950 text-white px-5 py-5 rounded-none transition-colors shadow-none text-xs border border-neutral-800">
+                        <i class="fa-solid fa-cloud-arrow-down"></i>
+                    </button>
+
+                    <!-- Botón Guardar / Modificar Manual (Existente) -->
                     <button onclick="guardarTasaGlobal()" 
-                            class="bg-neutral-950 hover:bg-neutral-800 text-white px-6 py-4 rounded-none transition-colors shadow-none text-xs">
-                        <i class="fa-solid fa-rotate"></i>
+                            title="Guardar Tasa Manual Escrita"
+                            class="bg-neutral-950 hover:bg-neutral-800 text-white px-5 py-5 rounded-none transition-colors shadow-none text-xs">
+                        <i class="fa-solid fa-floppy-disk"></i>
                     </button>
                 </div>
             </div>
@@ -92,6 +104,7 @@
 
                 <form id="formAjuste" class="p-8 space-y-8 flex-1 bg-neutral-50">
                     
+                    <!-- 1. SELECCIÓN DE PRODUCTO (Existente) -->
                     <div class="relative bg-white p-6 border border-neutral-300">
                         <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-4 border-b border-neutral-200 pb-2">1. Producto Afectado</label>
                         <div class="flex gap-0 border border-neutral-300 rounded-none focus-within:border-neutral-950 transition-colors bg-neutral-50">
@@ -117,49 +130,56 @@
                         </div>
                     </div>
 
+                    <!-- 🔥 NUEVO SLOCK: 2. ÁREA OPERATIVA DEL AJUSTE -->
+                    <div class="bg-white p-6 border border-neutral-300">
+                        <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-4 border-b border-neutral-200 pb-2">2. Área del Movimiento</label>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="cursor-pointer border border-neutral-300 bg-neutral-50 rounded-none p-4 flex items-center gap-3 hover:bg-neutral-100 transition-colors relative">
+                                <input type="radio" name="ubicacion_ajuste" id="radioDepo" value="DEPOSITO" class="accent-neutral-950 w-4 h-4" checked onchange="window.cambiarUbicacionAjusteUI()">
+                                <div>
+                                    <div class="font-black text-[10px] uppercase tracking-widest text-neutral-950">📦 Almacén General (Depósito)</div>
+                                    <div class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-1">Cajas Cerradas y Lotes</div>
+                                </div>
+                            </label>
+
+                            <label class="cursor-pointer border border-neutral-300 bg-neutral-50 rounded-none p-4 flex items-center gap-3 hover:bg-neutral-100 transition-colors relative">
+                                <input type="radio" name="ubicacion_ajuste" id="radioEstante" value="ESTANTE" class="accent-neutral-950 w-4 h-4" onchange="window.cambiarUbicacionAjusteUI()">
+                                <div>
+                                    <div class="font-black text-[10px] uppercase tracking-widest text-neutral-950">🧴 Mostrador (Estante de Ventas)</div>
+                                    <div class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-1">Botellas Abiertas en Exhibición</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- PANEL DE LOTES DINÁMICO (Se muestra solo si es Depósito + Salida) -->
                     <div id="panelLotes" class="hidden p-6 border border-neutral-300 bg-white transition-all duration-300">
-                        
                         <div id="selectorLoteContainer" class="hidden space-y-4">
                             <div class="flex justify-between items-center border-b border-neutral-200 pb-2">
-                                <label class="text-[10px] font-black uppercase tracking-widest text-neutral-950">
-                                    2. Origen (Descuento de Lote)
-                                </label>
+                                <label class="text-[10px] font-black uppercase tracking-widest text-neutral-950">Lote de Almacén (Origen)</label>
                                 <span class="text-[9px] font-black bg-neutral-950 text-white px-3 py-1 uppercase tracking-widest">Modo Salida</span>
                             </div>
-                            <select id="loteSeleccion" class="w-full p-4 border border-neutral-300 bg-neutral-50 text-neutral-950 text-xs font-bold uppercase tracking-wider focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none transition-colors rounded-none">
+                            <select id="loteSeleccion" class="w-full p-4 border border-neutral-300 bg-neutral-50 text-neutral-950 text-xs font-bold uppercase tracking-wider outline-none cursor-pointer rounded-none">
                                 <option value="">-- AUTOMÁTICO (FIFO - MÁS ANTIGUO PRIMERO) --</option>
                             </select>
-                            <p class="text-[9px] font-bold text-neutral-500 uppercase tracking-widest">
-                                <i class="fa-solid fa-circle-info mr-2 text-neutral-400"></i>
-                                Por defecto el sistema descontará del lote con fecha de ingreso más antigua.
-                            </p>
                         </div>
 
                         <div id="inputLoteManualContainer" class="hidden space-y-4">
                             <div class="flex justify-between items-center border-b border-neutral-200 pb-2">
-                                <label class="text-[10px] font-black uppercase tracking-widest text-neutral-950">
-                                    2. Identificador de Lote (Opcional)
-                                </label>
+                                <label class="text-[10px] font-black uppercase tracking-widest text-neutral-950">Identificador de Lote (Opcional)</label>
                                 <span class="text-[9px] font-black border border-neutral-950 text-neutral-950 px-3 py-1 uppercase tracking-widest bg-white">Modo Entrada</span>
                             </div>
-                            <input type="text" id="codigoLoteManual" 
-                                   class="w-full p-4 border border-neutral-300 bg-neutral-50 text-xs font-bold uppercase tracking-wider placeholder-neutral-400 focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none transition-colors rounded-none" 
-                                   placeholder="EJ: IMPORT-001 O AJUSTE-INV">
-                            <p class="text-[9px] font-bold text-neutral-500 uppercase tracking-widest">
-                                <i class="fa-solid fa-tag mr-2 text-neutral-400"></i>
-                                Si se omite, el sistema generará un código correlativo interno.
-                            </p>
+                            <input type="text" id="codigoLoteManual" class="w-full p-4 border border-neutral-300 bg-neutral-50 text-xs font-bold uppercase tracking-wider placeholder-neutral-400 outline-none rounded-none" placeholder="EJ: IMPORT-001 O AJUSTE-INV">
                         </div>
                     </div>
 
+                    <!-- MAGNITUD Y JUSTIFICACIÓN -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-6 border border-neutral-300">
                         <div>
                             <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-4 border-b border-neutral-200 pb-2">3. Magnitud</label>
                             <div class="relative">
-                                <input type="number" id="cantidad" step="0.01" class="w-full p-4 border border-neutral-300 bg-neutral-50 rounded-none text-center font-black text-2xl text-neutral-950 outline-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 transition-colors" placeholder="0.00" min="0.01">
-                                <span id="labelUnidad" class="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black bg-neutral-200 text-neutral-600 px-3 py-1 uppercase tracking-widest border border-neutral-300">
-                                    UND
-                                </span>
+                                <input type="number" id="cantidad" step="0.01" class="w-full p-4 border border-neutral-300 bg-neutral-50 rounded-none text-center font-black text-2xl text-neutral-950 outline-none focus:bg-white focus:border-neutral-950 transition-colors" placeholder="0.00" min="0.01">
+                                <span id="labelUnidad" class="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black bg-neutral-200 text-neutral-600 px-3 py-1 uppercase tracking-widest border border-neutral-300">UND</span>
                             </div>
                         </div>
                         <div class="md:col-span-2">
@@ -168,8 +188,7 @@
                                 <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                     <i class="fa-solid fa-pen-to-square text-neutral-400"></i>
                                 </div>
-                                <select id="motivo" class="w-full pl-12 pr-10 p-4 border border-neutral-300 bg-neutral-50 text-neutral-950 font-bold text-xs uppercase tracking-wider focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none transition-colors appearance-none rounded-none cursor-pointer">
-                                    </select>
+                                <select id="motivo" class="w-full pl-12 pr-10 p-4 border border-neutral-300 bg-neutral-50 text-neutral-950 font-bold text-xs uppercase tracking-wider outline-none transition-colors appearance-none rounded-none cursor-pointer"></select>
                                 <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
                                     <i class="fa-solid fa-chevron-down text-neutral-500 text-xs"></i>
                                 </div>
@@ -177,8 +196,20 @@
                         </div>
                     </div>
 
+                    <!-- 🔥 NUEVO: 5. RESPALDO DE EVIDENCIA FOTOGRÁFICA -->
+                    <div class="bg-white p-6 border border-neutral-300">
+                        <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-4 border-b border-neutral-200 pb-2">5. Respaldo Visual (Evidencia Fotográfica)</label>
+                        <div class="flex items-center gap-4 bg-neutral-50 p-4 border border-dashed border-neutral-300 rounded-none group hover:border-neutral-950 transition-colors">
+                            <div class="text-neutral-400 text-2xl px-2"><i class="fa-solid fa-camera"></i></div>
+                            <div class="flex-1">
+                                <input type="file" id="fotoEvidencia" accept="image/*" class="text-xs font-bold uppercase text-neutral-600 cursor-pointer file:bg-neutral-950 file:text-white file:border-none file:px-4 file:py-2 file:font-black file:text-[9px] file:uppercase file:tracking-widest file:mr-4 file:hover:bg-neutral-800 file:transition-colors">
+                                <p class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-1.5">* Obligatorio para mermas críticas, roturas graves o incidencias en mostrador.</p>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="pt-6 border-t border-neutral-300">
-                        <button type="submit" id="btnSubmit" class="w-full bg-neutral-950 text-white font-black py-5 rounded-none hover:bg-neutral-800 transition-colors flex items-center justify-center gap-4 uppercase tracking-widest text-[10px] disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="submit" id="btnSubmit" class="w-full bg-neutral-950 text-white font-black py-5 rounded-none hover:bg-neutral-800 transition-colors flex items-center justify-center gap-4 uppercase tracking-widest text-[10px]">
                             <span>Procesar Ajuste de Inventario</span>
                             <i class="fa-solid fa-check"></i>
                         </button>

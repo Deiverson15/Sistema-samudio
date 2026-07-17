@@ -21,7 +21,10 @@ const {
     distribuirLoteEstante,
     bajarInventarioAEstanteMasa,
     bajarInventarioLoteCompleto,
-    getReportesConsolidadosRed
+    getReportesConsolidadosRed,
+    getListaTiendas,
+    getVentasAnuladas, // 🔥 SOLUCIÓN: Agregada la importación faltante
+    exportarCierreDeHoyExcel
 } = require('../controllers/ventas.controller');
 
 const { verifyToken } = require('../middleware/auth');
@@ -32,19 +35,22 @@ const { getResumenSemanal, exportarExcelSemanal } = require('../controllers/repo
 // =======================================================================
 // 1. REPORTES Y ESTADÍSTICAS (Rutas fijas)
 // =======================================================================
-router.get('/exportar/excel', verifyToken, exportarReporteGeneral); 
-router.get('/dashboard-kpis', getDashboardKPIs);
-router.get('/reportes', getReportes);
+router.get('/', verifyToken, getVentas);
+router.get('/dashboard-kpis', verifyToken, getDashboardKPIs);
+router.get('/reportes', verifyToken, getReportes); 
+router.get('/reportes-red', verifyToken, getReportesConsolidadosRed);
+router.get('/reportes/consolidado-red', verifyToken, getReportesConsolidadosRed); 
+router.get('/anuladas', verifyToken, getVentasAnuladas);
+router.get('/exportar/excel', verifyToken, exportarReporteGeneral);
+router.get('/lista-tiendas', verifyToken, getListaTiendas);
 
 // =======================================================================
 // 2. GESTIÓN DE CIERRES Y ARQUEOS
 // =======================================================================
 router.get('/cierre/previsualizar', verifyToken, previsualizarCierre); 
-
-// UBICACIÓN CORRECTA: Rutas fijas semanales ANTES de cualquier parámetro ":id"
+router.get('/cierre/previsualizar/excel', verifyToken, exportarCierreDeHoyExcel);
 router.get('/cierre/semanal', verifyToken, getResumenSemanal);
 router.get('/cierre/semanal/excel', verifyToken, exportarExcelSemanal);
-
 router.post('/cierre', verifyToken, guardarCierre);                 
 router.get('/cierre/historial', verifyToken, getHistorialCierres);  
 router.post('/cierres/forzar-historico', verifyToken, forzarCierreManualHistorico);
@@ -68,18 +74,19 @@ router.post('/inventario/bajar-estante-vaciado', verifyToken, bajarInventarioLot
 // 5. OPERACIONES BASE DE MATRIZ VENTAS
 // =======================================================================
 router.post('/', verifyToken, crearVenta);
-router.get('/', getVentas);
+router.post('/anular-venta/:id', verifyToken, anularVentaDefinitiva);
 
 // =======================================================================
 // 6. RUTAS DINÁMICAS / COMODINES (ESTRICTAMENTE AL FINAL)
 // =======================================================================
-router.get('/:id/factura/pdf', getFacturaPDF); 
-router.get('/:id/factura/excel', getFacturaExcel); 
-router.get('/:id', getVentaById);
+router.get('/:id/pdf', verifyToken, getFacturaPDF);
+router.get('/:id/excel', verifyToken, getFacturaExcel);
+router.get('/:id', verifyToken, getVentaById);
 
-router.post('/anular-venta/:id', verifyToken, anularVentaDefinitiva);
+// Alias para rutas de facturas (Aseguradas con verifyToken para evitar filtraciones)
+router.get('/:id/factura/pdf', verifyToken, getFacturaPDF); 
+router.get('/:id/factura/excel', verifyToken, getFacturaExcel); 
 
-router.get('/reportes/consolidado-red', verifyToken, getReportesConsolidadosRed);
 
 
 module.exports = router;

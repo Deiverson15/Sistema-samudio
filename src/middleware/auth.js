@@ -2,7 +2,6 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/db'); 
 require('dotenv').config();
 
-
 const logAccesoDenegado = async (req, motivo, usuarioId = null) => {
     try {
         const ruta = req.originalUrl || req.url;
@@ -26,7 +25,7 @@ const verifyToken = async (req, res, next) => {
         const secret = process.env.JWT_SECRET;
         const decoded = jwt.verify(token, secret);
 
-        // 3. VERIFICACIÓN ESTRICTA EN BASE DE DATOS
+        // 3. VERIFICACIÓN ESTRICTA EN BASE DE DATOS (Trae tienda_id y rol reales)
         const userResult = await pool.query(
             'SELECT id, rol, nombre, activo, token_sesion, tienda_id FROM usuarios WHERE id = $1', 
             [decoded.id]
@@ -61,9 +60,16 @@ const verifyToken = async (req, res, next) => {
             }
         }
 
-        const rolUsuario = user.rol ? user.rol.toLowerCase() : '';
+        // Normalizamos a minúsculas y limpiamos espacios laterales por seguridad
+        const rolUsuario = user.rol ? user.rol.toLowerCase().trim() : '';
 
-        if (!sistemaActivo && rolUsuario !== 'developer' && rolUsuario !== 'dev') {
+        // 🔥 MODIFICADO: Ahora tanto 'developer' como 'súper administrador' rompen el bloqueo de suspensión por pago
+        const esUsuarioMaestro = rolUsuario === 'developer' || 
+                                 rolUsuario === 'dev' || 
+                                 rolUsuario === 'súper administrador' || 
+                                 rolUsuario === 'super administrador';
+
+        if (!sistemaActivo && !esUsuarioMaestro) {
             return res.status(402).json({ 
                 error: 'SISTEMA_SUSPENDIDO',
                 message: 'El sistema se encuentra temporalmente suspendido. Contacte al desarrollador.' 
@@ -74,6 +80,7 @@ const verifyToken = async (req, res, next) => {
             return res.status(401).json({ error: 'Sesión inválida. Se ha iniciado sesión en otro dispositivo.' });
         }
 
+        // 📦 Guardamos el usuario con su tienda_id en el request para usarlo en los controladores
         req.user = user; 
         next();
 
@@ -84,11 +91,15 @@ const verifyToken = async (req, res, next) => {
 
 const checkRol = (rolesPermitidos) => {
     return (req, res, next) => {
-        // Pasamos el rol a minúsculas para que no importen las mayúsculas en la BD
-        const rolUsuario = req.user && req.user.rol ? req.user.rol.toLowerCase() : '';
+        const rolUsuario = req.user && req.user.rol ? req.user.rol.toLowerCase().trim() : '';
         
-        // Si el usuario es developer o dev, SIEMPRE tiene acceso (Modo Dios)
-        if (req.user && (rolesPermitidos.includes(rolUsuario) || rolUsuario === 'developer' || rolUsuario === 'dev')) {
+        // 🔥 MODIFICADO: Definimos quiénes tienen "Modo Dios" de manera estricta con tus roles reales
+        const esModoDios = rolUsuario === 'developer' || 
+                           rolUsuario === 'dev' || 
+                           rolUsuario === 'súper administrador' || 
+                           rolUsuario === 'super administrador';
+        
+        if (req.user && (rolesPermitidos.includes(rolUsuario) || esModoDios)) {
             next();
         } else {
             res.status(403).json({ error: 'No tienes permisos para realizar esta acción.' });
@@ -96,8 +107,9 @@ const checkRol = (rolesPermitidos) => {
     };
 };
 
-const verifyAdmin = [verifyToken, checkRol(['admin', 'superadmin'])];
-const verifyGerente = [verifyToken, checkRol(['admin', 'superadmin', 'gerente'])];
-const verifyVendedor = [verifyToken, checkRol(['admin', 'superadmin', 'gerente', 'vendedor'])];
+// 🔥 MODIFICADO: Listas de acceso calibradas con los nombres reales en minúsculas de tu BD
+const verifyAdmin = [verifyToken, checkRol(['developer', 'súper administrador', 'super administrador'])];
+const verifyGerente = [verifyToken, checkRol(['developer', 'súper administrador', 'super administrador', 'gerente general'])];
+const verifyVendedor = [verifyToken, checkRol(['developer', 'súper administrador', 'super administrador', 'gerente general', 'vendedor'])];
 
 module.exports = { verifyToken, verifyAdmin, verifyGerente, verifyVendedor };

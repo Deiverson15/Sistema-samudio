@@ -5,11 +5,7 @@
     <!-- SECCIÓN 1: CENTRO DE REPORTES CORPORATIVOS (Tarjetas)    -->
     <!-- ======================================================== -->
     <div>
-        <!-- Encabezado Corporativo Compacto -->
-        <div class="mb-6 border-b border-neutral-200 pb-4">
-            <h1 class="text-2xl font-black text-neutral-900 tracking-tighter uppercase mb-1">Centro de Reportes</h1>
-            <p class="text-xs text-neutral-500 font-medium tracking-wide">Exportación de datos financieros y operativos en XLSX.</p>
-        </div>
+
         <div class="space-y-8 animate-fade-in pb-8 max-w-7xl mx-auto">
     <!-- Encabezado -->
     <div class="mb-6 border-b border-neutral-200 pb-4">
@@ -25,7 +21,7 @@
         <div class="reporte-card bg-white border border-neutral-200 p-4 cursor-pointer hover:border-neutral-900 transition-all shadow-sm" onclick="abrirModalReporte(this)" data-tipo="referencias">
             <h3 class="text-[10px] font-black uppercase text-neutral-900">Ventas Referencias</h3>
         </div>
-        <div class="reporte-card bg-white border border-neutral-200 p-4 cursor-pointer hover:border-neutral-900 transition-all shadow-sm" onclick="abrirModalReporte(this)" data-tipo="tiendas">
+        <div class="reporte-card bg-white border border-neutral-200 p-4 cursor-pointer hover:border-neutral-900 transition-all shadow-sm" onclick="abrirModalFiltroTiendas()">
             <h3 class="text-[10px] font-black uppercase text-neutral-900">Ventas x Tienda</h3>
         </div>
         <div class="reporte-card bg-white border border-neutral-200 p-4 cursor-pointer hover:border-neutral-900 transition-all shadow-sm" onclick="abrirModalReporte(this)" data-tipo="inventario">
@@ -37,6 +33,12 @@
         <div class="reporte-card bg-white border border-neutral-200 p-4 cursor-pointer hover:border-neutral-900 transition-all shadow-sm" onclick="abrirModalReporte(this)" data-tipo="formulas">
             <h3 class="text-[10px] font-black uppercase text-neutral-900">Plantilla Costos</h3>
         </div>
+        <div class="reporte-card bg-white border border-neutral-200 p-4 cursor-pointer hover:border-neutral-900 transition-all shadow-sm border-l-4 border-l-red-500" onclick="abrirModalReporte(this)" data-tipo="mermas">
+            <h3 class="text-[10px] font-black uppercase text-neutral-900">Mermas y Consumos</h3>
+        </div>
+        <div class="reporte-card bg-white border border-neutral-200 p-4 cursor-pointer hover:border-neutral-900 transition-all shadow-sm border-l-4 border-l-emerald-500" onclick="abrirModalReporte(this)" data-tipo="rentabilidad">
+            <h3 class="text-[10px] font-black uppercase text-neutral-900">Márgenes Rentabilidad</h3>
+        </div>
     </div>
 
     <!-- Modal (DEBE estar en el HTML) -->
@@ -47,6 +49,8 @@
                 <button onclick="closeModal()" class="text-neutral-400 hover:text-neutral-900"><i class="fa-solid fa-xmark text-xl"></i></button>
             </div>
             <div class="space-y-4">
+
+                <div id="dynamicFiltersContainer" class="space-y-4"></div>
                 <div>
                     <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Fecha Inicio</label>
                     <input type="date" id="inputStart" class="w-full p-3 border border-neutral-300 font-bold text-xs uppercase outline-none focus:border-neutral-950 rounded-none">
@@ -84,6 +88,9 @@
                     <button id="btnCalcular" onclick="ejecutarCalculo()" class="w-full md:w-auto bg-white border border-neutral-300 hover:bg-neutral-100 text-neutral-950 px-8 py-4 rounded-none transition-colors font-black flex justify-center items-center gap-3 uppercase tracking-widest text-[10px]">
                         <i class="fa-solid fa-calculator text-neutral-500"></i> Calcular Cuadre
                     </button>
+                    <button id="btnDescargarHoyDirecto" onclick="descargarCierreDeHoyExcel()" class="w-full md:w-auto bg-emerald-700 hover:bg-emerald-800 text-white px-6 py-4 rounded-none transition-colors font-black flex justify-center items-center gap-3 uppercase tracking-widest text-[10px]">
+    <i class="fa-solid fa-file-excel"></i> Descargar Excel Hoy
+</button>
                 </div>
 
                 <!-- Herramienta Histórica -->
@@ -248,5 +255,49 @@
             </div>
         </div>
 
+    </div>
+</div>
+
+
+
+<!-- ======================================================== -->
+<!-- MODAL: FILTRO DE VENTAS POR TIENDA                       -->
+<!-- ======================================================== -->
+<div id="modalFiltroTiendas" class="fixed inset-0 z-[60] hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4">
+    <div class="bg-white w-full max-w-md rounded-none shadow-2xl border border-neutral-400">
+        
+        <div class="bg-neutral-950 p-5 text-white flex justify-between items-center shrink-0">
+            <h3 class="font-black text-sm uppercase tracking-widest flex items-center gap-3">
+                <i class="fa-solid fa-store-alt text-neutral-400"></i> Reporte por Tiendas
+            </h3>
+            <button onclick="cerrarModalFiltroTiendas()" class="text-neutral-400 hover:text-white transition-colors">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+
+        <div class="p-6 bg-neutral-50">
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Fecha Inicio</label>
+                    <input type="date" id="filtroInicioTiendas" class="w-full p-3 border border-neutral-300 outline-none focus:border-neutral-950 bg-white font-bold text-xs text-neutral-900 transition-colors rounded-none">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Fecha Fin</label>
+                    <input type="date" id="filtroFinTiendas" class="w-full p-3 border border-neutral-300 outline-none focus:border-neutral-950 bg-white font-bold text-xs text-neutral-900 transition-colors rounded-none">
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Seleccionar Tiendas</label>
+                <!-- Aquí se inyectarán las tiendas desde la Base de Datos -->
+                <div id="listaTiendasFiltro" class="space-y-3 max-h-48 overflow-y-auto border border-neutral-300 p-4 bg-white custom-scrollbar rounded-none">
+                    <div class="text-xs text-neutral-400 font-bold text-center py-4">Cargando tiendas...</div>
+                </div>
+            </div>
+
+            <button onclick="ejecutarDescargaTiendas()" class="w-full bg-neutral-950 text-white font-black text-[10px] uppercase tracking-widest py-4 hover:bg-neutral-800 transition-colors rounded-none">
+                <i class="fa-solid fa-file-excel mr-2 text-emerald-500"></i> Generar Excel Consolidado
+            </button>
+        </div>
     </div>
 </div>

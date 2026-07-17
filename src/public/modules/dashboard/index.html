@@ -1,5 +1,8 @@
-<div class="animate-fade-in space-y-8 relative">
+<div class="animate-fade-in space-y-8 relative pb-8">
     
+    <!-- ========================================================== -->
+    <!-- ENCABEZADO Y FILTRO DE FECHAS                              -->
+    <!-- ========================================================== -->
     <div class="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-neutral-300 pb-4 mb-6 gap-4">
         <div>
             <h1 class="text-3xl md:text-4xl font-black text-neutral-950 uppercase tracking-tighter">Resumen Ejecutivo</h1>
@@ -10,8 +13,12 @@
         </span>
     </div>
     
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <!-- ========================================================== -->
+    <!-- FILA 1: LAS 3 TARJETAS PRINCIPALES (KPIs GENERALES OPTIMIZADOS) -->
+    <!-- ========================================================== -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         
+        <!-- Tarjeta: Ventas Netas -->
         <div class="bg-white p-6 border border-neutral-300 hover:border-neutral-950 transition-colors relative group rounded-none">
             <div class="flex justify-between items-start mb-4">
                 <div>
@@ -30,6 +37,7 @@
             </div>
         </div>
 
+        <!-- Tarjeta: Transacciones -->
         <div class="bg-white p-6 border border-neutral-300 hover:border-neutral-950 transition-colors relative group rounded-none">
             <div class="flex justify-between items-start mb-4">
                 <div>
@@ -45,21 +53,7 @@
             </div>
         </div>
 
-        <div class="bg-white p-6 border border-neutral-300 hover:border-neutral-950 transition-colors relative group rounded-none">
-            <div class="flex justify-between items-start mb-4">
-                <div>
-                    <p class="text-[10px] text-neutral-500 font-bold tracking-widest uppercase">Capital en Stock</p>
-                    <h3 class="text-2xl font-black text-neutral-950 mt-1 tracking-tight" id="dashValorTotal">$0.00</h3>
-                </div>
-                <div class="p-3 bg-neutral-100 text-neutral-900 group-hover:bg-neutral-950 group-hover:text-white transition-colors rounded-none">
-                    <i class="fa-solid fa-sack-dollar text-xl"></i>
-                </div>
-            </div>
-            <div class="text-[10px] text-neutral-500 font-bold uppercase tracking-wider mt-4">
-                Costo total (Inversión Activa)
-            </div>
-        </div>
-
+        <!-- Tarjeta: Stock Crítico -->
         <div class="bg-neutral-950 p-6 border border-neutral-950 hover:bg-neutral-900 transition-colors relative group cursor-pointer rounded-none" onclick="abrirModalCritico()">
             <div class="flex justify-between items-start mb-4">
                 <div>
@@ -75,14 +69,20 @@
             </div>
         </div>
     </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
         
-        <div class="lg:col-span-8 bg-white p-8 border border-neutral-300 rounded-none">
+    <!-- ========================================================== -->
+    <!-- FILA 2: GRÁFICO DE DESEMPEÑO FINANCIERO (ANCHO COMPLETO)   -->
+    <!-- ========================================================== -->
+    <div class="grid grid-cols-1 gap-6 mt-6">
+        
+        <div class="bg-white p-8 border border-neutral-300 rounded-none border-t-4 border-t-neutral-950">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-                <h3 class="font-black text-neutral-950 text-sm uppercase tracking-widest flex items-center">
-                    <i class="fa-solid fa-chart-area mr-3 text-neutral-400"></i> Desempeño Financiero
-                </h3>
+                <div>
+                    <h3 class="font-black text-neutral-950 text-sm uppercase tracking-widest flex items-center">
+                        <i class="fa-solid fa-chart-area mr-3 text-neutral-400"></i> Desempeño Financiero Semanal
+                    </h3>
+                    <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Ingresos de caja vs costos estimados de insumos</p>
+                </div>
                 <select id="rangoTiempo" onchange="cambiarRango(this.value)" class="text-xs font-bold border border-neutral-300 rounded-none px-4 py-2 text-neutral-900 outline-none bg-neutral-50 cursor-pointer focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 uppercase tracking-wider">
                     <option value="7d">Últimos 7 días</option>
                     <option value="30d">Últimos 30 días</option>
@@ -91,33 +91,90 @@
                 </select>
             </div>
             
-            <!-- Contenedor técnico con desbordamiento controlado para proteger el lienzo gráfico -->
             <div class="w-full overflow-x-auto overflow-y-hidden p-0 m-0">
                 <div id="canvasViewport" class="h-80 w-full relative">
                     <canvas id="dashFinanzasChart"></canvas>
                 </div>
             </div>
         </div>
+    </div>
 
-        <div class="lg:col-span-4 space-y-6">
+    <!-- ========================================================== -->
+    <!-- FILA 3: CUADRÍCULA DE SECCIONES TÁCTICAS                   -->
+    <!-- ========================================================== -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
+        
+        <!-- Bloque Izquierdo (7/12): Distribución / Ranking de Ventas -->
+        <div class="lg:col-span-7 bg-white border border-neutral-300 rounded-none flex flex-col h-full border-t-4 border-t-neutral-950">
+            <div class="p-6 bg-white border-b border-neutral-200 flex justify-between items-center shrink-0">
+                <h3 class="font-black text-neutral-950 text-xs uppercase tracking-widest flex items-center gap-2">
+                    <i class="fa-solid fa-ranking-star text-neutral-400"></i> Perfumes más vendidos (Podio)
+                </h3>
+                <!-- Selector de Rendimiento -->
+                <select id="filtroRankingVentas" onchange="renderizarMiniRanking()" class="bg-neutral-50 border border-neutral-300 text-[10px] font-black px-3 py-1.5 outline-none rounded-none text-neutral-950 cursor-pointer uppercase tracking-widest">
+                    <option value="top">Más Vendidas</option>
+                    <option value="bottom">Menos Vendidas</option>
+                </select>
+            </div>
             
-            <div class="bg-white p-8 border border-neutral-300 rounded-none">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="font-black text-neutral-950 text-sm uppercase tracking-widest">Distribución</h3>
-                    
-                    <div class="flex bg-neutral-100 p-1 border border-neutral-200">
-                        <button onclick="switchChart('top')" id="btnChartTop" class="px-4 py-1 text-[10px] font-bold bg-white text-neutral-900 shadow-sm border border-neutral-300 uppercase tracking-widest transition rounded-none">Top</button>
-                        <button onclick="switchChart('cat')" id="btnChartCat" class="px-4 py-1 text-[10px] font-bold text-neutral-500 hover:text-neutral-900 uppercase tracking-widest transition rounded-none">Categorías</button>
-                    </div>
-                </div>
+            <div class="p-6 bg-white flex-1">
+                <ul id="listaMiniRanking" class="divide-y divide-neutral-200 space-y-1">
+                    <!-- JS inyectará el podio aquí -->
+                </ul>
+            </div>
+            
+            <div class="p-6 bg-neutral-50 border-t border-neutral-200">
+                <button onclick="abrirModalRanking()" class="w-full border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white text-neutral-900 font-black text-[10px] uppercase tracking-widest py-4 transition-colors">
+                    <i class="fa-solid fa-list mr-2"></i> Ver Detalles Completos
+                </button>
+            </div>
+        </div>
 
-                <div class="h-64 relative">
-                    <canvas id="dashDistribucionChart"></canvas>
+        <!-- Bloque Derecho (5/12): Despachos, Distribución y Acciones Rápidas -->
+        <div class="lg:col-span-5 flex flex-col gap-6 h-full">
+            
+            <!-- Componente Reinyectado: Métricas de Distribución Antigua -->
+            <div class="bg-white border border-neutral-300 rounded-none flex flex-col h-full border-t-4 border-t-neutral-950 p-6">
+                <div class="flex justify-between items-center border-b border-neutral-200 pb-4 mb-4">
+                    <h3 class="font-black text-neutral-950 text-xs uppercase tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-truck-ramp-box text-neutral-400"></i> Despachos y Distribución
+                    </h3>
+                    <span class="text-[8px] bg-neutral-950 text-white font-mono font-black px-2 py-0.5 tracking-widest uppercase">Métricas</span>
+                </div>
+                
+                <div class="space-y-4 flex-1 flex flex-col justify-center font-sans">
+                    <!-- Despachos Hoy -->
+                    <div class="flex justify-between items-center bg-neutral-50 p-4 border border-neutral-200 hover:border-neutral-950 transition-colors">
+                        <div>
+                            <div class="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Despachos Ejecutados (Hoy)</div>
+                            <div class="text-xs font-bold text-neutral-500 uppercase tracking-wider mt-0.5">Movimientos a mostrador</div>
+                        </div>
+                        <div class="text-2xl font-black text-neutral-950 tracking-tight" id="distHoy">0</div>
+                    </div>
+
+                    <!-- Despachos Semana -->
+                    <div class="flex justify-between items-center bg-neutral-50 p-4 border border-neutral-200 hover:border-neutral-950 transition-colors">
+                        <div>
+                            <div class="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Carga Consolidada (Semana)</div>
+                            <div class="text-xs font-bold text-neutral-500 uppercase tracking-wider mt-0.5">Traslados de lotes</div>
+                        </div>
+                        <div class="text-2xl font-black text-neutral-950 tracking-tight" id="distSemana">0</div>
+                    </div>
+
+                    <!-- Despachos Mes -->
+                    <div class="flex justify-between items-center bg-neutral-50 p-4 border border-neutral-200 hover:border-neutral-950 transition-colors">
+                        <div>
+                            <div class="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Volumen Consolidado (Mes)</div>
+                            <div class="text-xs font-bold text-neutral-500 uppercase tracking-wider mt-0.5">Cierre mensual interno</div>
+                        </div>
+                        <div class="text-2xl font-black text-neutral-950 tracking-tight" id="distMes">0</div>
+                    </div>
                 </div>
             </div>
 
-            <div class="bg-white p-8 border border-neutral-300 rounded-none space-y-3">
-                <h3 class="font-black text-neutral-950 text-sm uppercase tracking-widest mb-4">Acciones Rápidas</h3>
+            <!-- Panel de Accesos Rápidos Modulares -->
+            <div class="bg-white p-6 border border-neutral-300 rounded-none space-y-3">
+                <h3 class="font-black text-neutral-950 text-xs uppercase tracking-widest mb-4 border-b border-neutral-200 pb-3">Enlaces del Sistema</h3>
                 
                 <button onclick="navegarA('facturacion')" class="w-full flex items-center justify-between bg-white text-neutral-900 p-4 font-bold hover:bg-neutral-950 hover:text-white transition-colors group border border-neutral-300 text-[10px] uppercase tracking-widest rounded-none">
                     <div class="flex items-center gap-3"><i class="fa-solid fa-cash-register text-neutral-400 group-hover:text-white transition-colors"></i> Nota de Entrega</div>
@@ -134,45 +191,56 @@
                     <i class="fa-solid fa-arrow-right text-xs"></i>
                 </button>
             </div>
-
         </div>
     </div>
 
+    <!-- ========================================================== -->
+    <!-- FILA 4: TABLA DE ANÁLISIS DE ESTANCAMIENTO (HUESOS)        -->
+    <!-- ========================================================== -->
     <div class="grid grid-cols-1 gap-6 mt-6">
         <div class="bg-white p-8 border-t-4 border-neutral-950 border-l border-r border-b border-neutral-300 rounded-none">
-            <h3 class="font-black text-neutral-950 mb-6 flex items-center text-sm uppercase tracking-widest">
-                <i class="fa-solid fa-box-archive mr-3 text-neutral-400"></i> Análisis de Estancamiento
-                <span class="ml-4 text-[10px] font-bold text-neutral-500 bg-neutral-100 border border-neutral-200 px-3 py-1 uppercase tracking-widest">
-                    Inventario sin rotación
-                </span>
-            </h3>
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
+                <div>
+                    <h3 class="font-black text-neutral-950 flex items-center text-sm uppercase tracking-widest">
+                        <i class="fa-solid fa-box-archive mr-3 text-neutral-400"></i> Análisis de Estancamiento
+                    </h3>
+                    <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Inventario inmovilizado sin rotación comercial</p>
+                </div>
+                <div class="flex gap-4 border border-neutral-300 p-2 bg-neutral-50 font-mono text-[10px] font-black uppercase tracking-widest text-neutral-600">
+                    <span>Costo total en stock: <b id="dashValorTotal" class="text-neutral-950">$0.00</b></span>
+                </div>
+            </div>
             
-            <div class="overflow-x-auto border border-neutral-200">
-                <table class="min-w-full text-sm text-left">
+            <div class="overflow-x-auto border border-neutral-200 bg-neutral-50">
+                <table class="min-w-full text-sm text-left border-collapse">
                     <thead class="text-[10px] text-neutral-950 font-black uppercase tracking-widest bg-neutral-100 border-b border-neutral-300">
                         <tr>
                             <th class="px-6 py-4">Producto</th>
                             <th class="px-6 py-4">Categoría</th>
                             <th class="px-6 py-4 text-center">Stock Estancado</th>
                             <th class="px-6 py-4 text-center">Dinero Dormido</th>
-                            <th class="px-6 py-4 text-right">Estado</th>
+                            <th class="px-6 py-4 " style="text-align: right; padding-right: 24px;">Estado</th>
                         </tr>
                     </thead>
-                    <tbody id="tablaHuesos" class="text-neutral-700 font-medium divide-y divide-neutral-200">
-                        <tr><td colspan="5" class="text-center py-8 text-neutral-500 text-xs uppercase tracking-widest">Procesando datos del inventario...</td></tr>
+                    <tbody id="tablaHuesos" class="text-neutral-700 font-medium divide-y divide-neutral-200 bg-white">
+                        <tr><td colspan="5" class="text-center py-8 text-neutral-400 font-bold text-xs uppercase tracking-widest">Procesando datos del inventario corporativo...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 
+    <!-- ========================================================== -->
+    <!-- ZONA DE MODALES GLOBALES                                   -->
+    <!-- ========================================================== -->
+
+    <!-- Modal 1: Alerta de Stock Crítico -->
     <div id="modalCritico" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             <div class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm transition-opacity" aria-hidden="true" onclick="cerrarModalCritico()"></div>
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
             <div class="inline-block align-bottom bg-white text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full border border-neutral-400 rounded-none">
-                
                 <div class="bg-neutral-950 px-6 py-4 border-b border-neutral-800 flex justify-between items-center">
                     <h3 class="text-sm font-black text-white uppercase tracking-widest flex items-center" id="modal-title">
                         <i class="fa-solid fa-triangle-exclamation mr-3 text-white"></i> Reporte: Déficit de Inventario
@@ -184,7 +252,6 @@
                 
                 <div class="bg-white px-6 pt-6 pb-6 sm:p-8 max-h-[60vh] overflow-y-auto">
                     <p class="text-xs font-bold text-neutral-500 uppercase tracking-widest mb-6">Los siguientes SKUs se encuentran por debajo del umbral mínimo operativo.</p>
-                    
                     <div class="border border-neutral-300">
                         <table class="min-w-full divide-y divide-neutral-300 text-sm">
                             <thead class="bg-neutral-100">
@@ -196,7 +263,7 @@
                                 </tr>
                             </thead>
                             <tbody id="listaCriticos" class="bg-white divide-y divide-neutral-200 font-medium text-neutral-800">
-                                </tbody>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -205,6 +272,44 @@
                     <button type="button" class="bg-neutral-950 hover:bg-neutral-800 text-white font-bold py-3 px-8 text-xs uppercase tracking-widest transition-colors rounded-none" onclick="cerrarModalCritico()">
                         Entendido
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 2: Tabla General de Ranking de Ventas -->
+    <div id="modalRanking" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm transition-opacity" aria-hidden="true" onclick="cerrarModalRanking()"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div class="inline-block align-bottom bg-white text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full border border-neutral-400 rounded-none">
+                
+                <div class="bg-neutral-950 px-6 py-4 border-b border-neutral-800 flex justify-between items-center">
+                    <h3 class="text-sm font-black text-white uppercase tracking-widest flex items-center">
+                        <i class="fa-solid fa-ranking-star mr-3 text-emerald-400"></i> Tabla General de Distribución
+                    </h3>
+                    <button type="button" class="text-neutral-400 hover:text-white transition-colors focus:outline-none" onclick="cerrarModalRanking()">
+                        <i class="fa-solid fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <div class="bg-white px-6 pt-6 pb-6 sm:p-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                    <div class="border border-neutral-300">
+                        <table class="min-w-full divide-y divide-neutral-300 text-sm">
+                            <thead class="bg-neutral-100">
+                                <tr>
+                                    <th class="px-6 py-3 text-center text-[10px] font-black text-neutral-950 uppercase tracking-widest">Rank</th>
+                                    <th class="px-6 py-3 text-left text-[10px] font-black text-neutral-950 uppercase tracking-widest">Esencia / Producto</th>
+                                    <th class="px-6 py-3 text-center text-[10px] font-black text-neutral-950 uppercase tracking-widest">Categoría</th>
+                                    <th class="px-6 py-3 text-center text-[10px] font-black text-neutral-950 uppercase tracking-widest">Volumen (Uds)</th>
+                                    <th class="px-6 py-3 text-right text-[10px] font-black text-neutral-950 uppercase tracking-widest">Generado (USD)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="listaModalRanking" class="bg-white divide-y divide-neutral-200 font-medium text-neutral-800">
+                                <!-- JS Inyecta Aquí -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>

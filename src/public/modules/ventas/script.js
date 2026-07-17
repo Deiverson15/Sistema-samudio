@@ -167,24 +167,43 @@ function renderTabla(lista) {
             metodoIcono = '<i class="fa-solid fa-arrows-split-up-and-left"></i>';
             metodoLabel = 'PAGO MIXTO';
         } 
-        // Si no es mixto, evaluamos el normal
+        // 🎨 CLASIFICACIÓN DE LOS NUEVOS MÉTODOS DE PAGO
         else if(metodoLabel.includes('ZELLE') || metodoLabel.includes('CUENTA VERDE')) {
             metodoClass = 'bg-emerald-100 text-emerald-700 border border-emerald-200';
             metodoIcono = '<i class="fa-solid fa-building-columns"></i>';
-            metodoLabel = 'CUENTA VERDE'; 
-        } else if(metodoLabel.includes('PAGO MÓVIL')) {
+            metodoLabel = 'ZELLE / VERDE'; 
+        } else if(metodoLabel.includes('PAGO MÓVIL') || metodoLabel.includes('MOVIL')) {
             metodoClass = 'bg-blue-100 text-blue-700 border border-blue-200';
             metodoIcono = '<i class="fa-solid fa-mobile-screen"></i>';
         } else if(metodoLabel.includes('PUNTO')) {
             metodoClass = 'bg-yellow-100 text-yellow-700 border border-yellow-200';
             metodoIcono = '<i class="fa-regular fa-credit-card"></i>';
-        } else if(metodoLabel.includes('DIVISA')) {
+        } else if(metodoLabel.includes('EFECTIVO USD') || metodoLabel.includes('DIVISA') || metodoLabel === 'EFECTIVO') {
             metodoClass = 'bg-green-50 text-green-600 border border-green-200';
             metodoIcono = '<i class="fa-solid fa-sack-dollar"></i>';
+            metodoLabel = 'EFECTIVO USD';
+        } else if(metodoLabel.includes('EFECTIVO BS')) {
+            metodoClass = 'bg-indigo-100 text-indigo-700 border border-indigo-200';
+            metodoIcono = '<i class="fa-solid fa-money-bill-wave"></i>';
+        } else if(metodoLabel.includes('CASHEA')) {
+            metodoClass = 'bg-pink-100 text-pink-700 border border-pink-200';
+            metodoIcono = '<i class="fa-solid fa-mobile-button"></i>';
+        } else if(metodoLabel.includes('BINANCE')) {
+            metodoClass = 'bg-amber-100 text-amber-700 border border-amber-200';
+            metodoIcono = '<i class="fa-brands fa-bitcoin"></i>';
+        } else if(metodoLabel.includes('BIOPAGO')) {
+            metodoClass = 'bg-cyan-100 text-cyan-700 border border-cyan-200';
+            metodoIcono = '<i class="fa-solid fa-fingerprint"></i>';
+        } else if(metodoLabel.includes('TRANSF')) {
+            metodoClass = 'bg-teal-100 text-teal-700 border border-teal-200';
+            metodoIcono = '<i class="fa-solid fa-money-bill-transfer"></i>';
+        } else if(metodoLabel.includes('CXC') || metodoLabel.includes('CREDITO')) {
+            metodoClass = 'bg-red-100 text-red-700 border border-red-200';
+            metodoIcono = '<i class="fa-solid fa-hand-holding-dollar"></i>';
         }
 
         const montoBs = (parseFloat(v.total) * (parseFloat(v.tasa_cambio) || 0)).toFixed(2);
-        // Leemos quién es el usuario logueado
+        
         const usuarioLocal = JSON.parse(localStorage.getItem('usuario') || '{}');
         const esDev = usuarioLocal.rol === 'developer' || usuarioLocal.rol === 'dev';
 
@@ -209,6 +228,12 @@ function renderTabla(lista) {
                             class="text-blue-600 hover:text-white hover:bg-blue-600 w-8 h-8 rounded-full transition flex items-center justify-center shadow-sm border border-transparent hover:border-blue-200" 
                             title="Ver Ticket #${v.id}">
                             <i class="fa-solid fa-eye"></i>
+                        </button>
+                        
+                        <button onclick="window.imprimirFacturaOriginalDirecta(${v.id})" 
+                            class="text-neutral-500 hover:text-white hover:bg-neutral-950 w-8 h-8 rounded-full transition flex items-center justify-center shadow-sm border border-transparent hover:border-neutral-400" 
+                            title="Imprimir Factura Original Directa">
+                            <i class="fa-solid fa-print"></i>
                         </button>
                         
                         ${esDev ? `
@@ -543,5 +568,111 @@ window.eliminarVentaPrueba = async (id) => {
         } catch (error) {
             Swal.fire('Error de Protocolo', error.message, 'error');
         }
+    }
+};
+
+// =====================================================================
+// 🔥 PLUS: REIMPRESIÓN DIRECTA DE FACTURA ORIGINAL (SIN ABRIR MODAL)
+// =====================================================================
+window.imprimirFacturaOriginalDirecta = async function(idVenta) {
+    Swal.fire({
+        title: 'Preparando Impresión',
+        text: 'Consultando base de datos y reconstruyendo desglose fiscal...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`/api/ventas/${idVenta}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!res.ok) throw new Error("No se pudo recuperar los datos del ticket.");
+        const data = await res.json();
+        Swal.close();
+
+        const venta = data.venta;
+        const detalles = data.detalles;
+        const tasa = parseFloat(venta.tasa_cambio) || 1;
+
+        // Formateador de moneda estándar venezolano
+        const formatVE = (valor) => new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(valor);
+
+        // 1. Reconstruir las filas del ticket térmico en Bolívares con desglose base
+        let totalGlobalBs = 0;
+        const itemsHTML = detalles.map(d => {
+            const precioFinalBs = parseFloat(d.precio_unitario) * tasa;
+            const subtotalFinalBs = precioFinalBs * parseFloat(d.cantidad);
+            const subtotalBaseBs = subtotalFinalBs / 1.16; // Ingeniería inversa para base imponible
+            
+            totalGlobalBs += subtotalFinalBs;
+            
+            return `
+            <tr>
+                <td width="15%" style="vertical-align: top; padding-right: 5px; text-align: center;">${parseFloat(d.cantidad).toFixed(0)}</td>
+                <td width="55%" style="vertical-align: top; padding-right: 5px;">${d.producto_nombre.toUpperCase()}</td>
+                <td width="30%" class="text-right" style="vertical-align: top;">${formatVE(subtotalBaseBs)}</td>
+            </tr>`;
+        }).join('');
+
+        const baseImponibleBs = totalGlobalBs / 1.16;
+        const ivaBs = totalGlobalBs - baseImponibleBs;
+
+        // 2. Levantar el iframe invisible de impresión de Courier New
+        const ventana = window.open('', 'PRINT', 'height=600,width=400');
+        if (!ventana) {
+            return Swal.fire('Pop-ups Bloqueados', 'Por favor permite las ventanas emergentes en tu navegador para poder imprimir los recibos.', 'warning');
+        }
+
+        ventana.document.write(`
+            <html>
+                <head>
+                    <title>Factura Original #${idVenta}</title>
+                    <style>
+                        body { margin: 0; padding: 4px; font-family: 'Courier New', monospace; font-size: 11px; color: #000; text-transform: uppercase; width: 72mm; }
+                        .text-center { text-align: center; }
+                        .text-right { text-align: right; }
+                        .font-bold { font-weight: bold; }
+                        .divider-solid { border-bottom: 1px solid #000; margin: 6px 0; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+                        td, th { vertical-align: top; padding: 2px 0; font-size: 10px; }
+                        @page { margin: 0; size: auto; }
+                    </style>
+                </head>
+                <body onload="window.print(); window.close();">
+                    <div class="text-center">
+                        <div class="font-bold" style="font-size: 13px;">INVERSIONES BEAST MODE C.A.</div>
+                        <div>RIF: J-50442123-0</div>
+                        <div style="font-size: 9px; line-height: 1.2;">AV. FRANCISCO DE MIRANDA, CHACAO.<br>CARACAS</div>
+                    </div>
+                    <div class="divider-solid"></div>
+                    <div style="display: flex; justify-content: space-between;"><span>FACTURA ORIGINAL</span><span class="font-bold">NRO: ${String(venta.id).padStart(8, '0')}</span></div>
+                    <div style="display: flex; justify-content: space-between;"><span>FECHA: ${new Date(venta.fecha).toLocaleDateString('es-VE')}</span><span>HORA: ${new Date(venta.fecha).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>
+                    <div>CLIENTE: <span class="font-bold">${(venta.cliente_nombre || 'CONSUMIDOR FINAL').toUpperCase()}</span></div>
+                    <div>RIF/CI: ${venta.referencia || '00000000'}</div>
+                    <div class="divider-solid"></div>
+                    <table>
+                        <thead>
+                            <tr><th class="text-center" width="15%">CANT</th><th class="text-left" width="55%">DESCRIPCIÓN</th><th class="text-right" width="30%">TOTAL</th></tr>
+                        </thead>
+                        <tbody>${itemsHTML}</tbody>
+                    </table>
+                    <div class="divider-solid"></div>
+                    <div style="display: flex; justify-content: space-between;"><span>BI G (16%):</span><span>${formatVE(baseImponibleBs)}</span></div>
+                    <div style="display: flex; justify-content: space-between;"><span>IVA G (16%):</span><span>${formatVE(ivaBs)}</span></div>
+                    <div class="divider-solid"></div>
+                    <div style="display: flex; justify-content: space-between; font-size: 13px;" class="font-bold"><span>TOTAL COMPRA:</span><span>Bs ${formatVE(totalGlobalBs)}</span></div>
+                    <div style="display: flex; justify-content: space-between; font-size: 10px; color: #555;"><span>REF EFECTIVO:</span><span>$${parseFloat(venta.total).toFixed(2)}</span></div>
+                    <div class="divider-solid" style="margin-top: 15px;"></div>
+                    <div class="text-center" style="font-size: 9px; font-weight: bold;">*** COPIA FIEL DEL REGISTRO ORIGINAL ***</div>
+                </body>
+            </html>
+        `);
+        ventana.document.close();
+
+    } catch (error) {
+        console.error(error);
+        Swal.fire('Error', 'No se pudo procesar la cola de impresión: ' + error.message, 'error');
     }
 };

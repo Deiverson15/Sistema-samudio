@@ -13,13 +13,15 @@
         </button>
     </div>
 
+    <!-- REJILLA DINÁMICA DE TARJETAS DE SUCURSAL -->
     <div id="gridTiendas" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
         <div class="col-span-full flex flex-col items-center justify-center py-24 text-neutral-400 bg-white border border-neutral-300">
             <i class="fa-solid fa-circle-notch fa-spin text-4xl mb-4 text-neutral-950"></i>
             <p class="text-[10px] font-black uppercase tracking-widest">Sincronizando red de sucursales...</p>
         </div>
-        </div>
+    </div>
 
+    <!-- MODAL DE ACCIONES DE TIENDA -->
     <div id="modalTienda" class="hidden fixed inset-0 bg-neutral-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity">
         <div class="bg-white rounded-none border border-neutral-400 shadow-2xl w-full max-w-lg overflow-hidden transform transition-transform scale-100">
             
@@ -32,61 +34,55 @@
                 </button>
             </div>
 
-            <form id="formTienda" onsubmit="window.guardarTienda(event)" class="p-8 bg-neutral-50">
+            <form id="formTienda" onsubmit="window.guardarTienda(event)" class="p-8 bg-neutral-50 space-y-5">
                 
-                <div class="mb-6">
-                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">
-                        Identificador de Sucursal <span class="text-neutral-950">*</span>
-                    </label>
-                    <div class="relative">
-                        <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-neutral-400">
-                            <i class="fa-solid fa-shop"></i>
-                        </span>
-                        <input type="text" id="nombreTienda" required placeholder="EJ: SUCURSAL SAMBIL" 
-                               class="pl-12 w-full rounded-none border border-neutral-300 p-4 text-xs font-bold uppercase tracking-wider text-neutral-950 focus:bg-white focus:ring-1 focus:ring-neutral-950 focus:border-neutral-950 outline-none transition-colors bg-white placeholder-neutral-400">
+                <div class="grid grid-cols-3 gap-4">
+                    <!-- Identificador de Sucursal -->
+                    <div class="col-span-2">
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Identificador de Sucursal <span class="text-neutral-950">*</span></label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-neutral-400"><i class="fa-solid fa-shop"></i></span>
+                            <input type="text" id="nombreTienda" required placeholder="EJ: SUCURSAL SAMBIL" class="pl-12 w-full rounded-none border border-neutral-300 p-4 text-xs font-bold uppercase tracking-wider text-neutral-950 focus:bg-white focus:ring-1 focus:ring-neutral-950 focus:border-neutral-950 outline-none transition-colors bg-white placeholder-neutral-400">
+                        </div>
+                    </div>
+                    
+                    <!-- 🔥 NUEVO CAMPO: CÓDIGO DE SERIE FISCAL -->
+                    <div>
+                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Serie Caja <span class="text-neutral-950">*</span></label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-neutral-400"><i class="fa-solid fa-barcode"></i></span>
+                            <input type="text" id="serieTienda" required max="5" placeholder="EJ: T1" class="pl-9 w-full rounded-none border border-neutral-300 p-4 text-center text-xs font-black uppercase tracking-wider text-neutral-950 focus:bg-white focus:ring-1 focus:ring-neutral-950 focus:border-neutral-950 outline-none transition-colors bg-white placeholder-neutral-400">
+                        </div>
                     </div>
                 </div>
 
-                <div class="mb-6">
+                <div>
                     <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Dirección Física</label>
                     <div class="relative">
-                        <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-neutral-400">
-                            <i class="fa-solid fa-location-dot"></i>
-                        </span>
-                        <input type="text" id="direccionTienda" placeholder="EJ: NIVEL ACUARIO, LOCAL 45" 
-                               class="pl-12 w-full rounded-none border border-neutral-300 p-4 text-xs font-bold uppercase tracking-wider text-neutral-950 focus:bg-white focus:ring-1 focus:ring-neutral-950 focus:border-neutral-950 outline-none transition-colors bg-white placeholder-neutral-400">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-neutral-400"><i class="fa-solid fa-location-dot"></i></span>
+                        <input type="text" id="direccionTienda" placeholder="EJ: NIVEL ACUARIO, LOCAL 45" class="pl-12 w-full rounded-none border border-neutral-300 p-4 text-xs font-bold uppercase tracking-wider text-neutral-950 focus:bg-white focus:ring-1 focus:ring-neutral-950 focus:border-neutral-950 outline-none transition-colors bg-white placeholder-neutral-400">
                     </div>
                 </div>
 
-                <div class="mb-6">
+                <div>
                     <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Teléfono Operativo</label>
                     <div class="relative">
-                        <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-neutral-400">
-                            <i class="fa-solid fa-phone"></i>
-                        </span>
-                        <input type="text" id="telefonoTienda" placeholder="EJ: 0000-0000000" 
-                               class="pl-12 w-full rounded-none border border-neutral-300 p-4 text-xs font-bold uppercase tracking-wider text-neutral-950 focus:bg-white focus:ring-1 focus:ring-neutral-950 focus:border-neutral-950 outline-none transition-colors bg-white placeholder-neutral-400">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-neutral-400"><i class="fa-solid fa-phone"></i></span>
+                        <input type="text" id="telefonoTienda" placeholder="EJ: 0212-0000000" class="pl-12 w-full rounded-none border border-neutral-300 p-4 text-xs font-bold uppercase tracking-wider text-neutral-950 focus:bg-white focus:ring-1 focus:ring-neutral-950 focus:border-neutral-950 outline-none transition-colors bg-white placeholder-neutral-400">
                     </div>
                 </div>
 
-                <div class="mb-8">
-                    <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-2 border-t border-neutral-300 pt-4">Enlace de Sistema (URL)</label>
-                    <p class="text-[9px] font-bold text-neutral-500 mb-3 uppercase tracking-widest leading-relaxed">
-                        Enlace de enrutamiento web para acceder al inventario perimetral de la tienda.
-                    </p>
+                <div>
+                    <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-2 border-t border-neutral-300 pt-4">Enlace de Sistema de Red (URL)</label>
+                    <p class="text-[9px] font-bold text-neutral-500 mb-3 uppercase tracking-widest leading-relaxed">Enlace de enrutamiento web para acceder al inventario perimetral de la tienda filiada.</p>
                     <div class="relative group">
-                        <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-neutral-950 group-focus-within:text-white transition-colors z-10">
-                            <i class="fa-solid fa-link"></i>
-                        </span>
-                        <input type="text" id="urlTienda" placeholder="EJ: 192.168.1.50:3000" 
-                            class="pl-12 w-full rounded-none border-2 border-neutral-950 p-4 text-xs font-black uppercase tracking-wider text-neutral-950 focus:bg-neutral-950 focus:text-white outline-none transition-colors bg-white placeholder-neutral-400 focus:placeholder-neutral-600">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-neutral-950 group-focus-within:text-white transition-colors z-10"><i class="fa-solid fa-link"></i></span>
+                        <input type="text" id="urlTienda" placeholder="EJ: 10.241.0.5:3010" class="pl-12 w-full rounded-none border-2 border-neutral-950 p-4 text-xs font-black uppercase tracking-wider text-neutral-950 focus:bg-neutral-950 focus:text-white outline-none transition-colors bg-white placeholder-neutral-400 focus:placeholder-neutral-600">
                     </div>
                 </div>
 
                 <div class="flex gap-4 pt-4 border-t border-neutral-300">
-                    <button type="button" onclick="window.cerrarModalTienda()" class="w-1/3 bg-white border border-neutral-300 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-950 py-4 rounded-none font-bold uppercase tracking-widest text-[10px] transition-colors">
-                        Cancelar
-                    </button>
+                    <button type="button" onclick="window.cerrarModalTienda()" class="w-1/3 bg-white border border-neutral-300 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-950 py-4 rounded-none font-bold uppercase tracking-widest text-[10px] transition-colors">Cancelar</button>
                     <button type="submit" class="w-2/3 bg-neutral-950 hover:bg-neutral-800 text-white py-4 rounded-none font-black uppercase tracking-widest text-[10px] transition-colors flex justify-center items-center gap-3">
                         <i class="fa-solid fa-cloud-arrow-up text-neutral-400"></i> Guardar Registro
                     </button>

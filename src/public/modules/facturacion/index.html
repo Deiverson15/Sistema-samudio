@@ -130,156 +130,217 @@
         </div>
     </div>
 
-    <div id="modalCobro" class="fixed inset-0 z-[60] hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4">
-        <div class="bg-white w-full max-w-4xl rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-neutral-400">
-            
-            <div class="bg-neutral-950 p-6 text-white flex justify-between items-center border-b border-neutral-800 shrink-0">
-                <div>
-                    <h3 class="font-black text-sm uppercase tracking-widest flex items-center gap-3">
-                        <i class="fa-solid fa-cash-register text-neutral-400"></i> Terminal de Pago
-                    </h3>
-                    <div class="text-neutral-500 text-[10px] font-bold uppercase tracking-widest mt-2">Monto Requerido: <span class="text-white font-black text-lg tracking-tight ml-2" id="cobroTotalUSD">$0.00</span></div>
+<!-- ======================================================== -->
+<!-- TERMINAL DE PAGO (MODAL DE COBRO COMPLETO)               -->
+<!-- ======================================================== -->
+<div id="modalCobro" class="fixed inset-0 z-[60] hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4">
+    <div class="bg-white w-full max-w-4xl rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-neutral-400">
+        
+        <!-- Encabezado de la Modal -->
+        <div class="bg-neutral-950 p-6 text-white flex justify-between items-center border-b border-neutral-800 shrink-0">
+            <div>
+                <h3 class="font-black text-sm uppercase tracking-widest flex items-center gap-3">
+                    <i class="fa-solid fa-cash-register text-neutral-400"></i> Terminal de Pago
+                </h3>
+                <div class="text-neutral-500 text-[10px] font-bold uppercase tracking-widest mt-2">
+                    Monto Requerido: <span class="text-white font-black text-lg tracking-tight ml-2" id="cobroTotalUSD">$0.00</span>
                 </div>
-                <button onclick="cerrarModalCobro()" class="text-neutral-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-2xl"></i></button>
             </div>
+            <button onclick="cerrarModalCobro()" class="text-neutral-400 hover:text-white transition-colors">
+                <i class="fa-solid fa-xmark text-2xl"></i>
+            </button>
+        </div>
 
-            <div class="flex flex-col md:flex-row flex-1 overflow-hidden">
-                <div class="w-full md:w-1/2 p-8 bg-neutral-50 border-r border-neutral-300 overflow-y-auto custom-scrollbar">
-                    
-                    <div class="mb-6 bg-white text-neutral-950 px-4 py-3 border border-neutral-300 text-[10px] font-black uppercase tracking-widest flex justify-between items-center rounded-none shadow-sm">
-                        <span class="flex items-center gap-3 text-neutral-500">
-                            <i class="fa-solid fa-money-bill-transfer"></i> Tasa BCV:
-                        </span>
-                        <div class="flex items-center gap-3">
-                            <input type="number" id="tasaCobro" class="bg-neutral-100 border border-neutral-300 p-2 text-right font-black w-24 outline-none focus:border-neutral-950 rounded-none transition-colors text-neutral-950" disabled>
-                            <button onclick="toggleEditarTasa()" class="text-neutral-400 hover:text-neutral-950 transition-colors" title="Editar Tasa">
-                                <i class="fa-solid fa-pen-to-square text-lg"></i>
+        <!-- Cuerpo de la Modal (Dos Columnas) -->
+        <div class="flex flex-col md:flex-row flex-1 overflow-hidden">
+            
+            <!-- COLUMNA IZQUIERDA: CONFIGURACIÓN E INGRESOS -->
+            <div class="w-full md:w-1/2 p-8 bg-neutral-50 border-r border-neutral-300 overflow-y-auto custom-scrollbar">
+                
+                <!-- Input Tasa BCV -->
+                <div class="mb-6 bg-white text-neutral-950 px-4 py-3 border border-neutral-300 text-[10px] font-black uppercase tracking-widest flex justify-between items-center rounded-none shadow-sm">
+                    <span class="flex items-center gap-3 text-neutral-500">
+                        <i class="fa-solid fa-money-bill-transfer"></i> Tasa BCV:
+                    </span>
+                    <div class="flex items-center gap-3">
+                        <input type="number" id="tasaCobro" class="bg-neutral-100 border border-neutral-300 p-2 text-right font-black w-24 outline-none focus:border-neutral-950 rounded-none transition-colors text-neutral-950" disabled>
+                        <button onclick="toggleEditarTasa()" class="text-neutral-400 hover:text-neutral-950 transition-colors" title="Editar Tasa">
+                            <i class="fa-solid fa-pen-to-square text-lg"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Input Vendedor -->
+                <div class="mb-6">
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Atendido Por</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-user-tag absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400"></i>
+                        <input type="text" id="inputVendedorCobro" class="w-full pl-12 pr-4 py-4 bg-white border border-neutral-300 rounded-none text-xs font-bold uppercase tracking-wider text-neutral-950 outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 transition-colors placeholder-neutral-400" placeholder="NOMBRE DEL VENDEDOR..." autocomplete="off">
+                    </div>
+                </div>
+                
+                <!-- Encabezado de Métodos -->
+                <div class="flex justify-between items-center mb-4 mt-8">
+                    <h4 class="font-black text-neutral-950 text-[10px] uppercase tracking-widest">Método de Ingreso</h4>
+                    <button onclick="limpiarPagos()" class="text-[10px] text-neutral-500 hover:text-neutral-950 font-black uppercase tracking-widest flex items-center gap-2 px-3 py-2 border border-transparent hover:border-neutral-300 bg-white transition-colors rounded-none">
+                        <i class="fa-solid fa-eraser"></i> Reiniciar
+                    </button>
+                </div>
+
+                <!-- Tipo de Documento (Radio Buttons) -->
+                <div class="mb-6">
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="cursor-pointer border border-neutral-300 bg-white rounded-none p-4 flex items-center gap-3 hover:bg-neutral-100 transition-colors relative">
+                            <input type="radio" name="tipoDocumento" id="radioNota" value="NOTA" class="accent-neutral-950 w-4 h-4" checked>
+                            <div>
+                                <div class="font-black text-[10px] uppercase tracking-widest text-neutral-950">Nota de Entrega</div>
+                                <div class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-1">Uso Interno</div>
+                            </div>
+                        </label>
+
+                        <label class="cursor-pointer border border-neutral-300 bg-white rounded-none p-4 flex items-center gap-3 hover:bg-neutral-100 transition-colors relative">
+                            <input type="radio" name="tipoDocumento" id="radioFactura" value="FACTURA" class="accent-neutral-950 w-4 h-4">
+                            <div>
+                                <div class="font-black text-[10px] uppercase tracking-widest text-neutral-950">Factura / Ticket</div>
+                                <div class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-1">Para Cliente</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Botones de Cambio de Moneda Base -->
+                <div class="flex gap-4 mb-6">
+                    <button onclick="setMoneda('USD')" id="btnUSD" class="flex-1 py-4 border border-neutral-950 bg-neutral-950 text-white font-black text-[10px] uppercase tracking-widest transition-colors rounded-none">Dólares ($)</button>
+                    <button onclick="setMoneda('BS')" id="btnBS" class="flex-1 py-4 border border-neutral-300 bg-white text-neutral-500 hover:text-neutral-950 hover:bg-neutral-100 font-bold text-[10px] uppercase tracking-widest transition-colors rounded-none">Bolívares (Bs)</button>
+                </div>
+
+                <!-- Monto a Registrar -->
+                <div class="mb-6">
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Monto a Registrar</label>
+                    <div class="relative">
+                        <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400 font-black text-xl" id="simboloMoneda">$</span>
+                        <input type="number" id="montoPago" oninput="actualizarEquivalencia()" class="w-full pl-12 pr-4 py-4 border border-neutral-300 bg-white text-2xl font-black tracking-tight text-neutral-950 outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 rounded-none transition-colors" placeholder="0.00" step="0.01">
+                    </div>
+                    <div class="text-right text-[10px] font-bold text-neutral-400 mt-2 uppercase tracking-widest" id="equiPago">≈ Bs 0.00</div>
+                </div>
+
+                <!-- Referencia de Operación -->
+                <div class="mb-6">
+                     <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Referencia de Operación</label>
+                     <input type="text" id="refPago" class="w-full p-4 border border-neutral-300 bg-white text-xs font-bold uppercase tracking-wider focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none rounded-none transition-colors placeholder-neutral-400" placeholder="REF PARA PAGO MÓVIL/ZELLE">
+                </div>
+
+                <!-- Grid Agrupado de Botones de Pago Reales -->
+                <div class="space-y-4 mb-4">
+                    <!-- Grupo Divisas -->
+                    <div>
+                        <span class="block text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-2">Formas de Pago USD</span>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="agregarPago('Efectivo USD')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-dollar-sign text-emerald-600"></i> Efec. USD
+                            </button>
+                            <button onclick="agregarPago('Zelle')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-bolt text-purple-600"></i> Zelle
+                            </button>
+                            <button onclick="agregarPago('Binance')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-coins text-amber-500"></i> Binance
                             </button>
                         </div>
                     </div>
 
-                    <div class="mb-6">
-                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Atendido Por</label>
-                        <div class="relative">
-                            <i class="fa-solid fa-user-tag absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400"></i>
-                            <input type="text" id="inputVendedorCobro" class="w-full pl-12 pr-4 py-4 bg-white border border-neutral-300 rounded-none text-xs font-bold uppercase tracking-wider text-neutral-950 outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 transition-colors placeholder-neutral-400" placeholder="NOMBRE DEL VENDEDOR..." autocomplete="off">
+                    <!-- Grupo Bolívares -->
+                    <div>
+                        <span class="block text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-2">Formas de Pago Bolívares</span>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                            <button onclick="agregarPago('Efectivo Bs')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-money-bill-wave text-blue-600"></i> Efec. Bs
+                            </button>
+                            <button onclick="agregarPago('P. Movil')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-mobile-screen text-indigo-600"></i> P. Móvil
+                            </button>
+                            <button onclick="agregarPago('Punto')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-credit-card text-slate-600"></i> Punto
+                            </button>
+                            <button onclick="agregarPago('Transferencia')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-building-columns text-teal-600"></i> Transf. Bs
+                            </button>
+                            <button onclick="agregarPago('Bio Pago')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2 col-span-2 sm:col-span-2 md:col-span-2 lg:col-span-2">
+                                <i class="fa-solid fa-fingerprint text-red-600"></i> Bio Pago
+                            </button>
                         </div>
-                    </div>
-                    
-                    <div class="flex justify-between items-center mb-4 mt-8">
-                        <h4 class="font-black text-neutral-950 text-[10px] uppercase tracking-widest">Método de Ingreso</h4>
-                        <button onclick="limpiarPagos()" class="text-[10px] text-neutral-500 hover:text-neutral-950 font-black uppercase tracking-widest flex items-center gap-2 px-3 py-2 border border-transparent hover:border-neutral-300 bg-white transition-colors rounded-none">
-                            <i class="fa-solid fa-eraser"></i> Reiniciar
-                        </button>
-                    </div>
-
-                    <div class="mb-6">
-                        <div class="grid grid-cols-2 gap-4">
-                            <label class="cursor-pointer border border-neutral-300 bg-white rounded-none p-4 flex items-center gap-3 hover:bg-neutral-100 transition-colors relative">
-                                <input type="radio" name="tipoDocumento" id="radioNota" value="NOTA" class="accent-neutral-950 w-4 h-4" checked>
-                                <div>
-                                    <div class="font-black text-[10px] uppercase tracking-widest text-neutral-950">Nota de Entrega</div>
-                                    <div class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-1">Uso Interno</div>
-                                </div>
-                            </label>
-
-                            <label class="cursor-pointer border border-neutral-300 bg-white rounded-none p-4 flex items-center gap-3 hover:bg-neutral-100 transition-colors relative">
-                                <input type="radio" name="tipoDocumento" id="radioFactura" value="FACTURA" class="accent-neutral-950 w-4 h-4">
-                                <div>
-                                    <div class="font-black text-[10px] uppercase tracking-widest text-neutral-950">Factura / Ticket</div>
-                                    <div class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-1">Para Cliente</div>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="flex gap-4 mb-6">
-                        <button onclick="setMoneda('USD')" id="btnUSD" class="flex-1 py-4 border border-neutral-950 bg-neutral-950 text-white font-black text-[10px] uppercase tracking-widest transition-colors rounded-none">Dólares ($)</button>
-                        <button onclick="setMoneda('BS')" id="btnBS" class="flex-1 py-4 border border-neutral-300 bg-white text-neutral-500 hover:text-neutral-950 hover:bg-neutral-100 font-bold text-[10px] uppercase tracking-widest transition-colors rounded-none">Bolívares (Bs)</button>
-                    </div>
-
-                    <div class="mb-6">
-                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Monto a Registrar</label>
-                        <div class="relative">
-                            <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400 font-black text-xl" id="simboloMoneda">$</span>
-                            <input type="number" id="montoPago" oninput="actualizarEquivalencia()" class="w-full pl-12 pr-4 py-4 border border-neutral-300 bg-white text-2xl font-black tracking-tight text-neutral-950 outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 rounded-none transition-colors" placeholder="0.00" step="0.01">
-                        </div>
-                        <div class="text-right text-[10px] font-bold text-neutral-400 mt-2 uppercase tracking-widest" id="equiPago">≈ Bs 0.00</div>
-                    </div>
-
-                    <div class="mb-8">
-                         <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Referencia de Operación</label>
-                         <input type="text" id="refPago" class="w-full p-4 border border-neutral-300 bg-white text-xs font-bold uppercase tracking-wider focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 outline-none rounded-none transition-colors placeholder-neutral-400" placeholder="REF PARA PAGO MÓVIL/ZELLE">
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4 mb-4">
-                        <button onclick="agregarPago('Efectivo')" class="p-4 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2"><i class="fa-solid fa-money-bill"></i> Efectivo</button>
-                        <button onclick="agregarPago('Zelle')" class="p-4 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2"><i class="fa-brands fa-usps"></i> Zelle</button>
-                        <button onclick="agregarPago('Pago Móvil')" class="p-4 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2"><i class="fa-solid fa-mobile-screen"></i> P. Móvil</button>
-                        <button onclick="agregarPago('Punto Venta')" class="p-4 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2"><i class="fa-solid fa-credit-card"></i> Punto</button>
                     </div>
                 </div>
+            </div>
 
-                <div class="w-full md:w-1/2 p-8 flex flex-col bg-white overflow-y-auto custom-scrollbar">
-                    <h4 class="font-black text-neutral-950 mb-6 text-[10px] uppercase tracking-widest border-b border-neutral-300 pb-2">Registro de Pagos</h4>
+            <!-- COLUMNA DERECHA: RESUMEN DE COMPRA Y ASIENTOS -->
+            <div class="w-full md:w-1/2 p-8 flex flex-col bg-white overflow-y-auto custom-scrollbar">
+                <h4 class="font-black text-neutral-950 mb-6 text-[10px] uppercase tracking-widest border-b border-neutral-300 pb-2">Registro de Pagos</h4>
+                
+                <!-- Lista Dinámica de Pagos Agregados -->
+                <div id="listaPagos" class="flex-1 overflow-y-auto space-y-3 mb-6 pr-1 custom-scrollbar">
+                    <div class="text-center text-neutral-400 font-bold text-[10px] uppercase tracking-widest py-10">Esperando ingresos...</div>
+                </div>
+
+                <!-- Bloque de Totales de la Operación -->
+                <div class="border-t-4 border-neutral-950 pt-6 space-y-3 text-xs bg-white rounded-none">
+    
+                    <div class="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-neutral-500">
+                        <span>Base Imponible:</span>
+                        <span id="resumenBase">$0.00</span>
+                    </div>
                     
-                    <div id="listaPagos" class="flex-1 overflow-y-auto space-y-3 mb-6 pr-1 custom-scrollbar">
-                        <div class="text-center text-neutral-400 font-bold text-[10px] uppercase tracking-widest py-10">Esperando ingresos...</div>
+                    <div class="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-neutral-500 border-b border-neutral-200 pb-3 mb-3">
+                        <span>IVA (16%):</span>
+                        <span id="resumenIVA">$0.00</span>
                     </div>
 
-                    <div class="border-t-4 border-neutral-950 pt-6 space-y-3 text-xs bg-white rounded-none">
-        
-                        <div class="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-neutral-500">
-                            <span>Base Imponible:</span>
-                            <span id="resumenBase">$0.00</span>
+                    <div class="flex justify-between items-center">
+                        <span class="text-neutral-500 font-black text-[10px] uppercase tracking-widest">Subtotal:</span>
+                        <div class="text-right">
+                            <div class="font-black text-neutral-950" id="resumenSubtotal">$0.00</div>
                         </div>
-                        <div class="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-neutral-500 border-b border-neutral-200 pb-3 mb-3">
-                            <span>IVA (16%):</span>
-                            <span id="resumenIVA">$0.00</span>
-                        </div>
+                    </div>
 
+                    <div class="flex justify-between items-center text-neutral-500 mt-2" id="rowIGTF">
+                        <span class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
+                            <i class="fa-solid fa-coins text-neutral-400"></i> I.G.T.F (3%):
+                        </span>
+                        <div class="font-mono font-bold text-neutral-950" id="resumenIGTF">$0.00</div>
+                    </div>
+
+                    <div class="flex justify-between items-center border-t border-neutral-300 pt-4 mt-4">
+                        <span class="text-neutral-950 font-black text-sm uppercase tracking-widest">Total a Pagar:</span>
+                        <div class="text-right">
+                            <div class="font-black text-neutral-950 text-2xl tracking-tight" id="resumenTotalDefinitivo">$0.00</div>
+                            <div class="text-[10px] text-neutral-500 font-mono mt-1" id="resumenTotalDefinitivoBs">Bs 0.00</div>
+                        </div>
+                    </div>
+
+                    <!-- Bloque de Balance / Diferencia -->
+                    <div class="mt-4 pt-4 border-t border-dashed border-neutral-400">
                         <div class="flex justify-between items-center">
-                            <span class="text-neutral-500 font-black text-[10px] uppercase tracking-widest">Subtotal:</span>
+                            <span class="text-neutral-400 font-black text-[10px] uppercase tracking-widest">Ingresado:</span>
+                            <span class="font-black text-neutral-950" id="resumenAbonado">$0.00</span>
+                        </div>
+                        
+                        <div class="flex justify-between items-center mt-3 bg-neutral-100 p-4 border border-neutral-300 rounded-none">
+                            <span id="labelRestante" class="text-neutral-500 font-black text-[10px] uppercase tracking-widest">Diferencia:</span>
                             <div class="text-right">
-                                <div class="font-black text-neutral-950" id="resumenSubtotal">$0.00</div>
-                            </div>
-                        </div>
-
-                        <div class="flex justify-between items-center text-neutral-500 mt-2" id="rowIGTF">
-                            <span class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest"><i class="fa-solid fa-coins text-neutral-400"></i> I.G.T.F (3%):</span>
-                            <div class="text-right font-mono font-bold text-neutral-950" id="resumenIGTF">$0.00</div>
-                        </div>
-
-                        <div class="flex justify-between items-center border-t border-neutral-300 pt-4 mt-4">
-                            <span class="text-neutral-950 font-black text-sm uppercase tracking-widest">Total a Pagar:</span>
-                            <div class="text-right">
-                                <div class="font-black text-neutral-950 text-2xl tracking-tight" id="resumenTotalDefinitivo">$0.00</div>
-                                <div class="text-[10px] text-neutral-500 font-mono mt-1" id="resumenTotalDefinitivoBs">Bs 0.00</div>
-                            </div>
-                        </div>
-
-                        <div class="mt-4 pt-4 border-t border-dashed border-neutral-400">
-                            <div class="flex justify-between items-center">
-                                <span class="text-neutral-400 font-black text-[10px] uppercase tracking-widest">Ingresado:</span>
-                                <span class="font-black text-neutral-950" id="resumenAbonado">$0.00</span>
-                            </div>
-                            
-                            <div class="flex justify-between items-center mt-3 bg-neutral-100 p-4 border border-neutral-300 rounded-none">
-                                <span id="labelRestante" class="text-neutral-500 font-black text-[10px] uppercase tracking-widest">Diferencia:</span>
-                                <div class="text-right">
-                                    <div id="resumenRestante" class="text-neutral-950 font-black text-xl tracking-tight">$0.00</div>
-                                    <div id="resumenRestanteBs" class="text-neutral-500 font-bold text-[10px] font-mono mt-1">Bs 0.00</div>
-                                </div>
+                                <div id="resumenRestante" class="text-neutral-950 font-black text-xl tracking-tight">$0.00</div>
+                                <div id="resumenRestanteBs" class="text-neutral-500 font-bold text-[10px] font-mono mt-1">Bs 0.00</div>
                             </div>
                         </div>
                     </div>
-                    <button id="btnFinalizarVenta" onclick="finalizarVentaBackend()" class="w-full mt-6 bg-neutral-300 text-neutral-500 font-black py-5 rounded-none shadow-none cursor-not-allowed transition-colors uppercase tracking-widest text-[10px]" disabled>
-                        <i class="fa-solid fa-check-circle mr-3"></i> Confirmar Operación
-                    </button>
                 </div>
+                
+                <!-- Botón de Envío / Confirmación -->
+                <button id="btnFinalizarVenta" onclick="finalizarVentaBackend()" class="w-full mt-6 bg-neutral-300 text-neutral-500 font-black py-5 rounded-none shadow-none cursor-not-allowed transition-colors uppercase tracking-widest text-[10px]" disabled>
+                    <i class="fa-solid fa-check-circle mr-3"></i> Confirmar Operación
+                </button>
             </div>
         </div>
     </div>
+</div>
 
     <div id="modalSeleccionFormula" class="fixed inset-0 z-[70] hidden flex items-center justify-center bg-neutral-950/80 backdrop-blur-sm p-4 animate-fade-in">
         <div class="bg-white w-full max-w-lg rounded-none shadow-2xl overflow-hidden transform transition-all scale-100 border border-neutral-400 flex flex-col max-h-[85vh]">

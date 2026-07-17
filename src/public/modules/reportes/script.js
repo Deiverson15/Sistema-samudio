@@ -18,9 +18,12 @@ export function init() {
 
     window.ejecutarCalculoSemanal = ejecutarCalculoSemanal;
     window.descargarExcelSemanal = descargarExcelSemanal;
+    window.descargarCierreDeHoyExcel = descargarCierreDeHoyExcel;
 
     
-
+    window.abrirModalFiltroTiendas = abrirModalFiltroTiendas;
+    window.cerrarModalFiltroTiendas = cerrarModalFiltroTiendas;
+    window.ejecutarDescargaTiendas = ejecutarDescargaTiendas;
 
     // Cargar el historial lateral al entrar
     cargarHistorial();
@@ -30,90 +33,158 @@ export function init() {
 }
 
 
-// Hacemos las funciones globales para que el HTML pueda verlas
-window.abrirModalReporte = function(element) {
+window.abrirModalReporte = async function(element) {
     const tipo = element.getAttribute('data-tipo');
-    window.currentReport = tipo; // Guardamos el estado globalmente
-    document.getElementById('modalTitle').innerText = `Reporte: ${tipo.toUpperCase()}`;
+    window.currentReport = tipo;
+    const container = document.getElementById('dynamicFiltersContainer');
+    
+    document.getElementById('modalTitle').innerText = `Configurar: ${tipo.toUpperCase()}`;
     document.getElementById('reportModal').classList.remove('hidden');
+    container.innerHTML = '<div class="text-xs font-bold text-neutral-500 py-4"><i class="fa-solid fa-spinner fa-spin"></i> Cargando opciones...</div>';
+    
+    // Consultar tiendas en vivo para el SuperAdmin
+    let opcionesTiendas = '<option value="todas">Todas las Sucursales (Solo Rol Dev)</option>';
+    try {
+        const token = localStorage.getItem('token');
+        const resT = await fetch('/api/ventas/lista-tiendas', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (resT.ok) {
+            const tiendas = await resT.json();
+            tiendas.forEach(t => opcionesTiendas += `<option value="${t.id}">${t.nombre}</option>`);
+        }
+    } catch(e) { console.warn("Error cargando tiendas", e); }
+
+    // Construir estructura base de filtros (El de tienda siempre sale)
+    let htmlFiltros = `
+        <div class="bg-neutral-50 p-3 border border-neutral-200 border-l-2 border-l-neutral-900">
+            <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Sucursal a Auditar</label>
+            <select id="filterTienda" class="w-full p-2 border border-neutral-300 font-bold text-xs outline-none bg-white text-neutral-800">
+                ${opcionesTiendas}
+            </select>
+        </div>
+    `;
+
+    // Filtros específicos según la tarjeta que tocó el usuario
+    if (tipo === 'kardex') {
+        htmlFiltros += `
+            <div>
+                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtro: Producto / Referencia</label>
+                <input type="text" id="filterProducto" placeholder="Ej: E176" class="w-full p-3 border border-neutral-300 font-bold text-xs uppercase outline-none focus:border-neutral-900">
+            </div>`;
+    } 
+    else if (tipo === 'inventario') {
+        htmlFiltros += `
+            <div>
+                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtro: Categoría</label>
+                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900">
+                    <option value="todos">Catálogo Completo</option>
+                    <option value="Esencias">Solo Esencias</option>
+                    <option value="Alcohol">Solo Alcohol</option>
+                    <option value="Fijador">Solo Fijador</option>
+                    <option value="Envases">Solo Frascos / Envases</option>
+                </select>
+            </div>`;
+    } 
+    else if (tipo === 'cierres') {
+        htmlFiltros += `
+            <div>
+                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtro: Método de Pago (Histórico)</label>
+                <select id="filterMetodo" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900">
+                    <option value="todos">Consolidado Total (Todos)</option>
+                    <option value="EFECTIVO USD">Solo Efectivo USD</option>
+                    <option value="ZELLE">Solo Zelle</option>
+                    <option value="PUNTO DE VENTA">Solo Punto de Venta</option>
+                    <option value="PAGO MOVIL">Solo Pago Móvil</option>
+                </select>
+            </div>`;
+    }
+
+    // El filtro de cajero sirve para facturación y reportes de desempeño
+    if (['cierres', 'referencias', 'rentabilidad'].includes(tipo)) {
+        htmlFiltros += `
+            <div>
+                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtro: Vendedor / Cajero (Opcional)</label>
+                <input type="text" id="filterVendedor" placeholder="Dejar vacío para ver todos" class="w-full p-3 border border-neutral-300 font-bold text-xs uppercase outline-none focus:border-neutral-900">
+            </div>`;
+    }
+
+    container.innerHTML = htmlFiltros;
 };
+
 
 window.closeModal = function() {
     document.getElementById('reportModal').classList.add('hidden');
 };
-
 window.ejecutarDescarga = async function() {
     const start = document.getElementById('inputStart').value;
     const end = document.getElementById('inputEnd').value;
-    const tipo = window.currentReport;
+    const tipo = window.currentReport; 
 
     if (!start || !end) {
-        return Swal.fire({ icon: 'warning', text: 'Selecciona rango de fechas' });
+        return Swal.fire({ icon: 'warning', text: 'Debes seleccionar la fecha de inicio y fin.' });
     }
 
-    const token = localStorage.getItem('token');
-    Swal.fire({ title: 'Generando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    // Capturamos los valores de los filtros (con el operador ? por si no existen en pantalla)
+    const tiendaId = document.getElementById('filterTienda')?.value || 'todas';
+    const categoria = document.getElementById('filterCategoria')?.value || 'todos';
+    const producto = document.getElementById('filterProducto')?.value || '';
+    const metodoPago = document.getElementById('filterMetodo')?.value || 'todos';
+    const vendedor = document.getElementById('filterVendedor')?.value || '';
 
-    try {
-        const url = `/api/ventas/exportar/excel?filtro=${tipo}&start=${start}&end=${end}`;
-        const response = await fetch(url, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) throw new Error('Error al generar reporte');
-
-        const blob = await response.blob();
-        Swal.close();
-        
-        const link = document.createElement('a');
-        link.href = window.URL.createObjectURL(blob);
-        link.download = `Reporte_${tipo}.xlsx`;
-        link.click();
-    } catch (e) {
-        Swal.fire({ icon: 'error', text: e.message });
+    // Enrutador base
+    let url = '';
+    if (tipo === 'inventario') {
+        url = `/api/productos/reportes/excel?filtro=inventario&start=${start}&end=${end}`;
+    } else if (tipo === 'kardex') {
+        url = `/api/productos/reporte-kardex?inicio=${start}&fin=${end}`;
+    } else {
+        url = `/api/ventas/exportar/excel?filtro=${tipo}&start=${start}&end=${end}`;
     }
+
+    // 🚀 INYECCIÓN DE PARÁMETROS EN LA URL
+    if (tiendaId !== 'todas') url += `&tienda=${tiendaId}`;
+    if (categoria !== 'todos') url += `&categoria=${encodeURIComponent(categoria)}`;
+    if (producto.trim() !== '') url += `&producto=${encodeURIComponent(producto)}`;
+    if (metodoPago !== 'todos') url += `&metodo=${encodeURIComponent(metodoPago)}`;
+    if (vendedor.trim() !== '') url += `&vendedor=${encodeURIComponent(vendedor)}`;
+
+    await window.descargarExcel(tipo, url);
+    closeModal();
 };
 
-
-async function descargarExcel(tipoReporte) {
+window.descargarExcel = async function(tipoReporte, url) {
     const token = localStorage.getItem('token');
-    
-    // Mapeamos 'maestro' a 'inventario' si es necesario, o lo dejamos pasar
-    // Tu backend maneja: ventas, estante, lotes, bajo_stock, maestro/inventario
-    const filtro = tipoReporte;
-
-    const url = `/api/ventas/exportar/excel?filtro=${filtro}`;
     
     try {
         Swal.fire({
             title: 'Generando Reporte...',
-            text: 'Por favor espere mientras preparamos su archivo Excel.',
             allowOutsideClick: false,
             didOpen: () => Swal.showLoading()
         });
         
+        // Ejecutamos la descarga usando la URL completa
         const res = await fetch(url, { 
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
-        if (!res.ok) throw new Error("Error en la respuesta del servidor");
+        // Verificamos si el servidor devolvió un error (500, 400, etc.)
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({error: 'Error desconocido al generar el archivo'}));
+            throw new Error(err.error);
+        }
         
+        // Procesamos y descargamos el Excel
         const blob = await res.blob();
         const link = document.createElement('a');
         link.href = window.URL.createObjectURL(blob);
-        // Nombre dinámico del archivo
-        const fecha = new Date().toISOString().slice(0,10);
-        link.download = `Reporte_${filtro.toUpperCase()}_${fecha}.xlsx`;
+        
+        // Nombre de descarga genérico según el reporte
+        link.download = `Reporte_${tipoReporte.toUpperCase()}.xlsx`;
         link.click();
         
         Swal.close();
-        
-        const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
-        Toast.fire({ icon: 'success', title: 'Reporte descargado correctamente' });
-
     } catch (e) {
-        console.error(e);
-        Swal.fire('Error', 'No se pudo generar el reporte. Intente nuevamente.', 'error');
+        console.error("Error en la descarga:", e);
+        Swal.fire('Error', e.message, 'error');
     }
 }
 
@@ -678,5 +749,100 @@ async function descargarExcelSemanal() {
     } catch (e) {
         console.error(e);
         Swal.fire('Error', 'No se pudo generar el archivo Excel de la semana.', 'error');
+    }
+}
+
+window.abrirModalFiltroTiendas = async function() {
+    document.getElementById('modalFiltroTiendas').classList.remove('hidden');
+    const container = document.getElementById('listaTiendasFiltro');
+    container.innerHTML = '<div class="text-xs text-neutral-400 font-bold text-center py-4">Cargando tiendas...</div>';
+    
+    try {
+        const token = localStorage.getItem('token'); // Recuperamos tu token de sesión
+        
+        // Usamos una ruta específica para ventas/tiendas
+        const res = await fetch('/api/ventas/lista-tiendas', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        }); 
+        
+        if (!res.ok) throw new Error('Error al conectar con el servidor');
+        
+        const tiendas = await res.json();
+        
+        if(tiendas.length === 0) {
+            container.innerHTML = '<div class="text-xs text-amber-500 font-bold text-center py-4">No hay tiendas registradas.</div>';
+            return;
+        }
+
+        container.innerHTML = tiendas.map(t => `
+            <label class="flex items-center gap-3 cursor-pointer p-2 hover:bg-neutral-100 transition-colors border border-transparent hover:border-neutral-200">
+                <input type="checkbox" class="tienda-checkbox accent-neutral-950 w-4 h-4" value="${t.id}" checked>
+                <span class="text-xs font-bold uppercase tracking-wider text-neutral-700">${t.nombre}</span>
+            </label>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando tiendas:', error);
+        container.innerHTML = `<div class="text-red-500 text-xs font-bold text-center py-4 border border-red-100 bg-red-50">Error al cargar tiendas.</div>`;
+    }
+}
+
+function cerrarModalFiltroTiendas() {
+    document.getElementById('modalFiltroTiendas').classList.add('hidden');
+}
+
+// Recolectar datos y descargar de forma segura con Token
+window.ejecutarDescargaTiendas = function() {
+    const inicio = document.getElementById('filtroInicioTiendas').value;
+    const fin = document.getElementById('filtroFinTiendas').value;
+    
+    // Obtener los IDs de las tiendas marcadas
+    const checkboxes = document.querySelectorAll('.tienda-checkbox:checked');
+    const tiendasIds = Array.from(checkboxes).map(cb => cb.value).join(',');
+    
+    if (!inicio || !fin) return Swal.fire({ icon: 'warning', text: 'Por favor, selecciona el rango de fechas.' });
+    if (!tiendasIds) return Swal.fire({ icon: 'warning', text: 'Debes seleccionar al menos una tienda.' });
+
+    // Construir la URL con el filtro de tiendas
+    const url = `/api/ventas/exportar/excel?filtro=tiendas&start=${inicio}&end=${fin}&tiendas=${tiendasIds}`;
+    
+    // 🔥 EL CAMBIO ESTÁ AQUÍ: Usamos la función nativa que inyecta el Token
+    window.descargarExcel('consolidadotiendas', url);
+    
+    // Cerramos el modal
+    cerrarModalFiltroTiendas();
+}
+
+// Descarga directa del Cierre de Hoy sin archivar (A nivel de Frontend)
+window.descargarCierreDeHoyExcel = async function() {
+    const token = localStorage.getItem('token');
+    // Le pasamos el token por la URL para que la descarga directa del navegador lo autorice
+    const url = `/api/ventas/cierre/previsualizar/excel?token=${token}`; 
+    
+    try {
+        Swal.fire({
+            title: 'Preparando Cierre del Día...',
+            text: 'Mapeando las formas de pago procesadas hasta el momento.',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        // Hacemos el fetch de la nueva ruta del backend
+        const res = await fetch('/api/ventas/cierre/previsualizar/excel', { 
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!res.ok) throw new Error("No se pudo generar el reporte de hoy. ¿Hay ventas?");
+
+        // Convertimos la respuesta en un archivo binario descargable
+        const blob = await res.blob();
+        const link = document.createElement('a');
+        link.href = window.URL.createObjectURL(blob);
+        link.download = `Cierre_Caja_Previo_Hoy_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        link.click();
+
+        Swal.close();
+    } catch (error) {
+        console.error(error);
+        Swal.fire('Error', error.message, 'error');
     }
 }

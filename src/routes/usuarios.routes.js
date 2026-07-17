@@ -10,6 +10,8 @@ const {
     actualizarUsuario
 } = require('../controllers/usuarios.controller');
 
+const productosController = require('../controllers/productos.controller');
+
 // GET /api/usuarios (Lista de usuarios)
 router.get('/', verifyAdmin, getUsuarios); 
 
@@ -27,5 +29,7 @@ router.delete('/:id', verifyAdmin, eliminarUsuario);
 
 // PUT /api/usuarios/:id (Editar información general del usuario)
 router.put('/:id', verifyAdmin, actualizarUsuario);
+
+
 
 module.exports = router;

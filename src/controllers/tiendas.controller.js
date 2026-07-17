@@ -12,47 +12,59 @@ const getTiendas = async (req, res) => {
 
 // Crear nueva tienda
 const crearTienda = async (req, res) => {
-    // AGREGADO: Extraer el campo url
-    const { nombre, direccion, telefono, es_principal, url } = req.body;
+    // 🔥 ADICIÓN: Capturamos 'codigo_serie' desde el cuerpo de la petición
+    const { nombre, direccion, telefono, es_principal, url, codigo_serie } = req.body;
+
+    if (!nombre || !codigo_serie) {
+        return res.status(400).json({ error: 'El identificador y el código de serie son obligatorios.' });
+    }
 
     try {
         if (es_principal) {
             await pool.query('UPDATE tiendas SET es_principal = false');
         }
 
+        // Inyección limpia en la tabla de PostgreSQL incluyendo el código de serie forzado a mayúsculas
         const response = await pool.query(
-            `INSERT INTO tiendas (nombre, direccion, telefono, es_principal, url) 
-             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-            [nombre, direccion, telefono, es_principal || false, url]
+            `INSERT INTO tiendas (nombre, direccion, telefono, es_principal, url, codigo_serie) 
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [nombre, direccion, telefono, es_principal || false, url, codigo_serie.toUpperCase().trim()]
         );
 
-        res.json({ mensaje: 'Tienda creada exitosamente', tienda: response.rows[0] });
+        res.json({ mensaje: 'Sucursal registrada exitosamente en el núcleo central.', tienda: response.rows[0] });
     } catch (error) {
         if (error.code === '23505') {
-            return res.status(400).json({ error: 'Ya existe una tienda con ese nombre.' });
+            return res.status(400).json({ error: 'Ya existe una sucursal registrada con ese nombre o código de serie.' });
         }
         res.status(500).json({ error: error.message });
     }
 };
 
-const actualizarTienda = async (req, res) => {
-    const { id } = req.params;
-    // AGREGADO: Extraer el campo url
-    const { nombre, direccion, telefono, es_principal, activo, url } = req.body;
+const crearTienda = async (req, res) => {
+    // 🔥 ADICIÓN: Capturamos 'codigo_serie' desde el cuerpo de la petición
+    const { nombre, direccion, telefono, es_principal, url, codigo_serie } = req.body;
+
+    if (!nombre || !codigo_serie) {
+        return res.status(400).json({ error: 'El identificador y el código de serie son obligatorios.' });
+    }
 
     try {
         if (es_principal) {
             await pool.query('UPDATE tiendas SET es_principal = false');
         }
 
-        await pool.query(
-            `UPDATE tiendas SET nombre = $1, direccion = $2, telefono = $3, es_principal = $4, activo = $5, url = $6 
-             WHERE id = $7`,
-            [nombre, direccion, telefono, es_principal, activo, url, id]
+        // Inyección limpia en la tabla de PostgreSQL incluyendo el código de serie forzado a mayúsculas
+        const response = await pool.query(
+            `INSERT INTO tiendas (nombre, direccion, telefono, es_principal, url, codigo_serie) 
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [nombre, direccion, telefono, es_principal || false, url, codigo_serie.toUpperCase().trim()]
         );
 
-        res.json({ mensaje: 'Tienda actualizada correctamente' });
+        res.json({ mensaje: 'Sucursal registrada exitosamente en el núcleo central.', tienda: response.rows[0] });
     } catch (error) {
+        if (error.code === '23505') {
+            return res.status(400).json({ error: 'Ya existe una sucursal registrada con ese nombre o código de serie.' });
+        }
         res.status(500).json({ error: error.message });
     }
 };

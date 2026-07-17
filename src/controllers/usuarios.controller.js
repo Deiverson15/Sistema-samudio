@@ -185,46 +185,61 @@ const eliminarUsuario = async (req, res) => {
 
 const actualizarUsuario = async (req, res) => {
     const { id } = req.params;
-    const { nombre, email, rol, direccion, tienda_id } = req.body;
+    const { nombre, email, rol, direccion, tienda_id, password } = req.body;
+
+    const client = await pool.connect();
 
     try {
+        await client.query('BEGIN');
+
         // 🛡️ ESCUDO DE TITANIO: Verificamos si la cuenta a editar es la del Developer
-        const userQuery = await pool.query('SELECT rol FROM usuarios WHERE id = $1', [id]);
-        let rolFinal = rol;
-        
-        if (userQuery.rows.length > 0) {
-            const rolActual = userQuery.rows[0].rol.toLowerCase();
-            // Si es el developer, IGNORAMOS lo que mande el frontend y protegemos su trono
-            if (rolActual === 'developer' || rolActual === 'dev') {
-                rolFinal = userQuery.rows[0].rol; 
-            }
+        const userQuery = await client.query('SELECT rol FROM usuarios WHERE id = $1 FOR UPDATE', [id]);
+        if (userQuery.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Usuario no encontrado' });
         }
 
-        // Actualizamos los datos (La tienda se actualiza, el rol queda blindado si eres dev)
-        await pool.query(
+        let rolFinal = rol;
+        const rolActual = userQuery.rows[0].rol.toLowerCase();
+        
+        // Si es el developer, IGNORAMOS lo que mande el frontend y protegemos su trono
+        if (rolActual === 'developer' || rolActual === 'dev') {
+            rolFinal = userQuery.rows[0].rol; 
+        }
+
+        // 📝 Actualizamos los datos básicos del usuario
+        await client.query(
             `UPDATE usuarios 
              SET nombre = $1, email = $2, rol = $3, direccion = $4, tienda_id = $5 
              WHERE id = $6`,
             [nombre, email, rolFinal, direccion, tienda_id || null, id]
         );
 
-        // Registro de auditoría
-        try {
-            await pool.query(
-                "INSERT INTO auditoria (usuario_id, accion, detalle) VALUES ($1, 'EDITAR_USUARIO', $2)", 
-                [req.user.id, `Editó los datos del usuario: ${email}`]
-            );
-        } catch (auditError) {}
+        // 🔑 ACTUALIZACIÓN OPCIONAL DE CONTRASEÑA (RESET EN CALIENTE)
+        if (password && password.trim() !== '') {
+            const salt = await bcrypt.genSalt(10);
+            const hash = await bcrypt.hash(password, salt);
+            await client.query('UPDATE usuarios SET password = $1, token_sesion = NULL WHERE id = $2', [hash, id]);
+            console.log(`[USER SECURITY] Contraseña restablecida y sesión purgada para el ID: ${id}`);
+        }
 
+        // Registro de auditoría
+        await client.query(
+            "INSERT INTO auditoria (usuario_id, accion, detalle, fecha) VALUES ($1, 'EDITAR_USUARIO', $2, NOW())", 
+            [req.user.id, `Editó los datos y credenciales del usuario: ${email}`]
+        );
+
+        await client.query('COMMIT');
         res.json({ mensaje: 'Usuario actualizado correctamente' });
     } catch (error) {
+        await client.query('ROLLBACK');
         if (error.code === '23505') {
             return res.status(400).json({ error: 'El correo electrónico ya está en uso por otro usuario.' });
         }
         res.status(500).json({ error: error.message });
+    } finally {
+        client.release();
     }
 };
-
-
 
 module.exports = { getUsuarios, crearUsuario, toggleEstadoUsuario, getHistorialUsuario, resetearPassword, eliminarUsuario, actualizarUsuario };

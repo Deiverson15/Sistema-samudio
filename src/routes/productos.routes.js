@@ -15,6 +15,7 @@ const {
     getLotesProducto, 
     eliminarFisico, 
     reactivarProducto,
+    cambiarSucursalActiva,
     
     // --- NUEVAS FUNCIONES DE ESTANTE ---
     getProductosEstante,        // Cargar el estante
@@ -28,8 +29,11 @@ const {
     
     exportarExcel,
     getUbicacionSugerida,
-    moverStockEstante,vaciadoMasivoEstante
+    obtenerProductoPorReferencia,
+    moverStockEstante,vaciadoMasivoEstante,getReporteKardex, descargarAuditoriaExcel
 } = require('../controllers/productos.controller');
+
+
 
 
 // ==========================================
@@ -37,7 +41,10 @@ const {
 // ==========================================
 
 // Leer
+
+
 router.get('/', verifyToken, getProductos);
+router.get('/referencia/:referencia', verifyToken, obtenerProductoPorReferencia);
 router.get('/:id/kardex', verifyToken, getKardex);
 router.get('/:id/lotes', verifyToken, getLotesProducto);
 router.get('/:id/ubicacion-sugerida', verifyToken, getUbicacionSugerida);
@@ -84,7 +91,7 @@ router.delete('/estante/:id', verifyToken, verifyGerente, eliminarBotella);
 
 // 8. MANTENIMIENTO
 // El botón mágico "Reparar Inventario" (Sincroniza tablas)
-router.post('/sincronizar-todo', verifyToken, verifyAdmin, sincronizarStock);
+router.post('/sincronizar-todo', verifyToken, sincronizarStock);
 router.post('/vaciado-masivo', verifyToken, vaciadoMasivoEstante);
 
 router.post('/importar', verifyToken, verifyGerente, importarMasivo);
@@ -92,5 +99,11 @@ router.post('/importar', verifyToken, verifyGerente, importarMasivo);
 // NUEVAS RUTAS DE CONTROL DE EXCEL
 router.get('/importaciones/historial', verifyToken, verifyGerente, getHistorialImportaciones);
 router.post('/importaciones/:id/revertir', verifyToken, verifyAdmin, revertirImportacion);
+router.get('/importaciones/:id/descargar', verifyToken, verifyGerente, descargarAuditoriaExcel); // 🔥 LA NUEVA RUTA
+
+router.post('/cambiar-sucursal', verifyToken, cambiarSucursalActiva);
+
+// Agrega esta línea en la sección de rutas de inventario
+router.get('/reporte-kardex', verifyToken, getReporteKardex);
 
 module.exports = router;

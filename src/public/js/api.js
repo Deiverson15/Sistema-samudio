@@ -237,3 +237,20 @@ window.addEventListener('unhandledrejection', event => {
             .then(() => window.location.href = '/login.html');
     }
 });
+
+export const FabricacionService = {
+    // Obtener todas las órdenes para el Kanban
+    getAll: () => request('/api/fabricacion'),
+    
+    // Crear una nueva orden y reservar stock
+    crearOrden: (data) => request('/api/fabricacion/orden', { 
+        method: 'POST', 
+        body: JSON.stringify(data) 
+    }),
+    
+    // Reportar rendimiento, mermas y cerrar la orden
+    completarOrden: (id, data) => request(`/api/fabricacion/orden/${id}/completar`, { 
+        method: 'POST', 
+        body: JSON.stringify(data) 
+    })
+};

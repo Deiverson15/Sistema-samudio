@@ -2,10 +2,10 @@ let tiendasGlobales = [];
 let idTiendaEditando = null;
 
 export async function init() {
-    console.log("Módulo de Tiendas (SuperAdmin Hub) cargado.");
+    console.log("Módulo de Tiendas (SuperAdmin Red Hub) cargado.");
     await cargarTiendas();
 
-    // Exportar funciones globales para que funcionen los onclick del HTML
+    // Exportación explícita al ecosistema de window
     window.abrirModalTienda = abrirModalTienda;
     window.cerrarModalTienda = cerrarModalTienda;
     window.guardarTienda = guardarTienda;
@@ -15,59 +15,62 @@ export async function init() {
 }
 
 // ==========================================
-// 1. CARGAR Y DIBUJAR TIENDAS
+// 1. EXTRAER Y RENDERIZAR SUCURSALES
 // ==========================================
 async function cargarTiendas() {
     try {
         const res = await fetch('/api/tiendas');
-        if (!res.ok) throw new Error('Error al cargar la lista de tiendas');
+        if (!res.ok) throw new Error('Error al consultar el listado en el servidor.');
         tiendasGlobales = await res.json();
         renderTiendas();
     } catch (error) {
         console.error("Error:", error);
-        Swal.fire('Error', 'No se pudieron cargar las tiendas. Verifica tu conexión.', 'error');
+        Swal.fire({ icon: 'error', title: 'CONEXIÓN CAÍDA', text: 'No se pudo mapear la red de tiendas de la base de datos.', confirmButtonColor: '#0a0a0a', customClass: { popup: 'rounded-none' } });
     }
 }
 
 function renderTiendas() {
-    // Asegúrate de que en tu HTML haya un <div id="gridTiendas" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
     const grid = document.getElementById('gridTiendas');
     if (!grid) return;
 
     grid.innerHTML = '';
 
     if (tiendasGlobales.length === 0) {
-        grid.innerHTML = `<div class="col-span-full text-center text-gray-500 py-10 font-bold">No hay tiendas registradas en el sistema.</div>`;
+        grid.innerHTML = `<div class="col-span-full text-center text-neutral-400 py-16 font-bold text-xs uppercase tracking-widest bg-white border border-neutral-300">No hay tiendas filiadas en la red central.</div>`;
         return;
     }
 
     tiendasGlobales.forEach(tienda => {
-        // Renderizado visual de la URL
         const urlDisplay = tienda.url 
-            ? `<span class="text-blue-600 text-xs font-bold bg-blue-50 px-2 py-1 rounded"><i class="fa-solid fa-link"></i> ${tienda.url}</span>` 
-            : `<span class="text-gray-400 text-xs"><i class="fa-solid fa-link-slash"></i> Sin sistema enlazado</span>`;
+            ? `<span class="text-neutral-950 text-[10px] font-black bg-neutral-100 border border-neutral-300 px-2 py-1 rounded-none"><i class="fa-solid fa-link mr-1"></i> NODE: ${tienda.url}</span>` 
+            : `<span class="text-neutral-400 text-[10px] font-bold uppercase tracking-widest"><i class="fa-solid fa-link-slash mr-1"></i> Sin enlace perimetral</span>`;
 
-        // DIBUJAMOS LA TARJETA (Toda la tarjeta es clickeable)
+        // 🔥 DIBUJAR TARJETA: Inyectamos el Código de Serie en un badge monocromático superior derecho
         grid.innerHTML += `
-            <div onclick="abrirTiendaURL('${tienda.url}')" class="bg-white p-5 rounded-2xl border-2 border-transparent shadow hover:shadow-xl hover:border-blue-500 transition-all cursor-pointer flex flex-col justify-between relative group transform hover:-translate-y-1">
+            <div onclick="abrirTiendaURL('${tienda.url}')" class="bg-white p-6 rounded-none border border-neutral-300 relative group transition-all duration-200 cursor-pointer flex flex-col justify-between hover:border-neutral-950 selection:bg-neutral-800">
                 
                 <div>
-                    <div class="flex justify-between items-start mb-2">
-                        <h3 class="font-black text-xl text-slate-800 uppercase tracking-wide">
-                            <i class="fa-solid fa-store text-blue-500 mr-2"></i>${tienda.nombre}
+                    <div class="flex justify-between items-start mb-4 border-b border-neutral-200 pb-3">
+                        <h3 class="font-black text-sm text-neutral-950 uppercase tracking-wider truncate w-40">
+                            <i class="fa-solid fa-store mr-2 text-neutral-400"></i> ${tienda.nombre}
                         </h3>
+                        <!-- Badge de Código de Serie -->
+                        <span class="bg-neutral-950 text-white font-mono font-black text-[10px] px-2.5 py-1 uppercase tracking-widest shadow-sm">
+                            SERIE: ${tienda.codigo_serie || 'S/S'}
+                        </span>
                     </div>
-                    <p class="text-sm text-gray-500 mb-1"><i class="fa-solid fa-location-dot w-4 text-gray-400"></i> ${tienda.direccion || 'Sin dirección'}</p>
-                    <p class="text-sm text-gray-500 mb-4"><i class="fa-solid fa-phone w-4 text-gray-400"></i> ${tienda.telefono || 'Sin teléfono'}</p>
-                    ${urlDisplay}
+                    <p class="text-[11px] font-bold text-neutral-500 uppercase tracking-wide mb-1.5"><i class="fa-solid fa-location-dot w-4 text-neutral-400"></i> ${tienda.direccion || 'Sin dirección'}</p>
+                    <p class="text-[11px] font-bold text-neutral-500 uppercase tracking-wide mb-5"><i class="fa-solid fa-phone w-4 text-neutral-400"></i> ${tienda.telefono || 'Sin teléfono'}</p>
+                    <div class="mt-2">${urlDisplay}</div>
                 </div>
 
-                <div class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                    <button onclick="prepararEdicion(event, ${tienda.id})" class="bg-amber-100 text-amber-600 hover:bg-amber-500 hover:text-white p-2.5 rounded-lg shadow transition">
-                        <i class="fa-solid fa-pen"></i>
+                <!-- Botonera de acciones tácticas en hover -->
+                <div class="absolute bottom-5 right-6 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 font-sans">
+                    <button onclick="prepararEdicion(event, ${tienda.id})" class="bg-neutral-100 text-neutral-800 hover:bg-neutral-950 hover:text-white p-2 text-xs transition border border-neutral-300" title="Editar">
+                        <i class="fa-solid fa-pen-to-square"></i>
                     </button>
-                    <button onclick="eliminarTienda(event, ${tienda.id})" class="bg-red-100 text-red-600 hover:bg-red-500 hover:text-white p-2.5 rounded-lg shadow transition">
-                        <i class="fa-solid fa-trash"></i>
+                    <button onclick="eliminarTienda(event, ${tienda.id})" class="bg-neutral-100 text-red-600 hover:bg-red-700 hover:text-white p-2 text-xs transition border border-neutral-300" title="Remover">
+                        <i class="fa-solid fa-trash-can"></i>
                     </button>
                 </div>
                 
@@ -76,29 +79,20 @@ function renderTiendas() {
     });
 }
 
-// ==========================================
-// 2. LÓGICA DEL CLIC PARA IR A LA SUCURSAL
-// ==========================================
 function abrirTiendaURL(url) {
     if (url && url !== 'null' && url.trim() !== '') {
         let link = url.trim();
-        // Le inyectamos http:// internamente para que la IP funcione en el navegador
         if (!link.startsWith('http://') && !link.startsWith('https://')) {
             link = 'http://' + link;
         }
         window.open(link, '_blank'); 
     } else {
-        Swal.fire({
-            title: 'Tienda sin IP/Sistema',
-            text: 'No se ha configurado una dirección para esta sucursal.',
-            icon: 'info',
-            confirmButtonColor: '#3085d6'
-        });
+        Swal.fire({ title: 'NODO ASILADO', text: 'Esta sucursal no posee un enlace de sistema de red activo.', icon: 'info', confirmButtonColor: '#0a0a0a', customClass: { popup: 'rounded-none' } });
     }
 }
 
 // ==========================================
-// 3. GESTIÓN DEL MODAL (CREAR / EDITAR)
+// 2. CONTROL DEL MODAL CORPORATIVO
 // ==========================================
 function abrirModalTienda() {
     const modal = document.getElementById('modalTienda');
@@ -109,101 +103,94 @@ function cerrarModalTienda() {
     const modal = document.getElementById('modalTienda');
     if(modal) modal.classList.add('hidden');
     
-    // Limpiamos todo al cerrar
     const form = document.getElementById('formTienda');
     if(form) form.reset();
     idTiendaEditando = null;
-    document.getElementById('modalTiendaTitulo').innerText = 'Registrar Nueva Tienda';
+    document.getElementById('modalTiendaTitulo').innerText = 'Altas de Sucursal';
 }
 
 function prepararEdicion(event, id) {
-    event.stopPropagation(); // 🛑 Evita que se ejecute abrirTiendaURL() al dar click en editar
+    event.stopPropagation(); // 🛑 Detiene el burbujeo de apertura de URL externa
 
     const tienda = tiendasGlobales.find(t => t.id === id);
     if (!tienda) return;
 
     idTiendaEditando = tienda.id;
-    document.getElementById('modalTiendaTitulo').innerText = 'Editar Datos de Sucursal';
+    document.getElementById('modalTiendaTitulo').innerText = 'Modificación de Sucursal';
     
-    // Rellenamos los inputs (Asegúrate que tu HTML tenga estos IDs exactos)
     document.getElementById('nombreTienda').value = tienda.nombre;
+    document.getElementById('serieTienda').value = tienda.codigo_serie || ''; // 🔥 Inyección del código de serie
     document.getElementById('direccionTienda').value = tienda.direccion || '';
     document.getElementById('telefonoTienda').value = tienda.telefono || '';
-    document.getElementById('urlTienda').value = tienda.url || ''; // NUEVO CAMPO
+    document.getElementById('urlTienda').value = tienda.url || '';
 
     abrirModalTienda();
 }
 
 // ==========================================
-// 4. GUARDAR EN BASE DE DATOS
+// 3. ENVIAR CAMBIOS A POSTGRESQL
 // ==========================================
 async function guardarTienda(event) {
-    event.preventDefault(); // Evita que la página se recargue
+    event.preventDefault();
 
     const nombre = document.getElementById('nombreTienda').value;
+    const codigo_serie = document.getElementById('serieTienda').value; // 🔥 Captura de serie
     const direccion = document.getElementById('direccionTienda').value;
     const telefono = document.getElementById('telefonoTienda').value;
-    const url = document.getElementById('urlTienda').value; // Capturamos la URL
+    const url = document.getElementById('urlTienda').value;
 
-    const data = { nombre, direccion, telefono, url };
+    const data = { nombre, codigo_serie, direccion, telefono, url };
     
-    // Decidimos si es un INSERT (POST) o un UPDATE (PUT)
     const method = idTiendaEditando ? 'PUT' : 'POST';
     const endpoint = idTiendaEditando ? `/api/tiendas/${idTiendaEditando}` : '/api/tiendas';
 
     try {
+        Swal.fire({ title: 'Sincronizando con el servidor central...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+        
         const res = await fetch(endpoint, {
             method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
 
-        if (!res.ok) throw new Error('Error al guardar en el servidor');
+        const resData = await res.json();
+        if (!res.ok) throw new Error(resData.error || 'Error de pasarela.');
 
-        Swal.fire({
-            title: '¡Excelente!',
-            text: 'Los datos de la sucursal se guardaron correctamente.',
-            icon: 'success',
-            timer: 1500,
-            showConfirmButton: false
-        });
+        Swal.fire({ icon: 'success', title: 'REGISTRO GUARDADO', text: 'Los datos de la sede fueron consolidados correctamente.', timer: 1500, showConfirmButton: false, confirmButtonColor: '#0a0a0a', customClass: { popup: 'rounded-none' } });
         
         cerrarModalTienda();
-        cargarTiendas(); // Refrescamos la lista
+        await cargarTiendas();
 
     } catch (error) {
         console.error(error);
-        Swal.fire('Error', 'Hubo un problema de conexión al guardar la tienda.', 'error');
+        Swal.fire({ icon: 'error', title: 'OPERACIÓN RECHAZADA', text: error.message, confirmButtonColor: '#0a0a0a', customClass: { popup: 'rounded-none' } });
     }
 }
 
-// ==========================================
-// 5. ELIMINAR TIENDA
-// ==========================================
 async function eliminarTienda(event, id) {
-    event.stopPropagation(); // 🛑 Evita que se ejecute abrirTiendaURL() al dar click en eliminar
+    event.stopPropagation(); 
 
     const result = await Swal.fire({
-        title: '¿Eliminar Sucursal?',
-        text: "Esta acción borrará el enlace de tu panel principal.",
+        title: '¿REMOVER SUCURSAL?',
+        text: "Esta acción purgará el enlace operativo de la red central corporativa.",
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Sí, eliminar',
-        cancelButtonText: 'Cancelar'
+        confirmButtonColor: '#0a0a0a',
+        cancelButtonColor: '#94a3b8',
+        confirmButtonText: 'ELIMINAR ENLACE',
+        cancelButtonText: 'CANCELAR',
+        customClass: { popup: 'rounded-none', confirmButton: 'rounded-none text-[10px]', cancelButton: 'rounded-none text-[10px]' }
     });
 
     if (result.isConfirmed) {
         try {
             const res = await fetch(`/api/tiendas/${id}`, { method: 'DELETE' });
-            if (!res.ok) throw new Error('Error al borrar');
+            if (!res.ok) throw new Error();
             
-            Swal.fire('Eliminada', 'La sucursal ha sido removida de la lista.', 'success');
-            cargarTiendas();
+            Swal.fire({ icon: 'success', title: 'NODO REMOVIDO', text: 'La sucursal ha sido purgada del mapa de red.', confirmButtonColor: '#0a0a0a', customClass: { popup: 'rounded-none' } });
+            await cargarTiendas();
         } catch (error) {
-            console.error(error);
-            Swal.fire('Error', 'No se pudo eliminar la tienda', 'error');
+            Swal.fire('Error', 'No se pudo eliminar la sucursal de las tablas.', 'error');
         }
     }
 }

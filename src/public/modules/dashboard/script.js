@@ -498,8 +498,9 @@ window.cambiarRango = async function(valor) {
             }
         }
 
-        // D. ACTUALIZACIÓN DE TARJETAS SUPERIORES
+        // D. ACTUALIZACIÓN DE TARJETAS SUPERIORES Y NUEVOS MÓDULOS
         if (resKPIs.ok && dataKPIs.sales) {
+            // Tarjetas Originales
             document.getElementById('dashVentasHoy').innerText = `$${parseFloat(dataKPIs.sales.ventas_hoy).toFixed(2)}`;
             document.getElementById('dashTransacciones').innerText = dataKPIs.sales.transacciones_hoy;
             
@@ -513,11 +514,36 @@ window.cambiarRango = async function(valor) {
                     trendArrow.innerHTML = `<i class="fa-solid fa-arrow-down text-red-600"></i>`;
                 }
             }
-            if (dataKPIs.inventory) {
-                document.getElementById('dashValorTotal').innerText = `$${parseFloat(dataKPIs.inventory.valor_total_venta).toFixed(2)}`;
-            }
             if (dataKPIs.lowStock) {
                 document.getElementById('dashLowStock').innerText = dataKPIs.lowStock.low_stock_count;
+            }
+
+            // Tarjetas Financieras
+            if (dataKPIs.inventory) {
+                // Capital en Stock Normal
+                document.getElementById('dashValorTotal').innerText = `$${parseFloat(dataKPIs.inventory.valor_total_venta).toFixed(2)}`;
+                
+                // 🔥 NUEVO: Capital Estancado (+30 Días)
+                const capTotal = parseFloat(dataKPIs.inventory.valor_total_venta) || 0;
+                const capEstancado = parseFloat(dataKPIs.inventory.capital_estancado) || 0;
+                
+                const elEstancado = document.getElementById('dashCapitalEstancado');
+                if(elEstancado) elEstancado.innerText = `$${capEstancado.toFixed(2)}`;
+                
+                let porcentaje = 0;
+                if (capTotal > 0) porcentaje = (capEstancado / capTotal) * 100;
+                
+                const barraEst = document.getElementById('barraEstancado');
+                if(barraEst) barraEst.style.width = `${porcentaje}%`;
+                
+                const porcEst = document.getElementById('dashPorcentajeEstancado');
+                if(porcEst) porcEst.innerText = `${porcentaje.toFixed(1)}% del total`;
+            }
+            
+            // 🔥 NUEVO: Distribución de Ventas (Top Rendimiento)
+            if (dataKPIs.ranking) {
+                window.datosRankingGlobal = dataKPIs.ranking; // Guardamos en memoria global
+                window.renderizarMiniRanking(); // Llamamos a la función que dibuja el Podio
             }
         }
     } catch (error) {
@@ -735,3 +761,82 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 // Si tu sistema usa inyección dinámica (SPA) y el DOM ya cargó, forzamos la llamada directa:
 window.cambiarRango('7d');
+
+
+// =====================================================================
+// 🔥 NUEVO MÓDULO: RANKING Y DISTRIBUCIÓN DE VENTAS
+// =====================================================================
+window.datosRankingGlobal = []; // Array que almacena la consulta de base de datos
+
+window.renderizarMiniRanking = function() {
+    const filtro = document.getElementById('filtroRankingVentas').value; // Lee si dice 'top' o 'bottom'
+    const listaEl = document.getElementById('listaMiniRanking');
+    if(!listaEl) return;
+
+    if (!window.datosRankingGlobal || window.datosRankingGlobal.length === 0) {
+        listaEl.innerHTML = '<li class="text-[10px] text-neutral-500 uppercase tracking-widest text-center mt-4">Sin ventas registradas en este periodo.</li>';
+        return;
+    }
+
+    // Clonar arreglo para evitar alterar la tabla original del modal
+    let datos = [...window.datosRankingGlobal];
+    
+    // Si eligen "Menos Vendidas", invertimos el array
+    if (filtro === 'bottom') {
+        datos.reverse(); 
+    }
+
+    // Cortamos solo los 3 primeros para que quepan perfectos en la tarjeta negra
+    const top3 = datos.slice(0, 3);
+    
+    listaEl.innerHTML = top3.map((p, i) => {
+        const indexStr = filtro === 'top' ? `#${i+1}` : `🔻`;
+        const indexColor = filtro === 'top' ? 'text-emerald-400' : 'text-red-400';
+        return `
+            <li class="flex justify-between items-center border-b border-neutral-800 pb-2">
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-black ${indexColor}">${indexStr}</span>
+                    <div>
+                        <p class="text-xs font-bold text-white uppercase">${p.nombre}</p>
+                        <p class="text-[9px] font-bold text-neutral-500 uppercase tracking-widest">${p.categoria || 'S/N'}</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <p class="text-xs font-black text-emerald-400">${parseFloat(p.cantidad_vendida).toFixed(0)} <span class="text-[9px] text-emerald-700">uds</span></p>
+                    <p class="text-[9px] font-bold text-neutral-400">$${parseFloat(p.total_generado).toFixed(2)}</p>
+                </div>
+            </li>
+        `;
+    }).join('');
+};
+
+window.abrirModalRanking = function() {
+    const modal = document.getElementById('modalRanking');
+    const tbody = document.getElementById('listaModalRanking');
+    if(!modal || !tbody) return;
+
+    modal.classList.remove('hidden');
+
+    if (!window.datosRankingGlobal || window.datosRankingGlobal.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-[10px] text-neutral-500 uppercase tracking-widest">No hay datos de distribución disponibles.</td></tr>';
+        return;
+    }
+
+    // Dibuja la tabla completa siempre desde la #1 hasta la última
+    tbody.innerHTML = window.datosRankingGlobal.map((p, i) => {
+        return `
+            <tr class="hover:bg-neutral-50 transition-colors">
+                <td class="px-6 py-3 text-center text-xs font-black text-neutral-400">#${i+1}</td>
+                <td class="px-6 py-3 text-xs font-bold text-neutral-900 uppercase">${p.nombre}</td>
+                <td class="px-6 py-3 text-center text-[10px] font-bold text-neutral-500 uppercase tracking-widest">${p.categoria || 'S/N'}</td>
+                <td class="px-6 py-3 text-center text-xs font-black text-emerald-600">${parseFloat(p.cantidad_vendida).toFixed(0)} uds</td>
+                <td class="px-6 py-3 text-right text-xs font-black text-neutral-950">$${parseFloat(p.total_generado).toFixed(2)}</td>
+            </tr>
+        `;
+    }).join('');
+};
+
+window.cerrarModalRanking = function() {
+    const modal = document.getElementById('modalRanking');
+    if(modal) modal.classList.add('hidden');
+};

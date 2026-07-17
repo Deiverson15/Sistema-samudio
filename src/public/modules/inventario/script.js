@@ -15,6 +15,8 @@ let productosCargados = [];
 
 export async function init() {
     console.log("Iniciando Inventario Automatizado...");
+
+    window.inicializarModuloExcel();
     
     // --- 1. Configuración de Automatización (NUEVO) ---
     // Detectar cambios en categoría para mostrar selectores de ml o inputs de gramos
@@ -164,11 +166,10 @@ async function cargarTabla() {
 function renderTabla(lista) {
     const tbody = document.getElementById('tablaProductos');
 
-    // 1. Si no hay productos, mostrar mensaje de vacío
     if (lista.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="text-center p-12 text-gray-400 bg-gray-50 border-2 border-dashed rounded-lg">
+                <td colspan="6" class="text-center p-12 text-gray-400 bg-gray-50 border-2 border-dashed rounded-lg">
                     <i class="fa-solid fa-box-open text-3xl mb-2 block"></i>
                     No se encontraron productos en el inventario.
                 </td>
@@ -176,28 +177,49 @@ function renderTabla(lista) {
         return;
     }
 
-    // 2. Generar filas de la tabla
     tbody.innerHTML = lista.map(p => {
-        // Sanitización de datos
         const nombreSeguro = escapeHtml(p.nombre);
         const marcaSegura = escapeHtml(p.marca || 'N/A');
         const categoriaSegura = escapeHtml(p.categoria);
-        const codigoSeguro = escapeHtml(p.codigo);
+        const codigoSeguro = escapeHtml(p.codigo); // Sigue leyendo la propiedad interna 'codigo'
         const stockReal = parseFloat(p.stock_real) || 0;
         const lotesActivos = parseInt(p.lotes_activos) || 0;
 
-        // --- VISUALIZACIÓN DE STOCK MEJORADA ---
-        let stockHtml = '';
+        // 🎨 BADGE DE GÉNERO INTELIGENTE
+        let generoHtml = '';
+if (p.genero) {
+    const genTexto = p.genero.toUpperCase().trim();
+    
+    if (genTexto === 'DAMA') {
+        generoHtml = `<span class="text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase tracking-wider bg-pink-50 text-pink-700 border-pink-200">DAMA</span>`;
+    } 
+    else if (genTexto === 'CABALLERO' || genTexto === 'HM') {
+        generoHtml = `<span class="text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase tracking-wider bg-slate-900 text-white border-slate-950">CABALLERO</span>`;
+    } 
+    else if (genTexto === 'UNISEX' || genTexto === 'UNX') {
+        // Normaliza tanto UNX como UNISEX a una etiqueta gris corporativa limpia
+        generoHtml = `<span class="text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase tracking-wider bg-neutral-100 text-neutral-800 border-neutral-300">UNISEX</span>`;
+    }
+}
 
-        // 1. Materia Prima (Alcohol, Esencias...)
+        // 💰 COLUMNA DE PRECIOS DETALLADA (NUEVA)
+        const precioVenta = parseFloat(p.precio_venta) || 0;
+        const costoUnitario = parseFloat(p.costo) || 0;
+        const preciosHtml = `
+            <div class="text-center flex flex-col justify-center items-center h-full">
+                <div class="font-black text-neutral-950 text-sm">$${precioVenta.toFixed(2)}</div>
+                <div class="text-[9px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">Costo: $${costoUnitario.toFixed(2)}</div>
+            </div>
+        `;
+
+        let stockHtml = '';
         if (['Alcohol', 'Esencias', 'Fijador'].includes(p.categoria)) {
             const unidad = p.categoria === 'Alcohol' ? 'ml' : 'g';
-            // Alerta si queda poco gramaje (ej: menos de 500g)
             const esCriticoMP = stockReal < 500; 
             const colorMP = esCriticoMP ? 'bg-red-100 text-red-700 border-red-200 animate-pulse' : 'bg-indigo-50 text-indigo-700 border-indigo-100';
             
             stockHtml = `
-                <div class="flex flex-col gap-1 text-xs">
+                <div class="flex flex-col gap-1 text-xs justify-center items-center h-full">
                     <span class="${colorMP} px-2 py-1 rounded border font-bold flex items-center gap-1 w-fit">
                         <i class="fa-solid fa-flask"></i> 
                         ${stockReal.toLocaleString()} ${unidad}
@@ -205,26 +227,22 @@ function renderTabla(lista) {
                     ${esCriticoMP ? '<span class="text-[10px] text-red-600 font-bold">¡REPONER!</span>' : ''}
                 </div>
             `;
-        } 
-        // 2. Productos Regulares y Envases
-        else {
+        } else {
             const stockMinimo = p.stock_minimo || 5;
             const esCero = stockReal === 0;
             const esBajo = stockReal <= stockMinimo;
 
             if (esCero) {
-                // ESTADO CRÍTICO (STOCK 0)
                 stockHtml = `
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center justify-center h-full">
                         <span class="bg-red-600 text-white border border-red-700 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm animate-pulse flex items-center gap-2">
                             <i class="fa-solid fa-triangle-exclamation text-yellow-300"></i> AGOTADO
                         </span>
                     </div>
                 `;
             } else if (esBajo) {
-                // ESTADO DE ALERTA (BAJO STOCK)
                 stockHtml = `
-                    <div class="flex flex-col">
+                    <div class="flex flex-col justify-center items-center h-full">
                         <span class="bg-yellow-50 text-yellow-700 border border-yellow-200 px-2 py-1 rounded text-xs font-bold w-fit flex items-center gap-1">
                             <i class="fa-solid fa-circle-exclamation"></i> ${stockReal} Unid.
                         </span>
@@ -232,39 +250,40 @@ function renderTabla(lista) {
                     </div>
                 `;
             } else {
-                // ESTADO NORMAL
                 stockHtml = `
-                    <span class="bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded text-xs font-bold w-fit">
-                        ${stockReal} Unid.
-                    </span>
+                    <div class="flex items-center justify-center h-full">
+                        <span class="bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded text-xs font-bold w-fit">
+                            ${stockReal} Unid.
+                        </span>
+                    </div>
                 `;
             }
 
-            // Si es envase, mostramos capacidad debajo
             if (['Frasco', 'Frascos', 'Envases'].includes(p.categoria)) {
-                stockHtml += `<span class="text-[9px] text-gray-400 font-bold uppercase block mt-1">${p.contenido_gramos}ml</span>`;
+                stockHtml += `<span class="text-[9px] text-gray-400 font-bold uppercase block mt-1 text-center">${p.contenido_gramos}ml</span>`;
             }
         }
 
-        // --- VISUALIZACIÓN DE LOTES (Columna 4 - NUEVA) ---
-        // Aquí mostramos cuántos lotes tiene y un botón discreto para verlos
         let lotesHtml = '';
         if (lotesActivos > 0) {
             lotesHtml = `
-                <button onclick="verLotes(${p.id}, '${nombreSeguro.replace(/'/g, "\\'")}')" class="group flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 hover:border-purple-300 hover:shadow-sm transition">
-                    <div class="bg-purple-100 text-purple-600 w-6 h-6 rounded flex items-center justify-center text-xs font-bold group-hover:bg-purple-600 group-hover:text-white transition">
-                        ${lotesActivos}
-                    </div>
-                    <span class="text-xs text-gray-500 font-medium group-hover:text-purple-600">Lotes</span>
-                </button>
+                <div class="flex justify-center items-center h-full">
+                    <button onclick="verLotes(${p.id}, '${nombreSeguro.replace(/'/g, "\\'")}')" class="group flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 hover:border-purple-300 hover:shadow-sm transition">
+                        <div class="bg-purple-100 text-purple-600 w-6 h-6 rounded flex items-center justify-center text-xs font-bold group-hover:bg-purple-600 group-hover:text-white transition">
+                            ${lotesActivos}
+                        </div>
+                        <span class="text-xs text-gray-500 font-medium group-hover:text-purple-600">Lotes</span>
+                    </button>
+                </div>
             `;
         } else {
             lotesHtml = `
-                <span class="text-xs text-gray-300 font-medium italic px-2">Sin lotes</span>
+                <div class="flex justify-center items-center h-full">
+                    <span class="text-xs text-gray-300 font-medium italic px-2">Sin lotes</span>
+                </div>
             `;
         }
 
-        // 3. Retornar el HTML (Ahora con 5 Columnas TD para coincidir con tus TH)
         return `
             <tr class="hover:bg-blue-50/30 transition border-b border-gray-100 group">
                 <td class="px-6 py-4 font-mono text-xs text-gray-400 group-hover:text-blue-500 transition-colors">
@@ -273,12 +292,17 @@ function renderTabla(lista) {
                 
                 <td class="px-6 py-4">
                     <div class="font-bold text-gray-800 text-sm leading-tight">${nombreSeguro}</div>
-                    <div class="flex items-center gap-2 mt-1">
+                    <div class="flex items-center gap-2 mt-1 flex-wrap">
                         <span class="text-[10px] uppercase font-bold text-gray-400 tracking-wider">${marcaSegura}</span>
                         <span class="text-[9px] px-1.5 py-0.5 rounded bg-white border border-gray-200 text-gray-500 font-bold uppercase">${categoriaSegura}</span>
+                        ${generoHtml}
                     </div>
                 </td>
                 
+                <td class="px-6 py-4">
+                    ${preciosHtml}
+                </td>
+
                 <td class="px-6 py-4">
                     ${stockHtml}
                 </td>
@@ -289,37 +313,12 @@ function renderTabla(lista) {
                 
                 <td class="px-6 py-4 text-center">
                     <div class="flex justify-end items-center gap-2">
-                        <button onclick="agregarStockRapido(${p.id})" 
-                            class="bg-green-50 text-green-600 hover:bg-green-600 hover:text-white w-8 h-8 rounded-lg transition-all border border-green-100 shadow-sm flex items-center justify-center active:scale-95" 
-                            title="Agregar existencias">
-                            <i class="fa-solid fa-plus text-xs"></i>
-                        </button>
-
-                        <button onclick="bajarAlEstante(${p.id})" 
-                            class="bg-orange-50 text-orange-600 hover:bg-orange-600 hover:text-white w-8 h-8 rounded-lg transition-all border border-orange-100 shadow-sm flex items-center justify-center active:scale-95" 
-                            title="Bajar a Tienda">
-                            <i class="fa-solid fa-dolly text-xs"></i>
-                        </button>
-
+                        <button onclick="agregarStockRapido(${p.id})" class="bg-green-50 text-green-600 hover:bg-green-600 hover:text-white w-8 h-8 rounded-lg transition-all border border-green-100 shadow-sm flex items-center justify-center active:scale-95" title="Agregar existencias"><i class="fa-solid fa-plus text-xs"></i></button>
+                        <button onclick="bajarAlEstante(${p.id})" class="bg-orange-50 text-orange-600 hover:bg-orange-600 hover:text-white w-8 h-8 rounded-lg transition-all border border-orange-100 shadow-sm flex items-center justify-center active:scale-95" title="Bajar a Tienda"><i class="fa-solid fa-dolly text-xs"></i></button>
                         <div class="w-px h-5 bg-gray-200 mx-1"></div>
-
-                        <button onclick="verKardex(${p.id})" 
-                            class="text-purple-400 hover:text-purple-600 hover:bg-purple-50 w-8 h-8 rounded-full transition flex items-center justify-center" 
-                            title="Ver Historial">
-                            <i class="fa-solid fa-clock-rotate-left"></i>
-                        </button>
-
-                        <button onclick="prepararEdicion(${p.id})" 
-                            class="text-blue-400 hover:text-blue-600 hover:bg-blue-50 w-8 h-8 rounded-full transition flex items-center justify-center" 
-                            title="Editar">
-                            <i class="fa-solid fa-pen"></i>
-                        </button>
-                        
-                        <button onclick="eliminarProducto(${p.id})" 
-                            class="text-red-300 hover:text-red-600 hover:bg-red-50 w-8 h-8 rounded-full transition flex items-center justify-center" 
-                            title="Eliminar">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
+                        <button onclick="verKardex(${p.id})" class="text-purple-400 hover:text-purple-600 hover:bg-purple-50 w-8 h-8 rounded-full transition flex items-center justify-center" title="Ver Historial"><i class="fa-solid fa-clock-rotate-left"></i></button>
+                        <button onclick="prepararEdicion(${p.id})" class="text-blue-400 hover:text-blue-600 hover:bg-blue-50 w-8 h-8 rounded-full transition flex items-center justify-center" title="Editar"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="eliminarProducto(${p.id})" class="text-red-300 hover:text-red-600 hover:bg-red-50 w-8 h-8 rounded-full transition flex items-center justify-center" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </td>
             </tr>
@@ -359,30 +358,29 @@ function cambiarPagina(nuevaPagina) {
     cargarTabla();
 }
 
-// --- MODALES Y EDICIÓN ---
 function abrirModalCrear() {
     const modal = document.getElementById('modalProducto');
     const panel = document.getElementById('modalPanel');
     const titulo = document.getElementById('modalTitulo');
     
-    // 1. Resetear el formulario completamente
     document.getElementById('formProducto').reset();
     document.getElementById('producto_id_edicion').value = '';
     
-    // 2. Título y Código Autogenerado
     titulo.innerHTML = '<i class="fa-solid fa-box-open"></i> Nuevo Producto';
     document.getElementById('codigo').value = 'PROD-' + Math.floor(Math.random() * 10000);
     
-    // 3. Resetear diseño del botón
     const btn = document.getElementById('btnGuardar');
     if (btn) {
         btn.innerHTML = '<i class="fa-solid fa-save"></i> <span>Guardar Producto</span>';
         btn.disabled = false;
     }
 
-    // 4. Resetear controles dinámicos e inputs visuales (ELIMINAMOS REFERENCIA A 'stock')
     const selectCat = document.getElementById('categoria');
     if(selectCat) selectCat.value = "";
+    
+    // 🔥 RESETEO DEL GÉNERO
+    const selectGen = document.getElementById('genero');
+    if(selectGen) selectGen.value = "UNISEX";
     
     const divDinamico = document.getElementById('dynamicControls');
     if(divDinamico) divDinamico.innerHTML = "";
@@ -390,13 +388,12 @@ function abrirModalCrear() {
     const inputVisual = document.getElementById('input_cantidad_visual');
     if(inputVisual) {
         inputVisual.value = "";
-        inputVisual.disabled = false; // Habilitamos el nuevo input
+        inputVisual.disabled = false;
     }
     
     const lblStock = document.getElementById('lblStockInput');
     if(lblStock) lblStock.innerText = "Stock Actual";
 
-    // 5. Mostrar modal
     modal.classList.remove('hidden');
     setTimeout(() => { panel.classList.remove('translate-x-full'); }, 10);
     setTimeout(() => { document.getElementById('codigo').focus(); }, 100);
@@ -474,10 +471,8 @@ async function guardarProducto() {
     const cat = document.getElementById('categoria').value;
     let contenidoFinal = 1;
     
-    // --- CORRECCIÓN AQUÍ: Agregamos "Envases" ---
     if(cat === 'Frasco' || cat === 'Frascos' || cat === 'Envases') {
         const selector = document.getElementById('tamanio_selector');
-        // Si el selector existe toma su valor, si no por defecto 30
         contenidoFinal = selector ? selector.value : 30;
     }
 
@@ -486,15 +481,15 @@ async function guardarProducto() {
         nombre: document.getElementById('nombre').value,
         marca: document.getElementById('marca').value,
         categoria: cat,
+        genero: document.getElementById('genero').value, // 🔥 ENVIAMOS EL NUEVO CAMPO
         unidad_medida: document.getElementById('unidad_medida').value,
         stock: document.getElementById('stock_real_calculado').value,
-        contenido_gramos: contenidoFinal, // Aquí se guarda el tamaño (30, 60, etc.)
+        contenido_gramos: contenidoFinal, 
         stock_minimo: document.getElementById('stock_minimo').value,
         costo: document.getElementById('costo').value,
         precio_venta: document.getElementById('precio_venta').value
     };
 
-    // ... resto de la función (llamada a ProductoService, Swal, etc.) ...
     const idEdicion = document.getElementById('producto_id_edicion').value;
 
     try {
@@ -703,7 +698,7 @@ function procesarArchivoImportacion(file) {
         
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
-        const jsonSheet = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        const jsonSheet = XLSX.utils.sheet_to_json(worksheet, { range: 3, defval: "" });
 
         if (jsonSheet.length === 0) return Swal.fire('Error', 'El archivo está vacío.', 'error');
 
@@ -1051,20 +1046,35 @@ function calcularStockRealInterno() {
     }
 }
 
+window.abrirModalMerma = (id, nombre) => {
+    // 1. CORREGIDO: Ahora busca el ID exacto que tienes en tu HTML (merma_productos_id)
+    const idInput = document.getElementById('merma_productos_id');
+    if (idInput) {
+        idInput.value = id;
+    } else {
+        console.error("ERROR: No se encontró 'merma_productos_id' en el HTML. Revisa el ID.");
+    }
 
-function abrirModalMerma(id, nombre) {
-    // Puedes llamar a esta función desde un botón nuevo en la tabla, ej: un botón con ícono de "papelera" o "alerta"
-    document.getElementById('merma_producto_id').value = id;
+    // 2. Asignar nombre
+    const nombreSpan = document.getElementById('mermaNombre');
+    if (nombreSpan) nombreSpan.innerText = nombre;
+
+    // 3. Limpiar y asignar otros campos
+    const cantInput = document.getElementById('merma_cantidad');
+    if (cantInput) {
+        cantInput.value = '';
+        cantInput.focus();
+    }
+
+    const obsInput = document.getElementById('merma_observaciones');
+    if (obsInput) obsInput.value = '';
     
-    // Limpiar campos
-    document.getElementById('merma_cantidad').value = '';
-    document.getElementById('merma_observaciones').value = '';
-    document.getElementById('merma_ubicacion').value = 'ALMACEN';
-    
-    // Mostrar modal
-    document.getElementById('modalMerma').classList.remove('hidden');
-    document.getElementById('merma_cantidad').focus();
-}
+    // 4. Mostrar modal
+    const modal = document.getElementById('modalMerma');
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
+};
 
 function cerrarModalMerma() {
     document.getElementById('modalMerma').classList.add('hidden');
@@ -1811,7 +1821,7 @@ window.procesarVaciadoTotalAbajo = async function() {
 
         Swal.fire({
             title: 'ANALIZANDO EXCEL',
-            text: 'Procesando filas y vinculando proveedores...',
+            text: 'Procesando filas, calculando inversión y vinculando proveedor...',
             allowOutsideClick: false,
             didOpen: () => { Swal.showLoading(); }
         });
@@ -1823,13 +1833,17 @@ window.procesarVaciadoTotalAbajo = async function() {
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                const productosJson = XLSX.utils.sheet_to_json(firstSheet);
+                const productosJson = XLSX.utils.sheet_to_json(firstSheet, { range: 3 });
 
                 if (productosJson.length === 0) throw new Error("El archivo Excel está vacío.");
 
+                // 🔥 NUEVO: Capturamos el proveedor
+                const inputProv = document.getElementById('inputProveedorExcel');
+                const proveedorFinal = inputProv && inputProv.value.trim() !== '' ? inputProv.value.trim().toUpperCase() : 'No Especificado';
+
                 const token = localStorage.getItem('token');
                 
-                // Enviamos a la ruta que creamos en el backend
+                // Enviamos a la ruta en el backend
                 const res = await fetch('/api/productos/importar', {
                     method: 'POST',
                     headers: { 
@@ -1838,7 +1852,8 @@ window.procesarVaciadoTotalAbajo = async function() {
                     },
                     body: JSON.stringify({ 
                         productos: productosJson,
-                        nombre_archivo: archivoSeleccionado.name
+                        nombre_archivo: archivoSeleccionado.name,
+                        proveedor: proveedorFinal // Enviamos el proveedor
                     })
                 });
 
@@ -1854,11 +1869,16 @@ window.procesarVaciadoTotalAbajo = async function() {
                         customClass: { popup: 'rounded-none', confirmButton: 'rounded-none uppercase tracking-widest text-xs' }
                     });
                     
-                    // Reseteamos el input
+                    // Reseteamos todo visualmente
                     archivoSeleccionado = null;
-                    excelFileName.innerHTML = 'Haz clic o arrastra tu archivo aquí';
+                    excelFileName.innerHTML = 'Arrastra o haz clic para subir (.xlsx)';
                     btnProcesarExcel.classList.add('hidden');
                     inputExcelFile.value = '';
+                    if (inputProv) inputProv.value = ''; // Limpiamos proveedor
+                    
+                    // Si tienes el módulo general, recarga el fondo
+                    if(typeof cargarTabla === 'function') cargarTabla();
+
                 } else {
                     throw new Error(respuesta.error || 'Error desconocido al cargar.');
                 }
@@ -1876,115 +1896,223 @@ window.procesarVaciadoTotalAbajo = async function() {
         reader.readAsArrayBuffer(archivoSeleccionado);
     });
 
-    // 4. CARGAR HISTORIAL DE MOVIMIENTOS
-    async function cargarHistorialImportaciones() {
-        try {
-            const token = localStorage.getItem('token');
-            const res = await fetch('/api/productos/importaciones/historial', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json();
+    window.inicializarModuloExcel = function () {
+    const btnTabCargar = document.getElementById('btnTabCargar');
+    const btnTabMovimientos = document.getElementById('btnTabMovimientos');
+    const tabCargarExcel = document.getElementById('tabCargarExcel');
+    const tabMovimientosExcel = document.getElementById('tabMovimientosExcel');
+    
+    const inputExcelFile = document.getElementById('inputExcelFile');
+    const excelFileName = document.getElementById('excelFileName');
+    const btnProcesarExcel = document.getElementById('btnProcesarExcel');
 
-            if (res.ok) {
-                renderizarTablaHistorial(data);
-                // Extra: Renderizar tarjetas de rentabilidad
-                renderizarRentabilidadSimulada(data);
-            }
-        } catch (error) {
-            console.error("Error cargando historial de exceles:", error);
+    let archivoSeleccionado = null;
+
+    if (!btnTabCargar) return; // Seguro contra fallos
+
+    // 1. NAVEGACIÓN ENTRE PESTAÑAS (Estilos Corporativos)
+    const claseTabActiva = "flex-1 py-4 text-[10px] font-black text-white bg-neutral-950 uppercase tracking-widest transition-colors border-r border-neutral-300";
+    const claseTabInactiva = "flex-1 py-4 text-[10px] font-bold text-neutral-500 hover:text-neutral-900 bg-transparent uppercase tracking-widest transition-colors border-r border-neutral-300";
+
+    btnTabCargar.addEventListener('click', () => {
+        btnTabCargar.className = claseTabActiva;
+        btnTabMovimientos.className = claseTabInactiva;
+        tabCargarExcel.classList.remove('hidden');
+        tabMovimientosExcel.classList.add('hidden');
+    });
+
+    btnTabMovimientos.addEventListener('click', () => {
+        btnTabMovimientos.className = claseTabActiva;
+        btnTabCargar.className = claseTabInactiva;
+        tabMovimientosExcel.classList.remove('hidden');
+        tabCargarExcel.classList.add('hidden');
+        window.cargarHistorialImportaciones(); // Recargamos datos al entrar
+    });
+
+    // 2. CAPTURA DEL ARCHIVO EXCEL
+    inputExcelFile.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            archivoSeleccionado = file;
+            excelFileName.innerHTML = `<i class="fa-solid fa-file-check text-green-600 mr-2"></i> ${file.name}`;
+            btnProcesarExcel.classList.remove('hidden');
         }
+    });
+
+    // 3. PROCESAR EXCEL
+    btnProcesarExcel.addEventListener('click', async () => {
+        if (!archivoSeleccionado) return;
+
+        Swal.fire({
+            title: 'ANALIZANDO EXCEL',
+            text: 'Procesando filas, calculando inversión y vinculando proveedor...',
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading(); }
+        });
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const productosJson = XLSX.utils.sheet_to_json(firstSheet, { range: 3 });
+
+                if (productosJson.length === 0) throw new Error("El archivo Excel está vacío.");
+
+                const inputProv = document.getElementById('inputProveedorExcel');
+                const proveedorFinal = inputProv && inputProv.value.trim() !== '' ? inputProv.value.trim().toUpperCase() : 'No Especificado';
+
+                const token = localStorage.getItem('token');
+                
+                const res = await fetch('/api/productos/importar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ productos: productosJson, nombre_archivo: archivoSeleccionado.name, proveedor: proveedorFinal })
+                });
+
+                const respuesta = await res.json();
+
+                if (res.ok) {
+                    Swal.fire({ icon: 'success', title: 'CARGA COMPLETADA', text: respuesta.mensaje, confirmButtonColor: '#0f172a', customClass: { popup: 'rounded-none', confirmButton: 'rounded-none uppercase tracking-widest text-xs' } });
+                    
+                    archivoSeleccionado = null;
+                    excelFileName.innerHTML = 'Arrastra o haz clic para subir (.xlsx)';
+                    btnProcesarExcel.classList.add('hidden');
+                    inputExcelFile.value = '';
+                    if (inputProv) inputProv.value = '';
+                    
+                    if(typeof cargarTabla === 'function') cargarTabla();
+                } else {
+                    throw new Error(respuesta.error || 'Error desconocido al cargar.');
+                }
+            } catch (error) {
+                Swal.fire({ icon: 'error', title: 'ERROR DE FORMATO', text: error.message, confirmButtonColor: '#0f172a', customClass: { popup: 'rounded-none', confirmButton: 'rounded-none uppercase tracking-widest text-xs' } });
+            }
+        };
+        reader.readAsArrayBuffer(archivoSeleccionado);
+    });
+};
+
+    // 4. CARGAR HISTORIAL DE MOVIMIENTOS
+    window.cargarHistorialImportaciones = async function() {
+    try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/productos/importaciones/historial', { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+
+        if (res.ok) {
+            window.renderizarTablaHistorial(data);
+            window.renderizarRentabilidadSimulada(data);
+        }
+    } catch (error) {
+        console.error("Error cargando historial:", error);
     }
+};
+
+
+
 
     // 5. PINTAR LA TABLA DE HISTORIAL
-    function renderizarTablaHistorial(historial) {
-        if (!historial || historial.length === 0) {
-            tablaHistorialExcel.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-neutral-500 text-xs font-bold uppercase tracking-widest">No hay registros de importación.</td></tr>`;
-            return;
+    window.renderizarTablaHistorial = function(historial) {
+    const tabla = document.getElementById('tablaHistorialExcel');
+    if (!tabla) return;
+
+    if (!historial || historial.length === 0) {
+        tabla.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-neutral-500 text-xs font-bold uppercase tracking-widest">No hay registros de importación.</td></tr>`;
+        return;
+    }
+
+    tabla.innerHTML = historial.map(h => {
+        const esRevertido = h.estado === 'REVERTIDO';
+        const estadoHtml = esRevertido 
+            ? `<span class="px-2 py-1 bg-red-100 text-red-800 text-[9px] font-black uppercase tracking-widest border border-red-200">Revertido</span>`
+            : `<span class="px-2 py-1 bg-green-100 text-green-800 text-[9px] font-black uppercase tracking-widest border border-green-200">Aplicado</span>`;
+        
+        let accionHtml = `<button onclick="window.descargarExcelAuditoria(${h.id})" class="bg-emerald-50 hover:bg-emerald-600 text-emerald-600 hover:text-white border border-emerald-200 px-3 py-1.5 font-bold uppercase tracking-widest text-[9px] transition-colors rounded-none mr-2" title="Descargar Fotografía del Excel Original"><i class="fa-solid fa-download"></i></button>`;
+
+        if (esRevertido) {
+            accionHtml += `<span class="text-neutral-400 text-[10px] font-bold uppercase tracking-widest px-2"><i class="fa-solid fa-ban"></i> Anulado</span>`;
+        } else {
+            accionHtml += `<button onclick="window.revertirCargaExcel(${h.id}, '${h.nombre_archivo}')" class="text-red-600 hover:text-white hover:bg-red-600 border border-transparent hover:border-red-700 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-colors rounded-none" title="Anular y descontar del inventario"><i class="fa-solid fa-rotate-left"></i> Revertir</button>`;
         }
 
-        tablaHistorialExcel.innerHTML = historial.map(h => {
-            const esRevertido = h.estado === 'REVERTIDO';
-            const estadoHtml = esRevertido 
-                ? `<span class="px-2 py-1 bg-red-100 text-red-800 text-[9px] font-black uppercase tracking-widest border border-red-200">Revertido</span>`
-                : `<span class="px-2 py-1 bg-green-100 text-green-800 text-[9px] font-black uppercase tracking-widest border border-green-200">Aplicado</span>`;
-            
-            const accionHtml = esRevertido 
-                ? `<span class="text-neutral-400 text-xs font-bold uppercase tracking-widest"><i class="fa-solid fa-ban"></i> Anulado</span>`
-                : `<button onclick="window.revertirCargaExcel(${h.id}, '${h.nombre_archivo}')" class="text-red-600 hover:text-red-800 text-xs font-bold uppercase tracking-widest transition-colors"><i class="fa-solid fa-rotate-left mr-1"></i> Revertir</button>`;
-
-            return `
-                <tr class="hover:bg-neutral-50 border-b border-neutral-100">
-                    <td class="px-6 py-4 text-xs font-bold text-neutral-900">${new Date(h.fecha).toLocaleDateString('es-ES')}</td>
-                    <td class="px-6 py-4 text-xs font-black text-neutral-950">${h.nombre_archivo}</td>
-                    <td class="px-6 py-4 text-[10px] font-bold text-neutral-500 uppercase tracking-widest">${h.usuario_nombre || 'Sistema'}</td>
-                    <td class="px-6 py-4 text-center">${estadoHtml}</td>
-                    <td class="px-6 py-4 text-right">${accionHtml}</td>
-                </tr>
-            `;
-        }).join('');
-    }
+        return `
+            <tr class="hover:bg-neutral-50 border-b border-neutral-100 transition-colors">
+                <td class="px-4 py-4">
+                    <p class="text-xs font-black text-neutral-900">${new Date(h.fecha).toLocaleDateString('es-ES')}</p>
+                    <p class="text-[9px] font-bold text-neutral-500 uppercase tracking-widest">${h.usuario_nombre || 'Sistema'}</p>
+                </td>
+                <td class="px-4 py-4">
+                    <p class="text-xs font-black text-neutral-950">${h.nombre_archivo}</p>
+                    <p class="text-[9px] font-bold text-blue-600 uppercase tracking-widest"><i class="fa-solid fa-truck-field"></i> ${h.proveedor || 'No especificado'}</p>
+                </td>
+                <td class="px-4 py-4 text-center">${estadoHtml}</td>
+                <td class="px-4 py-4 text-right flex justify-end items-center h-full">${accionHtml}</td>
+            </tr>
+        `;
+    }).join('');
+};
 
     // 6. FUNCIÓN DE REVERSIÓN (Botón de Pánico)
     window.revertirCargaExcel = async function(id, nombreArchivo) {
-        Swal.fire({
-            title: '¿REVERTIR CARGA?',
-            html: `<p class="text-sm text-neutral-600 mb-2">Estás a punto de anular el archivo:</p><p class="font-black text-neutral-950">${nombreArchivo}</p><p class="text-xs text-red-600 font-bold mt-4">⚠️ Se restará el stock añadido y se eliminarán los lotes generados.</p>`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#dc2626', // Rojo alerta
-            cancelButtonColor: '#94a3b8',
-            confirmButtonText: 'SÍ, REVERTIR AHORA',
-            cancelButtonText: 'CANCELAR',
-            customClass: { popup: 'rounded-none', confirmButton: 'rounded-none text-xs font-bold tracking-widest uppercase', cancelButton: 'rounded-none text-xs font-bold tracking-widest uppercase' }
-        }).then(async (result) => {
-            if (result.isConfirmed) {
-                try {
-                    Swal.fire({ title: 'Revertiendo...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
-                    
-                    const token = localStorage.getItem('token');
-                    const res = await fetch(`/api/productos/importaciones/${id}/revertir`, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    
-                    const data = await res.json();
-                    if (res.ok) {
-                        Swal.fire({ icon: 'success', title: 'REVERTIDO', text: data.mensaje, confirmButtonColor: '#0f172a', customClass: { popup: 'rounded-none', confirmButton: 'rounded-none' } });
-                        cargarHistorialImportaciones(); // Recargamos la tabla
-                    } else {
-                        throw new Error(data.error);
-                    }
-                } catch (error) {
-                    Swal.fire({ icon: 'error', title: 'ERROR', text: error.message, confirmButtonColor: '#0f172a', customClass: { popup: 'rounded-none', confirmButton: 'rounded-none' } });
-                }
-            }
-        });
-    };
+    Swal.fire({
+        title: '¿REVERTIR CARGA?',
+        html: `<p class="text-sm text-neutral-600 mb-2">Estás a punto de anular el archivo:</p><p class="font-black text-neutral-950">${nombreArchivo}</p><p class="text-xs text-red-600 font-bold mt-4">⚠️ Se restará el stock añadido y se eliminaran los lotes generados.</p>`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc2626',
+        cancelButtonColor: '#94a3b8',
+        confirmButtonText: 'SÍ, REVERTIR AHORA',
+        cancelButtonText: 'CANCELAR',
+        customClass: { popup: 'rounded-none border border-neutral-400', confirmButton: 'rounded-none text-xs font-bold tracking-widest uppercase py-3 px-6', cancelButton: 'rounded-none text-xs font-bold tracking-widest uppercase py-3 px-6' }
+    }).then(async (result) => {
+        if (result.isConfirmed) {
+            try {
+                Swal.fire({ title: 'Anulando Lotes...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+                const token = localStorage.getItem('token');
+                const res = await fetch(`/api/productos/importaciones/${id}/revertir`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+                if (res.ok) {
+                    Swal.fire({ icon: 'success', title: 'REVERTIDO', text: data.mensaje, confirmButtonColor: '#0f172a', customClass: { popup: 'rounded-none', confirmButton: 'rounded-none' } });
+                    window.cargarHistorialImportaciones();
+                    if(typeof cargarTabla === 'function') cargarTabla();
+                } else { throw new Error(data.error); }
+            } catch (error) { Swal.fire({ icon: 'error', title: 'ERROR CRÍTICO', text: error.message, confirmButtonColor: '#0f172a', customClass: { popup: 'rounded-none', confirmButton: 'rounded-none' } }); }
+        }
+    });
+};
 
     // 7. RENTABILIDAD POR PROVEEDOR (Resumen Visual Rápido)
-    function renderizarRentabilidadSimulada(historial) {
-        const grid = document.getElementById('gridRentabilidad');
-        if (!grid) return;
+window.renderizarRentabilidadSimulada = function(historial) {
+    const grid = document.getElementById('gridRentabilidad');
+    if (!grid) return;
 
-        // Aquí filtramos solo los archivos aplicados para ver la métrica real
-        const aplicados = historial.filter(h => h.estado === 'APLICADO');
-        const cantidadArchivos = aplicados.length;
+    const aplicados = historial.filter(h => h.estado === 'APLICADO');
+    let totalCosto = 0; let totalProyeccion = 0;
+    
+    aplicados.forEach(h => {
+        totalCosto += parseFloat(h.inversion_total || 0);
+        totalProyeccion += parseFloat(h.precio_proyectado || 0);
+    });
 
-        grid.innerHTML = `
-            <div class="bg-neutral-950 p-6 border border-neutral-950 text-white rounded-none">
-                <p class="text-[10px] text-neutral-400 font-bold tracking-widest uppercase mb-1">Total Cargas Activas</p>
-                <h4 class="text-3xl font-black">${cantidadArchivos}</h4>
-            </div>
-            <div class="bg-white p-6 border border-neutral-300 rounded-none">
-                <p class="text-[10px] text-neutral-500 font-bold tracking-widest uppercase mb-1">Último Ingreso</p>
-                <h4 class="text-xl font-black text-neutral-950 mt-2 truncate">${aplicados.length > 0 ? aplicados[0].nombre_archivo : '--'}</h4>
-            </div>
-            <div class="bg-neutral-100 p-6 border border-neutral-300 rounded-none flex flex-col justify-center items-center text-center">
-                <i class="fa-solid fa-chart-line text-2xl text-neutral-400 mb-2"></i>
-                <p class="text-[10px] text-neutral-500 font-bold tracking-widest uppercase">Proveedores vinculados en Lotes</p>
-            </div>
-        `;
-    }
+    const rentabilidad = totalProyeccion - totalCosto;
+
+    grid.innerHTML = `
+        <div class="bg-neutral-950 p-6 border border-neutral-950 text-white rounded-none shadow-sm">
+            <p class="text-[10px] text-neutral-400 font-bold tracking-widest uppercase mb-1">Inversión Costo</p>
+            <h4 class="text-2xl font-black text-amber-400">$${totalCosto.toFixed(2)}</h4>
+        </div>
+        <div class="bg-white p-6 border border-neutral-300 rounded-none shadow-sm">
+            <p class="text-[10px] text-neutral-500 font-bold tracking-widest uppercase mb-1">Proyección de Venta</p>
+            <h4 class="text-2xl font-black text-neutral-950 mt-1">$${totalProyeccion.toFixed(2)}</h4>
+        </div>
+        <div class="bg-emerald-50 p-6 border border-emerald-200 rounded-none shadow-sm">
+            <p class="text-[10px] text-emerald-700 font-bold tracking-widest uppercase mb-1">Rentabilidad Bruta</p>
+            <h4 class="text-2xl font-black text-emerald-600 mt-1">+$${rentabilidad.toFixed(2)}</h4>
+        </div>
+    `;
+};
 
 })();
 
@@ -1992,10 +2120,19 @@ window.abrirModalExcel = function() {
     const modal = document.getElementById('modalExcel');
     if (modal) {
         modal.classList.remove('hidden');
-        // Si tienes el input limpio, lo reseteamos visualmente
-        document.getElementById('excelFileName').innerHTML = 'Arrastra o haz clic para subir (.xlsx)';
-        document.getElementById('btnProcesarExcel').classList.add('hidden');
-        document.getElementById('inputExcelFile').value = '';
+        
+        // Simular clic en la pestaña de cargar para limpiar vistas
+        const btnTabCargar = document.getElementById('btnTabCargar');
+        if (btnTabCargar) btnTabCargar.click();
+
+        const excelFileName = document.getElementById('excelFileName');
+        if (excelFileName) excelFileName.innerHTML = 'Arrastra o haz clic para subir (.xlsx)';
+        
+        const btnProcesarExcel = document.getElementById('btnProcesarExcel');
+        if (btnProcesarExcel) btnProcesarExcel.classList.add('hidden');
+        
+        const inputExcelFile = document.getElementById('inputExcelFile');
+        if (inputExcelFile) inputExcelFile.value = '';
     }
 };
 
@@ -2051,4 +2188,50 @@ window.verLotes = async (id, nombre) => {
 window.cerrarModalLotes = () => {
     const modal = document.getElementById('modalLotes');
     if (modal) modal.classList.add('hidden');
+};
+
+window.descargarExcelAuditoria = async function(idCarga) {
+    try {
+        const token = localStorage.getItem('token');
+        const url = `/api/productos/importaciones/${idCarga}/descargar`;
+
+        // Mostramos alerta de carga mientras el servidor reconstruye el Excel
+        Swal.fire({
+            title: 'Recuperando Archivo...',
+            text: 'Extrayendo el documento original de la bóveda de auditoría.',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        const res = await fetch(url, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo descargar el archivo.');
+        }
+
+        // Convertimos la respuesta en un archivo binario (Blob)
+        const blob = await res.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        
+        // Creamos un enlace invisible y forzamos el clic para descargar
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `Auditoria_Carga_Masiva_${idCarga}.xlsx`; // Nombre del archivo
+        document.body.appendChild(link);
+        link.click();
+        
+        // Limpiamos la memoria
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+
+        Swal.close(); // Cerramos la alerta de carga
+
+    } catch (error) {
+        console.error("Error al descargar auditoría:", error);
+        Swal.fire('Error', error.message, 'error');
+    }
 };

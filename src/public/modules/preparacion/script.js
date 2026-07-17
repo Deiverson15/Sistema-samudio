@@ -107,17 +107,21 @@ async function cargarTabla() {
         }
 
         const grupos = {};
-        data.forEach(f => {
-            const key = `${f.nombre.trim().toUpperCase()}_${f.volumen_total}`;
-            if (!grupos[key]) {
-                grupos[key] = {
-                    nombre: f.nombre, volumen_total: f.volumen_total,
-                    gramos_esencia: f.gramos_esencia, ml_alcohol: f.ml_alcohol, gramos_fijador: f.gramos_fijador,
-                    precio: 0, precio_bs: 0, cantidad_mayor: 6, precio_mayor: 0, precio_mayor_bs: 0,
-                    cantidad_gran_mayor: 50, precio_gran_mayor: 0, precio_gran_mayor_bs: 0,
-                    esPromo: false, combos: [], ids: []
-                };
-            }
+       data.forEach(f => {
+                const key = `${f.nombre.trim().toUpperCase()}_${f.volumen_total}`;
+                if (!grupos[key]) {
+                    grupos[key] = {
+                        nombre: f.nombre, volumen_total: f.volumen_total,
+                        gramos_esencia: f.gramos_esencia, ml_alcohol: f.ml_alcohol, gramos_fijador: f.gramos_fijador,
+                        // 🔥 Guardamos los nuevos campos en el mapeador local
+                        precio_gramo_extra: f.precio_gramo_extra,
+                        precio_fijador_extra: f.precio_fijador_extra,
+                        precio_recarga: f.precio_recarga,
+                        precio: 0, precio_bs: 0, cantidad_mayor: 6, precio_mayor: 0, precio_mayor_bs: 0,
+                        cantidad_gran_mayor: 50, precio_gran_mayor: 0, precio_gran_mayor_bs: 0,
+                        esPromo: false, combos: [], ids: []
+                    };
+                }
             grupos[key].ids.push(f.id);
             if (parseFloat(f.cantidad_promo) > 0) {
                 grupos[key].esPromo = true;
@@ -187,6 +191,11 @@ function cargarEditarGrupo(nombre, volumen_total) {
     document.getElementById('ml_alcohol').value = g.ml_alcohol;
     document.getElementById('gramos_fijador').value = g.gramos_fijador;
 
+    // 🔥 PINTAR LOS NUEVOS VALORES EXTRAS EN LA COMPOSICIÓN EDITADA
+    document.getElementById('precio_gramo_extra').value = g.precio_gramo_extra || '';
+    document.getElementById('precio_fijador_extra').value = g.precio_fijador_extra || '';
+    document.getElementById('precio_recarga').value = g.precio_recarga || '';
+
     document.getElementById('precio').value = g.precio || '';
     document.getElementById('precio_bs').value = g.precio_bs || '';
     document.getElementById('cantidad_mayor').value = g.cantidad_mayor || 6;
@@ -212,35 +221,75 @@ function cargarEditarGrupo(nombre, volumen_total) {
     }
 }
 
-function limpiarFormulario() {
-    const form = document.getElementById('formFormula');
-    if (form) form.reset();
+function cargarEditarGrupo(nombre, volumen_total) {
+    const key = `${nombre.trim().toUpperCase()}_${volumen_total}`;
+    const g = window.gruposFormulasTemp[key];
+    if(!g) return;
+
+    formulaSeleccionadaActual = g;
+    idsPorEliminar = []; 
+
+    const inputId = document.getElementById('formulaId');
+    if (inputId) inputId.value = g.standardId || g.ids[0] || '';
     
-    document.getElementById('formulaId').value = '';
-    document.getElementById('tituloFormulario').innerText = "Nueva Fórmula";
-    document.getElementById('btnEliminar').classList.add('hidden');
-    document.getElementById('btnLanzarPromo').classList.add('hidden');
-    
-    const contenedor = document.getElementById('contenedorFilasPromo');
-    if (contenedor) contenedor.innerHTML = '';
-    
-    document.getElementById('cantidad_mayor').value = 6;
-    document.getElementById('cantidad_gran_mayor').value = 50;
-    formulaSeleccionadaActual = null;
-    idsPorEliminar = [];
-    cambiarTipoFormulario('ESTANDAR');
+    document.getElementById('tituloFormulario').innerText = "Editar Formato";
+    document.getElementById('btnEliminar').classList.remove('hidden');
+
+    document.getElementById('nombre').value = g.nombre;
+    document.getElementById('volumen_total').value = g.volumen_total;
+    document.getElementById('gramos_esencia').value = g.gramos_esencia;
+    document.getElementById('ml_alcohol').value = g.ml_alcohol;
+    document.getElementById('gramos_fijador').value = g.gramos_fijador;
+
+    // 🔥 PINTAR LOS NUEVOS VALORES EXTRAS EN LA COMPOSICIÓN EDITADA
+    document.getElementById('precio_gramo_extra').value = g.precio_gramo_extra || '';
+    document.getElementById('precio_fijador_extra').value = g.precio_fijador_extra || '';
+    document.getElementById('precio_recarga').value = g.precio_recarga || '';
+
+    document.getElementById('precio').value = g.precio || '';
+    document.getElementById('precio_bs').value = g.precio_bs || '';
+    document.getElementById('cantidad_mayor').value = g.cantidad_mayor || 6;
+    document.getElementById('precio_mayor').value = g.precio_mayor || '';
+    document.getElementById('precio_mayor_bs').value = g.precio_mayor_bs || '';
+    document.getElementById('cantidad_gran_mayor').value = g.cantidad_gran_mayor || 50;
+    document.getElementById('precio_gran_mayor').value = g.precio_gran_mayor || '';
+    document.getElementById('precio_gran_mayor_bs').value = g.precio_gran_mayor_bs || '';
+
+    if (g.esPromo) {
+        cambiarTipoFormulario('PROMO');
+        const container = document.getElementById('contenedorFilasPromo');
+        if (container) {
+            container.innerHTML = ''; 
+            g.combos.forEach(c => {
+                agregarFilaPromo(c.cantidad_promo, c.precio_promo, c.precio_bs, c.id);
+            });
+        }
+        document.getElementById('btnLanzarPromo').classList.remove('hidden');
+    } else {
+        cambiarTipoFormulario('ESTANDAR');
+        document.getElementById('btnLanzarPromo').classList.add('hidden');
+    }
 }
 
 async function guardarFormula() {
     const mainId = document.getElementById('formulaId').value;
     const token = localStorage.getItem('token');
     
+    // 🔥 CAPTURAMOS LOS VALORES DE NUESTROS INPUTS NUEVOS
+    const pGramoExtra = document.getElementById('precio_gramo_extra').value || 0;
+    const pFijadorExtra = document.getElementById('precio_fijador_extra').value || 0;
+    const pRecarga = document.getElementById('precio_recarga').value || 0;
+
     const basePayload = {
         nombre: document.getElementById('nombre').value.trim(),
         volumen_total: document.getElementById('volumen_total').value,
         gramos_esencia: document.getElementById('gramos_esencia').value || 0,
         ml_alcohol: document.getElementById('ml_alcohol').value || 0,
-        gramos_fijador: document.getElementById('gramos_fijador').value || 0
+        gramos_fijador: document.getElementById('gramos_fijador').value || 0,
+        // 🔥 Los metemos a la base estructural del envío
+        precio_gramo_extra: pGramoExtra,
+        precio_fijador_extra: pFijadorExtra,
+        precio_recarga: pRecarga
     };
 
     try {

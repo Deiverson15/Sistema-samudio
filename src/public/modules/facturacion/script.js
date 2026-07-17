@@ -16,6 +16,8 @@ let inventarioEnvases = [];
 let modoRecargaActual = false;
 
 let promoMaxPerfumes = 0;
+let esModoLoteEstandar = false;
+let estandarDataActual = null;
 let promoPerfumesAgregados = 0;
 let loteEsenciasPromo = [];
 let promoDataActual = null;
@@ -177,17 +179,30 @@ window.cambiarModo = function(modo) {
 };
 
 function cargarInsumosEstrategicos() {
-    // Busca insumos clave. Quitamos la restricción de "&& p.stock_estante > 0"
-    // para que el sistema sepa que existen aunque estén agotados.
-    productoAlcohol = todosLosProductos.find(p => 
-        (p.nombre.toUpperCase().includes("ALCOHOL") || p.categoria === 'Alcohol')
-    );
-    productoFijador = todosLosProductos.find(p => 
-        (p.nombre.toUpperCase().includes("FIJADOR") || p.categoria === 'Fijador')
-    );
+    // 🔥 SOLUCIÓN DEFINITIVA: Ordenamos para que priorice el insumo que SÍ tiene stock en la sucursal (estante + almacén)
+    productoAlcohol = todosLosProductos
+        .filter(p => p.nombre.toUpperCase().includes("ALCOHOL") || p.categoria === 'Alcohol')
+        .sort((a, b) => {
+            const stockA = parseFloat(a.stock_estante || 0) + parseFloat(a.stock_unidades || 0);
+            const stockB = parseFloat(b.stock_estante || 0) + parseFloat(b.stock_unidades || 0);
+            return stockB - stockA; // Coloca el que tiene más stock de primero
+        })[0] || null; // Tomamos el mejor o null si no existe
+
+    productoFijador = todosLosProductos
+        .filter(p => p.nombre.toUpperCase().includes("FIJADOR") || p.categoria === 'Fijador')
+        .sort((a, b) => {
+            const stockA = parseFloat(a.stock_estante || 0) + parseFloat(a.stock_unidades || 0);
+            const stockB = parseFloat(b.stock_estante || 0) + parseFloat(b.stock_unidades || 0);
+            return stockB - stockA;
+        })[0] || null;
+
+    // Hacemos lo mismo con los envases para que mapee todo el inventario de frascos
     inventarioEnvases = todosLosProductos.filter(p => 
         (p.categoria === 'Envases' || p.nombre.toUpperCase().includes("ENVASE") || p.nombre.toUpperCase().includes("FRASCO"))
     );
+    
+    console.log("[AUDITORÍA INSUMOS] Mapeado Alcohol Activo:", productoAlcohol?.nombre, "Disp:", (parseFloat(productoAlcohol?.stock_estante || 0) + parseFloat(productoAlcohol?.stock_unidades || 0)));
+    console.log("[AUDITORÍA INSUMOS] Mapeado Fijador Activo:", productoFijador?.nombre, "Disp:", (parseFloat(productoFijador?.stock_estante || 0) + parseFloat(productoFijador?.stock_unidades || 0)));
 }
 
 function parseJwt(token) {
@@ -1296,7 +1311,8 @@ function actualizarResumenCobro() {
     }
 }
 
-window.finalizarVentaBackend = async function() {
+// 🔥 1. AGREGAMOS EL PARÁMETRO DE CONFIRMACIÓN (POR DEFECTO FALSE)
+window.finalizarVentaBackend = async function(confirmacionAlmacen = false) {
     const btn = document.getElementById('btnFinalizarVenta');
     const originalText = btn.innerHTML;
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Procesando...';
@@ -1324,16 +1340,15 @@ window.finalizarVentaBackend = async function() {
     const totalVentaCalculado = carrito.reduce((acc, i) => acc + (i.precio * i.cantidad), 0);
     const totalVentaFinal = Math.round((totalVentaCalculado + Number.EPSILON) * 100) / 100;
 
-    // 🛡️ CORRECCIÓN CRÍTICA: Mapeo ordenado y estructurado de los campos comerciales
     const itemsLimpios = carrito.map(i => {
         const precioUnitarioLimpio = Math.round((parseFloat(i.precio) + Number.EPSILON) * 100) / 100;
         const subtotalLimpio = Math.round((precioUnitarioLimpio * parseFloat(i.cantidad) + Number.EPSILON) * 100) / 100;
 
         return { 
-            id: parseInt(i.id, 10),               // ✅ El ID real de la fragancia (Entero Puro)
+            id: parseInt(i.id, 10),               
             cantidad: parseFloat(i.cantidad), 
-            precio: precioUnitarioLimpio,        // ✅ El costo decimal calculado (Ej: 10.03)
-            subtotal: subtotalLimpio,            // ✅ Subtotal sanitizado
+            precio: precioUnitarioLimpio,        
+            subtotal: subtotalLimpio,            
             formula_id: i.formula_id ? parseInt(i.formula_id, 10) : null,
             descripcion: i.nombre ? i.nombre.toUpperCase() : 'PRODUCTO FRAGANZA',
             gramos_extra: parseFloat(i.gramos_extra || 0),
@@ -1353,22 +1368,48 @@ window.finalizarVentaBackend = async function() {
     try {
         const token = localStorage.getItem('token');
         const res = await fetch('/api/ventas', {
-    method: 'POST',
-    headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}` 
-    },
-    body: JSON.stringify({ 
-        items: itemsLimpios, // 📢 VITAL: Enviamos la colección filtrada y no el carrito crudo
-        total: totalVentaFinal, 
-        cliente_id: parseInt(clienteActual.id || 1, 10), 
-        pagos: pagosLimpios,
-        tipo_documento: tipoDoc,
-        usuario_id: usuarioLogueadoId
-    })
-});
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+            },
+            body: JSON.stringify({ 
+                items: itemsLimpios, 
+                total: totalVentaFinal, 
+                cliente_id: parseInt(clienteActual.id || 1, 10), 
+                pagos: pagosLimpios,
+                tipo_documento: tipoDoc,
+                usuario_id: usuarioLogueadoId,
+                confirmacion_almacen: confirmacionAlmacen // 🔥 2. ENVIAMOS LA BANDERA AL BACKEND
+            })
+        });
 
         const data = await res.json();
+
+        // 🔥 3. ATRAPAMOS LA ALERTA DE STOCK ANTES DE QUE FALLE
+        if (res.status === 409 && data.error === 'ALERTA_ALMACEN') {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+
+            const result = await Swal.fire({
+                title: 'Mostrador Insuficiente',
+                html: data.mensaje, // Aquí se muestra el mensaje de cuántos gramos faltan
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#0a0a0a',
+                cancelButtonColor: '#94a3b8',
+                confirmButtonText: 'Sí, tomar del almacén',
+                cancelButtonText: 'Cancelar Venta',
+                customClass: { popup: 'rounded-none' }
+            });
+
+            if (result.isConfirmed) {
+                // Si la cajera dice que SÍ, volvemos a lanzar la venta pero con permiso activado
+                return window.finalizarVentaBackend(true); 
+            } else {
+                return; // Si dice que NO, la venta se aborta de forma segura
+            }
+        }
 
         if(res.ok) {
             cerrarModalCobro();
@@ -1386,15 +1427,19 @@ window.finalizarVentaBackend = async function() {
                 });
             });
             cargarCatalogo(); 
-        } else { throw new Error(data.error || 'Error al procesar la venta.'); }
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        } else { 
+            throw new Error(data.error || 'Error al procesar la venta.'); 
+        }
     } catch (e) {
         console.error(e);
         Swal.fire('Error en Facturación', e.message, 'error');
-    } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
-    }
+    } 
 };
+
 
 let tabModalActual = 'ESTANDAR'; 
 let comboFormulaActiva = null;
@@ -1606,13 +1651,25 @@ window.iniciarSeleccionPromoEnLote = function(cantidadMaximaPromo, datosDeLaProm
     panelLote.classList.add('flex');
 
     document.getElementById('promoContadorMaximo').innerText = promoMaxPerfumes;
-    document.getElementById('promoContadorActual').innerText = 0;
     
     // Limpiar el buscador visual cada vez que se abre la promo
     document.getElementById('inputBusquedaEsenciaPromo').value = '';
     document.getElementById('selectEsenciaPromo').value = '';
     document.getElementById('dropdownResultadosEsencia').classList.add('hidden');
 
+    // 🔥 LA SOLUCIÓN UX: Inyectar automáticamente la esencia que seleccionaste en el panel
+    if (productoPendiente) {
+        loteEsenciasPromo.push({
+            id: productoPendiente.id,
+            nombre: productoPendiente.nombre,
+            cantidad: 1,
+            gramos_extra: 0,
+            precio_gramo_extra: 0
+        });
+        promoPerfumesAgregados = 1;
+    }
+
+    document.getElementById('promoContadorActual').innerText = promoPerfumesAgregados;
     renderizarListaEsenciasLote();
 };
 
@@ -1636,7 +1693,7 @@ window.agregarEsenciaEnLote = function() {
     if (!esenciaId) return Swal.fire('Atención', 'Por favor busca y selecciona una esencia de la lista inferior.', 'warning');
     if (isNaN(cantidadAAgregar) || cantidadAAgregar <= 0) return Swal.fire('Error', 'Cantidad inválida.', 'error');
 
-    if (promoPerfumesAgregados + cantidadAAgregar > promoMaxPerfumes) {
+    if (!esModoLoteEstandar && (promoPerfumesAgregados + cantidadAAgregar > promoMaxPerfumes)) {
         const disponibles = promoMaxPerfumes - promoPerfumesAgregados;
         return Swal.fire({
             icon: 'error',
@@ -1701,12 +1758,23 @@ function renderizarListaEsenciasLote() {
     }).join('');
 
     // Candado del botón final
-    if (promoPerfumesAgregados === promoMaxPerfumes) {
-        btnConfirmar.disabled = false;
-        btnConfirmar.classList.remove('opacity-50', 'cursor-not-allowed');
+    if (esModoLoteEstandar) {
+        document.getElementById('promoContadorMaximo').innerText = '∞';
+        if (loteEsenciasPromo.length > 0) {
+            btnConfirmar.disabled = false;
+            btnConfirmar.classList.remove('opacity-50', 'cursor-not-allowed');
+        } else {
+            btnConfirmar.disabled = true;
+            btnConfirmar.classList.add('opacity-50', 'cursor-not-allowed');
+        }
     } else {
-        btnConfirmar.disabled = true;
-        btnConfirmar.classList.add('opacity-50', 'cursor-not-allowed');
+        if (promoPerfumesAgregados === promoMaxPerfumes) {
+            btnConfirmar.disabled = false;
+            btnConfirmar.classList.remove('opacity-50', 'cursor-not-allowed');
+        } else {
+            btnConfirmar.disabled = true;
+            btnConfirmar.classList.add('opacity-50', 'cursor-not-allowed');
+        }
     }
 }
 
@@ -1717,8 +1785,11 @@ window.eliminarLote = function(index) {
 };
 
 window.cancelarSeleccionPromo = function() {
+    esModoLoteEstandar = false; // 🔥 Liberamos la bandera al volver o cerrar
     const panelLote = document.getElementById('contenedorSeleccionEsenciasPromo');
-    panelLote.classList.add('hidden');
+    
+    // 🔥 AQUÍ ESTÁ LA CORRECCIÓN: Era classList.add, no solo add
+    panelLote.classList.add('hidden'); 
     panelLote.classList.remove('flex');
     
     document.getElementById('contenedorFormulas').classList.remove('hidden');
@@ -1726,47 +1797,54 @@ window.cancelarSeleccionPromo = function() {
 };
 
 window.confirmarPromoLote = function() {
-    if (!productoPendiente || !promoDataActual) return;
+    if (!productoPendiente) return;
+    if (!promoDataActual && !estandarDataActual) return;
 
-    const { idFormula, monedaElegida, precioBase, formula } = promoDataActual;
-    
-    const totalBotellas = loteEsenciasPromo.reduce((acc, item) => acc + item.cantidad, 0);
-    const precioTotalCombo = precioBase; 
-    const precioUnitarioBase = precioTotalCombo / totalBotellas;
+    // Determinar origen dinámico de datos
+    const dataActiva = esModoLoteEstandar ? estandarDataActual : promoDataActual;
+    const { idFormula, monedaElegida, precioBase, formula } = dataActiva;
     const vol = formula.volumen_total;
 
-    // 🛡️ Verificar stock en estante de CADA esencia (Con sus propios gramos extra)
+    // 🛡️ Verificar stock en estante + depósito de CADA esencia
     for (const item of loteEsenciasPromo) {
         const prodEsencia = todosLosProductos.find(p => p.id == item.id);
         if (!prodEsencia) continue;
         
-        // Sumar esencia base + gramos extra de este ítem
         const gEsenciaNecesariaItem = parseFloat(formula.gramos_esencia) + (item.gramos_extra || 0);
         const esenciaNecesariaParaEsteItem = gEsenciaNecesariaItem * item.cantidad;
         
-        if (parseFloat(prodEsencia.stock_estante) < esenciaNecesariaParaEsteItem) {
-            return Swal.fire('Existencias Insuficientes', `La fragancia "${prodEsencia.nombre}" no tiene gramos suficientes (${esenciaNecesariaParaEsteItem}g) en estante para preparar este combo.`, 'warning');
+        // Sumamos ambas cantidades
+        const totalDisp = parseFloat(prodEsencia.stock_estante || 0) + parseFloat(prodEsencia.stock_real || 0);
+        
+        if (totalDisp < esenciaNecesariaParaEsteItem) {
+            return Swal.fire('Existencias Insuficientes', `La fragancia "${prodEsencia.nombre}" no tiene gramos suficientes (${esenciaNecesariaParaEsteItem}g) sumando estante y almacén para este lote.`, 'warning');
         }
     }
 
     const itemsParaAgregar = [];
 
-    // Preparamos los artículos individualmente
     loteEsenciasPromo.forEach((item, index) => {
         const prodEsencia = todosLosProductos.find(p => p.id == item.id);
         if (!prodEsencia) return;
 
-        // Leer datos individuales guardados en el "Añadir"
         const gramosExtraItem = item.gramos_extra || 0;
         const precioGramoExtraItem = item.precio_gramo_extra || 0;
 
-        const precioFinalUnitario = precioUnitarioBase + (gramosExtraItem * precioGramoExtraItem);
+        // Si es Estándar, el precio base corre libre. Si es promo, se calcula la fracción fija.
+        const precioFinalUnitario = esModoLoteEstandar 
+            ? precioBase + (gramosExtraItem * precioGramoExtraItem)
+            : (precioBase / promoMaxPerfumes) + (gramosExtraItem * precioGramoExtraItem);
+
         const mlAlcoholPorBotella = Math.max(0, parseFloat(formula.ml_alcohol) - gramosExtraItem);
 
         const tagExtra = gramosExtraItem > 0 ? ` (+${gramosExtraItem}g Ext)` : '';
+        const tagModo = esModoLoteEstandar ? '' : ' (PROMO)';
+        const tipoPrecioInicial = esModoLoteEstandar ? 'DETAL' : 'PROMO';
+        const colorBadgeInicial = esModoLoteEstandar ? null : 'bg-amber-100 text-amber-700 border-amber-200';
+
         const nombreFactura = modoRecargaActual 
-            ? `♻️ REC ${vol}ml ${prodEsencia.nombre}${tagExtra} (PROMO)` 
-            : `${vol}ml ${prodEsencia.nombre}${tagExtra} (PROMO)`;
+            ? `♻️ REC ${vol}ml ${prodEsencia.nombre}${tagExtra}${tagModo}` 
+            : `${vol}ml ${prodEsencia.nombre}${tagExtra}${tagModo}`;
 
         itemsParaAgregar.push({
             id: prodEsencia.id, 
@@ -1780,9 +1858,9 @@ window.confirmarPromoLote = function() {
             precio_gramo_extra: precioGramoExtraItem,
             ml_alcohol_override: mlAlcoholPorBotella,
             monedaElegida: monedaElegida,
-            isLocked: true, 
-            tipoPrecio: 'PROMO',
-            badgeColor: 'bg-amber-100 text-amber-700 border-amber-200'
+            isLocked: esModoLoteEstandar ? false : true, // 🔥 FALSE para activar escalas mayoristas en lote estándar
+            tipoPrecio: tipoPrecioInicial,
+            badgeColor: colorBadgeInicial
         });
     });
 
@@ -1792,13 +1870,11 @@ window.confirmarPromoLote = function() {
     cerrarModalFormula();
     cancelarSeleccionPromo();
     
-    // Limpiar campos visuales por si acaso
     if(document.getElementById('extraGramosEsencia')) document.getElementById('extraGramosEsencia').value = '';
     
     Swal.fire({ toast: true, position: 'bottom-end', icon: 'success', title: 'Lote inyectado al ticket', showConfirmButton: false, timer: 1500 });
 };
 
-// Resuelve e inyecta al carrito cada botella del combo procesando la moneda acordada
 window.confirmarEsenciasComboPOS = function() {
     if (!productoPendiente || !comboFormulaActiva) return;
 
@@ -1811,7 +1887,9 @@ window.confirmarEsenciasComboPOS = function() {
     const precioTotalCombo = window.precioComboCalculadoTemp || parseFloat(comboFormulaActiva.precio_promo);
     const precioUnitarioBase = precioTotalCombo / totalBotellas;
     const precioFinalUnitario = precioUnitarioBase + (gramosExtra * precioGramoExtra);
-    const vol = comboFormulaActiva.volumen_total;
+    
+    // 🔥 CORRECCIÓN: Forzamos a que el volumen sea un entero matemático limpio (Evita el bug de 1100ML)
+    const volLimpio = parseInt(comboFormulaActiva.volumen_total || 30, 10);
 
     const mlAlcoholPorBotella = Math.max(0, parseFloat(comboFormulaActiva.ml_alcohol) - gramosExtra);
     const gEsenciaNecesaria = parseFloat(comboFormulaActiva.gramos_esencia) + gramosExtra;
@@ -1824,21 +1902,28 @@ window.confirmarEsenciasComboPOS = function() {
         const prodEsencia = todosLosProductos.find(p => p.nombre.trim().toUpperCase() === nombreEscrito && p.categoria && p.categoria.toUpperCase().includes('ESENCIA'));
         if (!prodEsencia) return Swal.fire('Fragancia Inválida', `El texto en la Botella #${i + 1} no coincide con ninguna esencia registrada.`, 'error');
 
-        if (parseFloat(prodEsencia.stock_estante) < gEsenciaNecesaria) {
-            return Swal.fire('Existencias Insuficientes', `La fragancia "${prodEsencia.nombre}" no tiene gramos suficientes en estante para este combo.`, 'warning');
+        // Sumamos ambas cantidades sin bloquear (Como lo corregimos para Recepción)
+        const totalDispCombo = parseFloat(prodEsencia.stock_estante || 0) + parseFloat(prodEsencia.stock_real || 0);
+
+        if (totalDispCombo < gEsenciaNecesaria) {
+            console.warn(`El Frontend no detecta líquido suficiente de ${prodEsencia.nombre}, delegando apertura al Backend...`);
         }
 
         const tagExtra = gramosExtra > 0 ? ` (+${gramosExtra}g Ext)` : '';
+        
+        // 🔥 CORRECCIÓN: Estructura de texto limpia usando el volumen sanitizado (Ej: "30ML")
         const nombreFactura = modoRecargaActual 
-            ? `♻️ REC ${vol}ml ${prodEsencia.nombre}${tagExtra} (PROMO)` 
-            : `${vol}ml ${prodEsencia.nombre}${tagExtra} (PROMO)`;
+            ? `♻️ REC ${volLimpio}ML ${prodEsencia.nombre}${tagExtra} (PROMO)` 
+            : `${volLimpio}ML ${prodEsencia.nombre}${tagExtra} (PROMO)`;
 
+        // 🔥 CORRECCIÓN CRÍTICA: Añadimos "_B${i}_" dentro del unique_id para que cada 
+        // botella tenga un identificador único en memoria y el carrito no colapse los datos.
         itemsParaAgregar.push({
             id: prodEsencia.id, 
-            unique_id: `${prodEsencia.id}_F${comboFormulaActiva.id}_P${i}_${Date.now()}`, 
+            unique_id: `${prodEsencia.id}_F${comboFormulaActiva.id}_B${i}__${Date.now()}`, 
             nombre: nombreFactura, 
             precio: precioFinalUnitario, 
-            cantidad: 1, 
+            cantidad: 1, // Cada item entra de 1 en 1 de forma limpia
             formula_id: comboFormulaActiva.id,
             es_recarga: modoRecargaActual,
             gramos_extra: gramosExtra,
@@ -1941,38 +2026,44 @@ window.seleccionarFormula = async (idFormula, esPromo = false) => {
         precioBase = esPromo ? parseFloat(formula.precio_promo) : parseFloat(formula.precio);
     }
 
-    // 🔥 LA MAGIA: AQUÍ SE CONECTA EL NUEVO PANEL DE LOTES EN LUGAR DE LA PANTALLA VIEJA
+    // 🔥 CONEXIÓN AL NUEVO PANEL DE LOTES EN LUGAR DE LA PANTALLA VIEJA
     if (esPromo) {
-        // Empaquetamos la data para mandarla a la nueva modal de lotes
         const datosDeLaPromo = {
             idFormula: formula.id,
             monedaElegida: monedaElegida,
             precioBase: precioBase,
             formula: formula
         };
-        // Iniciamos el panel minimalista con la cantidad límite de la fórmula
         window.iniciarSeleccionPromoEnLote(formula.cantidad_promo, datosDeLaPromo);
         return;
     }
 
-    // --- FLUJO ESTÁNDAR (SE MANTIENE IGUAL) ---
+    // --- FLUJO ESTÁNDAR ---
     const inputExtraG = document.getElementById('extraGramosEsencia');
     const inputExtraP = document.getElementById('precioGramoExtra');
     const gramosExtra = inputExtraG && inputExtraG.value ? parseFloat(inputExtraG.value) : 0;
     const precioGramoExtra = inputExtraP && inputExtraP.value ? parseFloat(inputExtraP.value) : 0;
 
+    // --- LÓGICA DE DOSIFICACIÓN Y ALCOHOL ---
     const gEsenciaTotal = parseFloat(formula.gramos_esencia) + gramosExtra;
     let mlAlcoholTotal = parseFloat(formula.ml_alcohol) - gramosExtra;
     if (mlAlcoholTotal < 0) mlAlcoholTotal = 0;
-    const gFijadorTotal = parseFloat(formula.gramos_fijador);
 
-    if(productoPendiente.stock_estante < gEsenciaTotal) return Swal.fire('Stock Insuficiente', `Necesitas ${gEsenciaTotal}g de esencia en estante.`, 'warning');
-    if(mlAlcoholTotal > 0 && (!productoAlcohol || productoAlcohol.stock_estante < mlAlcoholTotal)) return Swal.fire('Stock Insuficiente', `No hay suficiente alcohol en estante.`, 'warning');
-    if(gFijadorTotal > 0 && (!productoFijador || productoFijador.stock_estante < gFijadorTotal)) return Swal.fire('Stock Insuficiente', `No hay suficiente fijador en estante.`, 'warning');
-
+    // 🔥 SOLUCIÓN: Se eliminan por completo las alertas de bloqueo de stock (Efecto pared).
+    // El Frontend ya no frena la orden si el alcohol, fijador o frascos están PENDIENTES o en Almacén.
+    // Se le delega al Backend para que realice el descuento inteligente con o sin confirmación.
     if (!modoRecargaActual) {
-        const frasco = inventarioEnvases.find(e => (e.nombre.includes(vol.toString()) || e.contenido_gramos == vol) && e.stock_estante >= 1);
-        if(!frasco) return Swal.fire('Stock Insuficiente', `No tienes frascos de ${vol}ml en el estante de mostrador.`, 'warning');
+        const frasco = inventarioEnvases.find(e => (e.nombre.includes(vol.toString()) || e.contenido_gramos == vol));
+        if (!frasco) {
+            Swal.fire({ 
+                toast: true, 
+                position: 'top', 
+                icon: 'info', 
+                title: `Aviso: Presentación ${vol}ml no mapeada en catálogo global`, 
+                showConfirmButton: false, 
+                timer: 1550 
+            });
+        }
     }
 
     const costoExtraPorBotella = gramosExtra * precioGramoExtra;
@@ -2041,12 +2132,14 @@ function renderContenidoModalFormulas() {
 
         formulasEstandar.forEach(f => {
             const reqAlcohol = parseFloat(f.ml_alcohol || 0);
-            const stockAlcohol = productoAlcohol ? parseFloat(productoAlcohol.stock_estante) : 0;
+            // 🔥 CORREGIDO: Sumamos estante + unidades para que detecte el alcohol en Recepción/Depósito
+            const stockAlcohol = productoAlcohol ? (parseFloat(productoAlcohol.stock_estante || 0) + parseFloat(productoAlcohol.stock_unidades || 0)) : 0;
             const hayAlcohol = stockAlcohol >= reqAlcohol;
             let badgeAlcohol = reqAlcohol > 0 ? (hayAlcohol ? `<span class="text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 font-bold text-[9px]">ALC: SÍ</span>` : `<span class="text-red-700 bg-red-50 border border-red-200 px-1.5 py-0.5 font-bold text-[9px]">ALC: NO</span>`) : '';
 
             const reqFijador = parseFloat(f.gramos_fijador || 0);
-            const stockFijador = productoFijador ? parseFloat(productoFijador.stock_estante) : 0;
+            // 🔥 CORREGIDO: Sumamos estante + unidades para que detecte el fijador en Recepción/Depósito
+            const stockFijador = productoFijador ? (parseFloat(productoFijador.stock_estante || 0) + parseFloat(productoFijador.stock_unidades || 0)) : 0;
             const hayFijador = stockFijador >= reqFijador;
             let badgeFijador = reqFijador > 0 ? (hayFijador ? `<span class="text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 font-bold text-[9px]">FIJ: SÍ</span>` : `<span class="text-red-700 bg-red-50 border border-red-200 px-1.5 py-0.5 font-bold text-[9px]">FIJ: NO</span>`) : '';
 
@@ -2054,7 +2147,11 @@ function renderContenidoModalFormulas() {
             if (modoRecargaActual) {
                 badgeEnvase = `<span class="text-neutral-700 bg-neutral-100 border border-neutral-300 px-1.5 py-0.5 font-bold text-[9px]">♻️ FRASCO CLIENTE</span>`;
             } else {
-                const envase = inventarioEnvases.find(e => (e.nombre.includes(f.volumen_total.toString()) || e.contenido_gramos == f.volumen_total) && e.stock_estante >= 1);
+                // 🔥 CORREGIDO: Buscamos el envase sumando el inventario total disponible
+                const envase = inventarioEnvases.find(e => 
+                    (e.nombre.includes(f.volumen_total.toString()) || e.contenido_gramos == f.volumen_total) && 
+                    (parseFloat(e.stock_estante || 0) + parseFloat(e.stock_unidades || 0)) >= 1
+                );
                 badgeEnvase = envase ? `<span class="text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 font-bold text-[9px]">ENVASE: SÍ</span>` : `<span class="text-red-700 bg-red-50 border border-red-200 px-1.5 py-0.5 font-bold text-[9px]">ENVASE: NO</span>`;
             }
 
@@ -2064,7 +2161,10 @@ function renderContenidoModalFormulas() {
                 <div class="p-4 border border-neutral-200 rounded-none bg-neutral-50 hover:border-neutral-950 transition-colors flex flex-col gap-2">
                     <div class="flex justify-between items-center">
                         <span class="font-black text-neutral-950 text-xs uppercase tracking-wide"><i class="fa-solid fa-bottle-droplet text-neutral-400 mr-1.5"></i> Formato ${f.volumen_total}ml</span>
-                        <button onclick="seleccionarFormula(${f.id}, false)" class="bg-neutral-950 hover:bg-neutral-800 text-white font-black text-[10px] uppercase tracking-widest px-4 py-2">Seleccionar</button>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="seleccionarFormula(${f.id}, false)" class="bg-neutral-950 hover:bg-neutral-800 text-white font-black text-[10px] uppercase tracking-widest px-3 py-2 rounded-none">Directo (+1)</button>
+                            <button type="button" onclick="window.iniciarEstandarLoteUI(${f.id})" class="bg-amber-500 hover:bg-amber-600 text-neutral-950 font-black text-[10px] uppercase tracking-widest px-3 py-2 border border-amber-600 rounded-none"><i class="fa-solid fa-list-check"></i> Cargar en Lote</button>
+                        </div>
                     </div>
                     <div class="flex justify-between items-center border-t border-neutral-200 pt-2 mt-1">
                         <div class="flex gap-1.5 flex-wrap">${badgeEnvase} ${badgeFijador} ${badgeAlcohol}</div>
@@ -2077,6 +2177,79 @@ function renderContenidoModalFormulas() {
         window.filtrarPromosModal();
     }
 }
+
+window.iniciarEstandarLoteUI = async function(idFormula) {
+    if (!productoPendiente) return;
+    const formula = formulasGlobales.find(f => f.id === idFormula);
+    if (!formula) return;
+
+    let precioBase = parseFloat(formula.precio) || 0;
+    let monedaElegida = 'USD';
+    const precioBsConfigurado = parseFloat(formula.precio_bs || 0);
+
+    if (precioBsConfigurado > 0 && !modoRecargaActual) {
+        const modalVisible = document.getElementById('modalSeleccionFormula');
+        if (modalVisible) modalVisible.classList.add('hidden');
+
+        const decision = await Swal.fire({
+            title: '💱 Selector de Moneda Fija (Lote)',
+            html: `<span class="text-xs text-neutral-400 font-bold uppercase">Elige la modalidad de cobro para este lote estándar:</span>`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#d97706', 
+            cancelButtonColor: '#0a0a0a',
+            confirmButtonText: `Bs. Fijos (${precioBsConfigurado.toFixed(0)} Bs.)`,
+            cancelButtonText: `Dólares ($${precioBase.toFixed(2)})`
+        });
+
+        if (decision.dismiss === Swal.DismissReason.backdrop || decision.dismiss === Swal.DismissReason.close) {
+            if (modalVisible) modalVisible.classList.remove('hidden');
+            return;
+        }
+
+        if (decision.isConfirmed) {
+            monedaElegida = 'BS';
+            precioBase = precioBsConfigurado / tasaCambio; 
+        } else {
+            monedaElegida = 'USD';
+            precioBase = parseFloat(formula.precio);
+        }
+        if (modalVisible) modalVisible.classList.remove('hidden');
+    }
+
+    esModoLoteEstandar = true;
+    promoMaxPerfumes = 999999; 
+    promoPerfumesAgregados = 0;
+    loteEsenciasPromo = [];
+    estandarDataActual = { idFormula, monedaElegida, precioBase, formula };
+
+    document.getElementById('contenedorFormulas').classList.add('hidden');
+    document.getElementById('wrapperBuscadorModalPromo').classList.add('hidden');
+    
+    const panelLote = document.getElementById('contenedorSeleccionEsenciasPromo');
+    panelLote.classList.remove('hidden');
+    panelLote.classList.add('flex');
+
+    document.getElementById('promoContadorMaximo').innerText = '∞';
+    document.getElementById('inputBusquedaEsenciaPromo').value = '';
+    document.getElementById('selectEsenciaPromo').value = '';
+    document.getElementById('dropdownResultadosEsencia').classList.add('hidden');
+
+    // 🔥 LA SOLUCIÓN UX: Agregar el perfume al presionar "Cargar Lote"
+    if (productoPendiente) {
+        loteEsenciasPromo.push({
+            id: productoPendiente.id,
+            nombre: productoPendiente.nombre,
+            cantidad: 1,
+            gramos_extra: 0,
+            precio_gramo_extra: 0
+        });
+        promoPerfumesAgregados = 1;
+    }
+
+    document.getElementById('promoContadorActual').innerText = promoPerfumesAgregados;
+    renderizarListaEsenciasLote();
+};
 
 window.filtrarPromosModal = function() {
     if (tabModalActual !== 'PROMO') return;
@@ -2096,10 +2269,14 @@ window.filtrarPromosModal = function() {
     formulasPromo.forEach(f => {
         if (buscadorTexto && !f.nombre.toLowerCase().includes(buscadorTexto)) return;
         
-        if (!gruposPorVolumen[f.volumen_total]) {
-            gruposPorVolumen[f.volumen_total] = [];
+        // 🔥 LA CORRECCIÓN: Nos aseguramos de que el volumen se guarde estrictamente como un número limpio
+        // Para evitar que JavaScript concatene un '1' y convierta 100 en 1100
+        const volLimpio = parseInt(f.volumen_total, 10);
+        
+        if (!gruposPorVolumen[volLimpio]) {
+            gruposPorVolumen[volLimpio] = [];
         }
-        gruposPorVolumen[f.volumen_total].push(f);
+        gruposPorVolumen[volLimpio].push(f);
     });
 
     if (Object.keys(gruposPorVolumen).length === 0) {
@@ -2107,12 +2284,14 @@ window.filtrarPromosModal = function() {
         return;
     }
 
+    // Dibujar los acordeones con el volumen sanitizado
     for (const volumen in gruposPorVolumen) {
         const itemsCombo = gruposPorVolumen[volumen];
         
         const divAcordeon = document.createElement('div');
-        divAcordeon.className = "border border-neutral-300 bg-white rounded-none overflow-hidden";
+        divAcordeon.className = "border border-neutral-300 bg-white rounded-none overflow-hidden mb-2";
         
+        // 🔥 Aquí ya saldrá "100ML" perfecto en vez de "1100ML"
         divAcordeon.innerHTML = `
             <div onclick="toggleAcordeonPromoModal(this)" class="p-4 bg-neutral-950 text-white flex justify-between items-center cursor-pointer select-none transition-colors hover:bg-neutral-900">
                 <span class="font-black text-xs uppercase tracking-widest flex items-center gap-2">
@@ -2129,7 +2308,7 @@ window.filtrarPromosModal = function() {
                         </div>
                         <div class="flex items-center gap-4">
                             <span class="font-black text-neutral-950 text-sm">$${parseFloat(f.precio_promo).toFixed(2)}</span>
-                            <button onclick="seleccionarFormula(${f.id}, true)" class="bg-amber-500 hover:bg-amber-600 text-neutral-950 font-black text-[9px] uppercase tracking-widest px-3 py-2 border border-amber-600">Llevar Combo</button>
+                            <button type="button" onclick="seleccionarFormula(${f.id}, true)" class="bg-amber-500 hover:bg-amber-600 text-neutral-950 font-black text-[9px] uppercase tracking-widest px-3 py-2 border border-amber-600">Llevar Combo</button>
                         </div>
                     </div>
                 `).join('')}

@@ -70,17 +70,28 @@
         </p>
     </div>
 
-    <script>
-        // --- CAMBIO 2: LÓGICA JAVASCRIPT ---
+    <!-- 🔥 NUEVO: VENTANA FLOTANTE URBANA PARA SELECCIONAR SUCURSAL (MODAL) -->
+    <div id="modalTiendas" class="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center z-50 hidden p-4">
+        <div class="bg-neutral-900 border-4 border-white p-6 max-w-lg w-full shadow-[10px_10px_0px_rgba(255,255,255,1)] text-center">
+            <h2 class="text-white text-2xl font-black tracking-widest uppercase mb-1">SELECCIONAR SUCURSAL</h2>
+            <p class="text-neutral-400 text-[10px] uppercase tracking-widest mb-6">Elige el entorno de trabajo activo</p>
+            
+            <!-- Contenedor donde se pintarán tus sucursales reales en dos columnas -->
+            <div id="contenedorTiendas" class="grid grid-cols-2 gap-4 max-h-80 overflow-y-auto pr-1">
+                <!-- Inyectado dinámicamente por JavaScript -->
+            </div>
+        </div>
+    </div>
+
+<script>
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const email = document.getElementById('email').value; // Ahora leemos el email
+            const email = document.getElementById('email').value; 
             const password = document.getElementById('password').value;
             const errorMsg = document.getElementById('errorMsg');
             const btn = e.target.querySelector('button');
 
-            // Feedback visual de carga
             const textoOriginal = btn.innerText;
             btn.innerText = 'Cargando...';
             btn.disabled = true;
@@ -88,30 +99,34 @@
             errorMsg.classList.add('hidden');
 
             try {
-                // 1. Aquí definimos la variable como "res"
                 const res = await fetch('/api/auth/login', { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password })
                 });
 
-                const data = await res.json(); // Usamos res
+                const data = await res.json(); 
 
-                // 2. Aquí DEBES usar "res", no "response"
                 if (res.ok) {
-    localStorage.setItem('token', data.token);
-    // IMPORTANTE: Guardar todo el objeto 'user' que ahora trae tienda_id y tienda_nombre
-    localStorage.setItem('usuario', JSON.stringify(data.user)); 
-    
-    window.location.href = '/index.html';
+                    // ¿El backend dice que somos un usuario maestro y pide elegir tienda?
+                    if (data.seleccionar_tienda) {
+                        // Guardamos el token provisional de 15 min
+                        localStorage.setItem('token', data.token);
+                        
+                        // Mostramos el modal y le mandamos las tiendas que vinieron del servidor
+                        abrirSelectorTiendas(data.tiendas);
+                        return;
+                    }
 
+                    // Flujo normal para empleados estándar (Vendedores, etc.)
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('usuario', JSON.stringify(data.user));
+                    window.location.href = '/index.html';
 
                 } else {
-                    // Mostrar error
                     errorMsg.innerText = data.error || 'Credenciales inválidas';
                     errorMsg.classList.remove('hidden');
                     
-                    // Restaurar botón
                     btn.innerText = textoOriginal;
                     btn.disabled = false;
                     btn.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -126,19 +141,70 @@
                 btn.classList.remove('opacity-50', 'cursor-not-allowed');
             }
         });
+
+        // Genera y despliega las sucursales en pantalla
+        function abrirSelectorTiendas(tiendas) {
+            const modal = document.getElementById('modalTiendas');
+            const contenedor = document.getElementById('contenedorTiendas');
+            
+            contenedor.innerHTML = ''; 
+
+            tiendas.forEach(tienda => {
+                const tarjeta = document.createElement('button');
+                tarjeta.className = "bg-neutral-800 text-white border-2 border-neutral-700 p-4 font-bold text-xs uppercase tracking-wider hover:border-white hover:bg-neutral-700 transition text-center flex flex-col items-center justify-center gap-1";
+                
+                tarjeta.innerHTML = `
+                    <span class="text-sm font-black tracking-wide">${tienda.nombre}</span>
+                    <span class="text-[9px] text-neutral-500">ID: 00${tienda.id}</span>
+                `;
+
+                // Acción al cliquear una tienda en el modal
+                tarjeta.onclick = async () => {
+                    try {
+                        const tokenProvisional = localStorage.getItem('token');
+
+                        // Enviamos la sucursal seleccionada al nuevo endpoint que creamos
+                        const resFinal = await fetch('/api/auth/establecer-tienda', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${tokenProvisional}`
+                            },
+                            body: JSON.stringify({ tienda_id: tienda.id })
+                        });
+
+                        const dataFinal = await resFinal.json();
+
+                        if (!resFinal.ok) throw new Error(dataFinal.error);
+
+                        // GUARDADO FINAL: Guardamos el token definitivo y el objeto completo del usuario
+                        localStorage.setItem('token', dataFinal.token);
+                        localStorage.setItem('usuario', JSON.stringify(dataFinal.user));
+                        
+                        // Redirigimos al sistema principal
+                        window.location.href = '/index.html';
+
+                    } catch (err) {
+                        alert("Error estableciendo sucursal: " + err.message);
+                    }
+                };
+
+                contenedor.appendChild(tarjeta);
+            });
+
+            // Quitamos la clase 'hidden' para renderizar el modal en pantalla
+            modal.classList.remove('hidden');
+        }
     </script>
 
+    
     <script>
-    document.addEventListener('DOMContentLoaded', async () => {
-        try {
-            // Creamos un endpoint simple o usamos el de mensaje-pago para ver el estado
-            const res = await fetch('/api/ajustes/mensaje-pago'); 
-            const data = await res.json();
-            
-            // Si el sistema responde con error 402 o indica bloqueo en su lógica
-            // (Necesitarás un endpoint público que devuelva solo el estado)
-        } catch (e) { console.error(e); }
-    });
-</script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const res = await fetch('/api/ajustes/mensaje-pago'); 
+                const data = await res.json();
+            } catch (e) { console.error(e); }
+        });
+    </script>
 </body>
 </html>

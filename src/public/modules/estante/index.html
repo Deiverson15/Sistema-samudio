@@ -163,7 +163,8 @@
 <div id="modalMerma" class="fixed inset-0 z-50 hidden bg-neutral-950/80 backdrop-blur-sm p-4 flex items-center justify-center">
     <div class="bg-white w-full max-w-sm rounded-none border border-neutral-400 p-6">
         <h3 class="font-black text-xs uppercase tracking-widest mb-4">Reportar Merma: <span id="mermaNombre"></span></h3>
-        <input type="hidden" id="merma_id_botella">
+        <input type="hidden" id="merma_productos_id">
+        <input type="hidden" id="merma_ubicacion" value="ALMACEN"> <!-- AGREGADO -->
         <input type="number" id="merma_cantidad" placeholder="Cantidad" class="w-full border border-neutral-300 p-3 text-xs mb-4 uppercase font-bold outline-none">
         <textarea id="merma_observaciones" placeholder="Motivo de la merma" class="w-full border border-neutral-300 p-3 text-xs mb-4 uppercase font-bold outline-none"></textarea>
         <div class="flex gap-2">

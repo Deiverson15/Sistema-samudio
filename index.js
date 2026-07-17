@@ -185,15 +185,16 @@ app.use('/api/clientes', require('./src/routes/clientes.routes'));
 app.use('/api/auditoria', require('./src/routes/auditoria.routes'));
 app.use('/api/ajustes', require('./src/routes/ajustes.routes'));
 app.use('/api/formulas', require('./src/routes/formulas.routes'));
+app.use('/api/fabricacion', require('./src/routes/fabricacion.routes.js'));
 app.use('/api/caja', require('./src/routes/caja.routes'));
 app.use('/api/bcv', require('./src/routes/bcv.routes'));
 app.use('/api/notificaciones', require('./src/routes/notificaciones.routes'));
 app.use('/api/tiendas', require('./src/routes/tiendas.routes'));
 
-// <-- NUEVO: Agregamos la ruta del Panel Dios -->
+
 app.use('/api/developer', require('./src/routes/developer.routes')); 
 
-// 4. PRUEBA DE CONEXIÓN
+
 app.get('/test-db', async (req, res) => {
     try {
         const resultado = await pool.query('SELECT NOW() as hora_servidor');
