@@ -102,6 +102,7 @@
             </div>
 
             <!-- TABLA DE ESENCIAS AGREGADAS -->
+            <!-- TABLA DE ESENCIAS AGREGADAS -->
             <div class="border border-neutral-300 max-h-48 overflow-y-auto bg-white">
                 <table class="w-full text-left text-xs border-collapse">
                     <thead class="bg-neutral-100 border-b border-neutral-300 text-[9px] font-black uppercase tracking-widest text-neutral-900 sticky top-0">
@@ -111,14 +112,14 @@
                             <th class="p-3 text-center w-16">Acción</th>
                         </tr>
                     </thead>  
-                    <tbody id="bodyHistorialInsumos" class="divide-y divide-neutral-200 font-bold text-neutral-800 bg-white">
-    <!-- El JS inyectará el historial aquí. Puedes dejarlo vacío o con este placeholder: -->
-    <tr>
-        <td colspan="4" class="p-6 text-center text-neutral-400 uppercase text-[9px] tracking-widest">
-            Abre el historial para cargar los datos...
-        </td>
-    </tr>
-</tbody>
+                    <!-- 🔥 CORRECCIÓN AQUÍ: Se cambió el ID duplicado por bodyEsenciasAgregadas -->
+                    <tbody id="bodyEsenciasAgregadas" class="divide-y divide-neutral-200 font-bold text-neutral-800 bg-white">
+                        <tr>
+                            <td colspan="3" class="p-4 text-center text-neutral-400 uppercase text-[9px] tracking-widest">
+                                Ninguna esencia añadida al lote compuesto
+                            </td>
+                        </tr>
+                    </tbody>
                 </table>
             </div>
 

@@ -221,55 +221,18 @@ function cargarEditarGrupo(nombre, volumen_total) {
     }
 }
 
-function cargarEditarGrupo(nombre, volumen_total) {
-    const key = `${nombre.trim().toUpperCase()}_${volumen_total}`;
-    const g = window.gruposFormulasTemp[key];
-    if(!g) return;
+window.limpiarFormulario = function() {
+    // Limpia los campos de texto
+    const inputGramos = document.getElementById('extraGramosEsencia');
+    const inputFijador = document.getElementById('extraGramosFijador');
+    const inputPrecioExtra = document.getElementById('precioGramoExtra'); // Si aún lo tienes
 
-    formulaSeleccionadaActual = g;
-    idsPorEliminar = []; 
-
-    const inputId = document.getElementById('formulaId');
-    if (inputId) inputId.value = g.standardId || g.ids[0] || '';
+    if (inputGramos) inputGramos.value = '';
+    if (inputFijador) inputFijador.value = '';
+    if (inputPrecioExtra) inputPrecioExtra.value = '';
     
-    document.getElementById('tituloFormulario').innerText = "Editar Formato";
-    document.getElementById('btnEliminar').classList.remove('hidden');
-
-    document.getElementById('nombre').value = g.nombre;
-    document.getElementById('volumen_total').value = g.volumen_total;
-    document.getElementById('gramos_esencia').value = g.gramos_esencia;
-    document.getElementById('ml_alcohol').value = g.ml_alcohol;
-    document.getElementById('gramos_fijador').value = g.gramos_fijador;
-
-    // 🔥 PINTAR LOS NUEVOS VALORES EXTRAS EN LA COMPOSICIÓN EDITADA
-    document.getElementById('precio_gramo_extra').value = g.precio_gramo_extra || '';
-    document.getElementById('precio_fijador_extra').value = g.precio_fijador_extra || '';
-    document.getElementById('precio_recarga').value = g.precio_recarga || '';
-
-    document.getElementById('precio').value = g.precio || '';
-    document.getElementById('precio_bs').value = g.precio_bs || '';
-    document.getElementById('cantidad_mayor').value = g.cantidad_mayor || 6;
-    document.getElementById('precio_mayor').value = g.precio_mayor || '';
-    document.getElementById('precio_mayor_bs').value = g.precio_mayor_bs || '';
-    document.getElementById('cantidad_gran_mayor').value = g.cantidad_gran_mayor || 50;
-    document.getElementById('precio_gran_mayor').value = g.precio_gran_mayor || '';
-    document.getElementById('precio_gran_mayor_bs').value = g.precio_gran_mayor_bs || '';
-
-    if (g.esPromo) {
-        cambiarTipoFormulario('PROMO');
-        const container = document.getElementById('contenedorFilasPromo');
-        if (container) {
-            container.innerHTML = ''; 
-            g.combos.forEach(c => {
-                agregarFilaPromo(c.cantidad_promo, c.precio_promo, c.precio_bs, c.id);
-            });
-        }
-        document.getElementById('btnLanzarPromo').classList.remove('hidden');
-    } else {
-        cambiarTipoFormulario('ESTANDAR');
-        document.getElementById('btnLanzarPromo').classList.add('hidden');
-    }
-}
+    console.log("Formulario de extras limpiado con éxito.");
+};
 
 async function guardarFormula() {
     const mainId = document.getElementById('formulaId').value;

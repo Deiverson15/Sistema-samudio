@@ -159,141 +159,143 @@ const exportarReporteGeneral = async (req, res) => {
     const client = await pool.connect();
     try {
         const workbook = new ExcelJS.Workbook();
-        workbook.creator = 'Perfumix C.A.';
+        workbook.creator = 'Mantra Perfumería';
         const headerStyle = { font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } }, alignment: { horizontal: 'center' } };
         const borderStyle = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
 
         // =========================================================
-        // REPORTE A: CIERRES DE CAJAS POR FORMA DE PAGO
+        // REPORTE A: CIERRES DE CAJAS (CORREGIDO FECHAS Y MÉTODOS)
         // =========================================================
         if (filtro === 'cierres') {
-            const sheet = workbook.addWorksheet('Hoja1');
+            const sheet = workbook.addWorksheet('Cierres de Caja');
 
             sheet.addRow([]);
-            const rowTitulo = sheet.addRow(['Reporte de Forma de Pago']);
+            const rowTitulo = sheet.addRow(['Reporte de Cierres de Cajas']);
             rowTitulo.font = { bold: true, size: 12 };
             sheet.addRow([]); 
 
+            // 🔥 SE AGREGÓ LA COLUMNA "MÉTODOS USADOS" Y "OTROS"
             const rowHeaders = sheet.addRow([
-                'Fecha Documento', 'Caja - Serie', 'EFECTIVO DIVISAS', 'EFECTIVO BS', 
-                'PUNTO DE VENTA', 'TRANSFERENCIA', 'PAGO MOVIL', 'CASHEA', 'ZELLE', 
-                'BIOPAGO', 'BINANCE', 'CXC', 'TOTAL INGRESO USD', 'TASA BCV', 'TOTAL INGRESO BS.'
+                'Fecha / Hora', 'N° Cierre', 'Cajero', 'Sucursal', 'MÉTODOS USADOS',
+                'EFECTIVO DIVISAS', 'EFECTIVO BS', 'PUNTO DE VENTA', 'TRANSFERENCIA', 
+                'PAGO MOVIL', 'CASHEA', 'ZELLE', 'BIOPAGO', 'BINANCE', 'CXC', 'OTROS', 
+                'TOTAL INGRESO USD', 'TOTAL INGRESO BS.'
             ]);
             rowHeaders.font = { bold: true };
 
-            // Inyección de filtros cruzados a la base de datos
+            let filtroTiendaCierre = '';
+            if (esUsuarioMaestro && tienda && tienda !== 'todas') {
+                filtroTiendaCierre = ` AND c.tienda_id = ${parseInt(tienda, 10)}`;
+            } else if (!esUsuarioMaestro) {
+                filtroTiendaCierre = ` AND c.tienda_id = ${idTiendaLocal}`;
+            }
+
+            let filtroVendedorCierre = '';
+            if (vendedor && vendedor.trim() !== '') {
+                filtroVendedorCierre = ` AND u.nombre ILIKE '%${vendedor.trim()}%'`;
+            }
+
+            // 🔥 CORRECCIÓN: Filtro de fechas usando DATE() para que no se coma el último día
             let querySQL = `
                 SELECT 
-                    DATE(v.fecha) as fecha_dia,
-                    MAX(p.tasa_cambio) as tasa_bcv,
-                    p.metodo,
-                    SUM(p.monto) as monto_usd
-                FROM ventas v
-                JOIN pagos p ON v.id = p.venta_id
-                LEFT JOIN usuarios u ON v.usuario_id = u.id
-                WHERE v.fecha BETWEEN $1 AND $2 ${filtroTiendaGeneral} ${filtroVendedorStr}
+                    c.id,
+                    c.fecha_cierre,
+                    c.total_usd,
+                    c.total_bs,
+                    c.tienda_id,
+                    c.detalles_json,
+                    u.nombre as usuario
+                FROM cierres_caja c
+                LEFT JOIN usuarios u ON c.usuario_id = u.id
+                WHERE DATE(c.fecha_cierre) BETWEEN $1 AND $2 
+                  ${filtroTiendaCierre} ${filtroVendedorCierre}
+                ORDER BY c.fecha_cierre ASC
             `;
-            if (metodo && metodo !== 'todos') {
-                querySQL += ` AND p.metodo ILIKE '%${metodo}%'`;
-            }
-            querySQL += ` GROUP BY DATE(v.fecha), p.metodo ORDER BY DATE(v.fecha) ASC`;
 
-            const resVentas = await client.query(querySQL, [start, end]);
-            const diasMap = {};
+            const resCierres = await client.query(querySQL, [start, end]);
             
-            resVentas.rows.forEach(r => {
-                const fechaObj = new Date(r.fecha_dia);
-                const fechaStr = fechaObj.toISOString().split('T')[0] + ' 00:00:00';
+            const totales = { divisas: 0, bs: 0, punto: 0, trans: 0, pmovil: 0, cashea: 0, zelle: 0, biopago: 0, binance: 0, cxc: 0, otros: 0, total_usd: 0, total_bs: 0 };
 
-                if (!diasMap[fechaStr]) {
-                    diasMap[fechaStr] = {
-                        fecha: fechaStr,
-                        caja: `T-${idTiendaLocal}`, 
-                        divisas: 0, bs: 0, punto: 0, trans: 0, pmovil: 0,
-                        cashea: 0, zelle: 0, biopago: 0, binance: 0, cxc: 0,
-                        tasa: parseFloat(r.tasa_bcv || 0)
-                    };
-                }
+            resCierres.rows.forEach(cierre => {
+                const fechaCierre = new Date(cierre.fecha_cierre).toLocaleString('es-VE');
+                const numCierre = String(cierre.id).padStart(6, '0');
+                const cajero = cierre.usuario || 'Sistema';
+                const sucursalStr = `T-${cierre.tienda_id}`;
+                
+                const detalles = typeof cierre.detalles_json === 'string' ? JSON.parse(cierre.detalles_json) : (cierre.detalles_json || {});
+                let desglose = [];
+                if (Array.isArray(detalles.desglose_pagos)) desglose = detalles.desglose_pagos;
+                else if (detalles.desglose_pagos && Array.isArray(detalles.desglose_pagos.desglose_pagos)) desglose = detalles.desglose_pagos.desglose_pagos;
+                else if (Array.isArray(detalles.desglose_metodos)) desglose = detalles.desglose_metodos;
+                else if (detalles.desglose_pagos && typeof detalles.desglose_pagos === 'object') desglose = Object.values(detalles.desglose_pagos);
 
-                if (parseFloat(r.tasa_bcv) > diasMap[fechaStr].tasa) {
-                    diasMap[fechaStr].tasa = parseFloat(r.tasa_bcv);
-                }
+                let hasMethod = false;
+                const filaData = { divisas: 0, bs: 0, punto: 0, trans: 0, pmovil: 0, cashea: 0, zelle: 0, biopago: 0, binance: 0, cxc: 0, otros: 0 };
+                const metodosNombres = []; // Array para capturar los nombres de los métodos usados
 
-                const met = (r.metodo || '').toUpperCase();
-                const monto = parseFloat(r.monto_usd || 0);
+                desglose.forEach(d => {
+                    const met = (d.metodo || 'OTROS').toUpperCase();
+                    const montoUSD = parseFloat(d.total_usd || d.usd || 0);
+                    
+                    // Solo guardamos el nombre si tiene un monto asignado
+                    if (!metodosNombres.includes(met) && montoUSD > 0) metodosNombres.push(met);
 
-                if (met.includes('EFECTIVO USD') || met.includes('DIVISA') || met.includes('DOLAR')) {
-                    diasMap[fechaStr].divisas += monto;
-                } 
-                else if (met.includes('EFECTIVO BS') || met === 'EFECTIVO') {
-                    diasMap[fechaStr].bs += monto;
-                } 
-                else if (met.includes('PUNTO')) {
-                    diasMap[fechaStr].punto += monto;
-                } 
-                else if (met.includes('MOVIL') || met.includes('P. MOVIL')) {
-                    diasMap[fechaStr].pmovil += monto;
-                } 
-                else if (met.includes('TRANS') || met.includes('TRANSFERENCIA')) {
-                    diasMap[fechaStr].trans += monto;
-                } 
-                else if (met.includes('BIO') || met.includes('BIOPAGO')) {
-                    diasMap[fechaStr].biopago += monto;
-                } 
-                else if (met.includes('ZELLE')) {
-                    diasMap[fechaStr].zelle += monto;
-                } 
-                else if (met.includes('BINANCE')) {
-                    diasMap[fechaStr].binance += monto;
-                } 
-                else if (met.includes('CASHEA')) {
-                    diasMap[fechaStr].cashea += monto;
-                } 
-                else if (met.includes('CXC') || met.includes('CREDITO')) {
-                    diasMap[fechaStr].cxc += monto;
-                } 
-                else {
-                    diasMap[fechaStr].bs += monto; 
-                }
-            });
+                    if (metodo && metodo !== 'todos' && met.includes(metodo.toUpperCase())) {
+                        hasMethod = true;
+                    }
 
-            const totales = { divisas: 0, bs: 0, punto: 0, trans: 0, pmovil: 0, cashea: 0, zelle: 0, biopago: 0, binance: 0, cxc: 0, total_usd: 0, total_bs: 0 };
+                    if (met.includes('EFECTIVO USD') || met.includes('DIVISA') || met.includes('DOLAR')) filaData.divisas += montoUSD;
+                    else if (met.includes('EFECTIVO BS') || met === 'EFECTIVO') filaData.bs += montoUSD;
+                    else if (met.includes('PUNTO')) filaData.punto += montoUSD;
+                    else if (met.includes('MOVIL') || met.includes('P. MOVIL')) filaData.pmovil += montoUSD;
+                    else if (met.includes('TRANS')) filaData.trans += montoUSD;
+                    else if (met.includes('BIO') || met.includes('BIOPAGO')) filaData.biopago += montoUSD;
+                    else if (met.includes('ZELLE')) filaData.zelle += montoUSD;
+                    else if (met.includes('BINANCE')) filaData.binance += montoUSD;
+                    else if (met.includes('CASHEA')) filaData.cashea += montoUSD;
+                    else if (met.includes('CXC') || met.includes('CREDITO')) filaData.cxc += montoUSD;
+                    else filaData.otros += montoUSD; 
+                });
 
-            Object.values(diasMap).forEach(dia => {
-                const totalUsdDia = dia.divisas + dia.bs + dia.punto + dia.trans + dia.pmovil + dia.cashea + dia.zelle + dia.biopago + dia.binance + dia.cxc;
-                const totalBsDia = totalUsdDia * dia.tasa;
+                if (metodo && metodo !== 'todos' && !hasMethod && desglose.length > 0) return;
+
+                const cierreUsd = parseFloat(cierre.total_usd || 0);
+                const cierreBs = parseFloat(cierre.total_bs || 0);
 
                 sheet.addRow([
-                    dia.fecha, dia.caja, 
-                    dia.divisas, dia.bs, dia.punto, dia.trans, dia.pmovil, 
-                    dia.cashea, dia.zelle, dia.biopago, dia.binance, dia.cxc, 
-                    totalUsdDia, dia.tasa, totalBsDia
+                    fechaCierre, numCierre, cajero, sucursalStr, metodosNombres.join(', '), // Insertamos los métodos en texto
+                    filaData.divisas, filaData.bs, filaData.punto, filaData.trans, filaData.pmovil, 
+                    filaData.cashea, filaData.zelle, filaData.biopago, filaData.binance, filaData.cxc, filaData.otros,
+                    cierreUsd, cierreBs
                 ]);
 
-                totales.divisas += dia.divisas; totales.bs += dia.bs; totales.punto += dia.punto;
-                totales.trans += dia.trans; totales.pmovil += dia.pmovil; totales.cashea += dia.cashea;
-                totales.zelle += dia.zelle; totales.biopago += dia.biopago; totales.binance += dia.binance;
-                totales.cxc += dia.cxc; totales.total_usd += totalUsdDia; totales.total_bs += totalBsDia;
+                totales.divisas += filaData.divisas; totales.bs += filaData.bs; totales.punto += filaData.punto;
+                totales.trans += filaData.trans; totales.pmovil += filaData.pmovil; totales.cashea += filaData.cashea;
+                totales.zelle += filaData.zelle; totales.biopago += filaData.biopago; totales.binance += filaData.binance;
+                totales.cxc += filaData.cxc; totales.otros += filaData.otros; totales.total_usd += cierreUsd; totales.total_bs += cierreBs;
             });
 
             const rowTotal = sheet.addRow([
-                '', '', 
+                '', '', '', '', 'TOTALES:', 
                 totales.divisas, totales.bs, totales.punto, totales.trans, totales.pmovil,
-                totales.cashea, totales.zelle, totales.biopago, totales.binance, totales.cxc,
-                totales.total_usd, '', totales.total_bs
+                totales.cashea, totales.zelle, totales.biopago, totales.binance, totales.cxc, totales.otros,
+                totales.total_usd, totales.total_bs
             ]);
             rowTotal.font = { bold: true };
 
-            sheet.getColumn(1).width = 20;
-            sheet.getColumn(2).width = 12;
-            for (let i = 3; i <= 15; i++) {
+            sheet.getColumn(1).width = 20; 
+            sheet.getColumn(2).width = 12; 
+            sheet.getColumn(3).width = 20; 
+            sheet.getColumn(4).width = 10; 
+            sheet.getColumn(5).width = 25; // Ancho para la nueva columna "MÉTODOS USADOS"
+            for (let i = 6; i <= 18; i++) {
                 sheet.getColumn(i).width = 15; 
-                if (i !== 14) sheet.getColumn(i).numFmt = i === 15 ? '"Bs "#,##0.00' : '"$"#,##0.00';
+                sheet.getColumn(i).numFmt = i === 18 ? '"Bs "#,##0.00' : '"$"#,##0.00';
             }
         }
 
         // =========================================================
-        // REPORTE B: VENTAS POR REFERENCIAS (EVOLUCIONADO ANTI N/A)
+        // REPORTE B: VENTAS POR REFERENCIAS (EVOLUCIONADO ANTI N/A Y FECHAS)
         // =========================================================
         if (filtro === 'referencias') {
             const sheet = workbook.addWorksheet('Ventas por Referencia');
@@ -310,6 +312,7 @@ const exportarReporteGeneral = async (req, res) => {
             rowHeaders.font = { bold: true };
             rowHeaders.alignment = { horizontal: 'center' };
 
+            // 🔥 CORRECCIÓN: Usamos DATE(v.fecha) para asegurar la captura del día completo
             const resReferencias = await client.query(`
                 SELECT 
                     COALESCE(
@@ -330,7 +333,8 @@ const exportarReporteGeneral = async (req, res) => {
                 JOIN productos p ON dv.producto_id = p.id
                 LEFT JOIN formulas f ON dv.formula_id = f.id
                 LEFT JOIN usuarios u ON v.usuario_id = u.id
-                WHERE v.fecha BETWEEN $1 AND $2 ${filtroTiendaGeneral} ${filtroVendedorStr}
+                WHERE DATE(v.fecha) BETWEEN $1 AND $2 
+                  ${filtroTiendaGeneral} ${filtroVendedorStr}
                 GROUP BY 
                     COALESCE(
                         NULLIF(dv.tamano, 'N/A'),
@@ -427,6 +431,7 @@ const exportarReporteGeneral = async (req, res) => {
                 });
             });
 
+            // 🔥 CORRECCIÓN: Filtro de fecha exacto
             const resData = await client.query(`
                 SELECT 
                     t.nombre as tienda_nombre,
@@ -441,7 +446,7 @@ const exportarReporteGeneral = async (req, res) => {
                 JOIN detalle_ventas dv ON v.id = dv.venta_id
                 JOIN tiendas t ON v.tienda_id = t.id
                 LEFT JOIN productos p ON dv.producto_id = p.id
-                WHERE v.fecha BETWEEN $1 AND $2 ${filtroTiendaQuery}
+                WHERE v.fecha::date BETWEEN $1 AND $2 ${filtroTiendaQuery}
             `, params);
 
             resData.rows.forEach(r => {
@@ -524,7 +529,7 @@ const exportarReporteGeneral = async (req, res) => {
         }
 
         // =========================================================
-        // ⭐ REPORTE D NUEVO: VALORACIÓN DE INVENTARIO Y CAPITAL
+        // REPORTE D NUEVO: VALORACIÓN DE INVENTARIO Y CAPITAL
         // =========================================================
         if (filtro === 'inventario') {
             const sheet = workbook.addWorksheet('Valoración de Inventario');
@@ -562,7 +567,7 @@ const exportarReporteGeneral = async (req, res) => {
         }
 
         // =========================================================
-        // ⭐ REPORTE E NUEVO: CONTROL DE MERMAS Y TESTERS
+        // REPORTE E NUEVO: CONTROL DE MERMAS Y TESTERS
         // =========================================================
         if (filtro === 'mermas') {
             const sheet = workbook.addWorksheet('Mermas y Consumos');
@@ -614,9 +619,19 @@ const exportarReporteGeneral = async (req, res) => {
             rowHeaders.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             rowHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } }; 
 
+            // 🔥 CORRECCIÓN CRÍTICA: Motor SQL con divisor inteligente para Materia Prima
+            // Esto divide el costo entre 1000 automáticamente si el producto vendido es un insumo
             const qRenta = `
                 SELECT p.nombre, p.categoria, SUM(dv.cantidad) as uds, SUM(dv.subtotal) as ingreso,
-                       SUM(dv.cantidad * COALESCE(NULLIF(dv.costo_unitario_historico, 0), p.costo)) as costo
+                       SUM(
+                           dv.cantidad * (
+                               CASE 
+                                   WHEN p.categoria ILIKE '%esencia%' OR p.categoria ILIKE '%alcohol%' OR p.categoria ILIKE '%fijador%' OR p.unidad_medida = 'GRAMOS' OR p.unidad_medida = 'ML' 
+                                   THEN COALESCE(NULLIF(dv.costo_unitario_historico, 0), p.costo) / 1000.0
+                                   ELSE COALESCE(NULLIF(dv.costo_unitario_historico, 0), p.costo)
+                               END
+                           )
+                       ) as costo
                 FROM detalle_ventas dv
                 JOIN ventas v ON dv.venta_id = v.id
                 JOIN productos p ON dv.producto_id = p.id
@@ -647,9 +662,11 @@ const exportarReporteGeneral = async (req, res) => {
             
             sheet.getColumn(1).width = 40; 
             sheet.getColumn(4).numFmt = '"$"#,##0.00'; 
-            sheet.getColumn(5).numFmt = '"$"#,##0.00'; 
+            // 🔥 Ajuste de precisión: Mostramos 4 decimales en costo para ver el valor real del gramo
+            sheet.getColumn(5).numFmt = '"$"#,##0.0000'; 
             sheet.getColumn(6).numFmt = '"$"#,##0.00'; 
-            sheet.getColumn(7).numFmt = '0.00%';
+            // Excel transformará esto a formato de porcentaje preciso (ej: 98.89%)
+            sheet.getColumn(7).numFmt = '0.00%'; 
         }
 
         // =========================================================
@@ -684,20 +701,130 @@ const exportarReporteGeneral = async (req, res) => {
         }
 
         // =========================================================
-        // REPORTE H: MAESTRO ESTRUCTURAL DE FORMULAS BASE
+        // REPORTE H: MAESTRO ESTRUCTURAL DE FORMULAS Y COSTOS (NUEVA PLANTILLA)
         // =========================================================
         if (filtro === 'formulas') {
-            const sheet = workbook.addWorksheet('Fórmulas');
-            sheet.columns = [ 
-                { header: 'NOMBRE', key: 'nombre', width: 30 }, 
-                { header: 'VOLUMEN TOTAL', key: 'vol', width: 18 }, 
-                { header: 'PRECIO VENTA $', key: 'precio', width: 15 } 
+            const sheet = workbook.addWorksheet('Costos Perfumix');
+            
+            // 1. Configuramos el ancho exacto de las columnas como en tu Excel
+            sheet.columns = [
+                { key: 'A', width: 5 },  // Margen izquierdo
+                { key: 'B', width: 18 }, // Consumo
+                { key: 'C', width: 15 }, // Codigo
+                { key: 'D', width: 25 }, // Detalle
+                { key: 'E', width: 12 }, // Costo
+                { key: 'F', width: 15 }, // 1000.0000 (Divisor)
+                { key: 'G', width: 15 }, // Costo Real
+                { key: 'H', width: 20 }  // Unidad de Medida
             ];
-            sheet.getRow(1).eachCell(cell => Object.assign(cell, headerStyle));
-            const result = await client.query(`SELECT nombre, volumen_total, precio FROM formulas ORDER BY nombre ASC`);
-            result.rows.forEach(r => { 
-                sheet.addRow({ nombre: r.nombre, vol: `${r.volumen_total}ml`, precio: r.precio }).eachCell(c => c.border = borderStyle); 
+
+            // 2. Extraemos los costos ACTUALES de tu base de datos para que sea dinámico
+            const resPrecios = await client.query(`
+                SELECT codigo, categoria, costo FROM productos
+                WHERE (codigo IN ('ALCOHOL', 'FIJADOR', 'F30', 'F60', 'F100') OR categoria ILIKE '%esencia%')
+                AND activo = true AND tienda_id = $1
+            `, [idTiendaLocal]);
+
+            let cAlc = 1.8, cFij = 7, cEse = 37, cF30 = 0.34, cF60 = 0.60, cF100 = 0.86;
+            resPrecios.rows.forEach(r => {
+                const cod = r.codigo.toUpperCase();
+                const cat = (r.categoria || '').toUpperCase();
+                const costo = parseFloat(r.costo || 0);
+
+                if (cod.includes('ALCOHOL')) cAlc = costo;
+                else if (cod.includes('FIJADOR')) cFij = costo;
+                else if (cod === 'F30') cF30 = costo;
+                else if (cod === 'F60') cF60 = costo;
+                else if (cod === 'F100') cF100 = costo;
+                else if (cat.includes('ESENCIA')) cEse = costo; 
             });
+
+            // 3. Estilos reutilizables
+            const headerStyle = { font: { bold: true }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } } };
+            const titleStyle = { font: { bold: true, size: 12 } };
+            const moneyFmt = '"$"#,##0.00';
+            const moneyFmtExact = '"$"#,##0.0000';
+
+            // Función constructora de bloques idénticos a tu plantilla
+            const dibujarBloqueCosto = (tipo, ml, vAlc, vEse, vFij, fCod, fDesc, fCost) => {
+                const isRecarga = tipo === 'RECARGAS';
+                
+                sheet.addRow([]);
+                sheet.addRow(['', tipo]).font = titleStyle;
+                sheet.addRow(['', `${ml} ML`]).font = titleStyle;
+                
+                const cabecera = sheet.addRow(['', `${ml} ML Consumo`, 'Codigo', 'Detalle', 'Costo', '1000.0000', 'Costo', 'Unidad de Medida']);
+                cabecera.eachCell(cell => { cell.font = headerStyle.font; cell.fill = headerStyle.fill; });
+
+                const divAlc = cAlc / 1000, divEse = cEse / 1000, divFij = cFij / 1000;
+                const totAlc = vAlc * divAlc, totEse = vEse * divEse, totFij = vFij * divFij;
+
+                sheet.addRow(['', vAlc / 1000, 'ALCOHOL', 'ALCOHOL', cAlc, divAlc, totAlc, 'Litros']);
+                sheet.addRow(['', vEse / 1000, 'ESENCIA', 'ESENCIA', cEse, divEse, totEse, 'Kilogramos']);
+                sheet.addRow(['', vFij / 1000, 'FIJADOR', 'FIJADOR', cFij, divFij, totFij, 'Kilogramos']);
+
+                let sumBruto = cAlc + cEse + cFij;
+                let sumReal = totAlc + totEse + totFij;
+                let volTotal = (vAlc + vEse + vFij) / 1000;
+
+                if (!isRecarga) {
+                    sheet.addRow(['', 1, fCod, fDesc, fCost, 1.0000, fCost, 'Und']);
+                    sumBruto += fCost;
+                    sumReal += fCost;
+                }
+
+                const filaTotal = sheet.addRow(['', volTotal, '', '', sumBruto, '', sumReal, '']);
+                filaTotal.font = titleStyle;
+                filaTotal.getCell(5).numFmt = moneyFmt;
+                filaTotal.getCell(7).numFmt = moneyFmtExact;
+            };
+
+            // --- RENDERIZADO DEL EXCEL ---
+            
+            // Título Principal
+            sheet.addRow([]);
+            sheet.addRow([]);
+            sheet.addRow(['', 'Formula de Producto Terminado']).font = { bold: true, size: 14 };
+
+            // PERFUMES TERMINADOS
+            dibujarBloqueCosto('PERFUME', 30, 19, 7, 4, 'F30', 'FRASCO 30ML', cF30);
+            dibujarBloqueCosto('PERFUME', 60, 32, 12, 6, 'F60', 'FRASCO 60ML', cF60);
+            dibujarBloqueCosto('PERFUME', 100, 62, 25, 13, 'F100', 'FRASCO 100ML', cF100);
+
+            // RECARGAS ECOLÓGICAS
+            sheet.addRow([]);
+            sheet.addRow([]);
+            sheet.addRow(['', 'RECARGAS']).font = { bold: true, size: 14 };
+
+            dibujarBloqueCosto('RECARGAS', 30, 19, 7, 4, null, null, 0);
+            dibujarBloqueCosto('RECARGAS', 60, 32, 12, 6, null, null, 0);
+            dibujarBloqueCosto('RECARGAS', 100, 62, 25, 13, null, null, 0);
+
+            // EXTRAS DE DOSIFICACIÓN
+            sheet.addRow([]);
+            const extraHeader = sheet.addRow(['', 'EXTRAS DE DOSIFICACIÓN']);
+            extraHeader.font = titleStyle;
+            
+            sheet.addRow(['', 0.002, 'FIJ-EXT', 'Extra de Fijador', cFij, '', cFij * 0.002, 'Kilogramos']);
+            sheet.addRow(['', 0.002, 'ESE-EXT', 'Extra de Esencia', cEse, '', cEse * 0.002, 'Kilogramos']);
+
+            // RESUMEN MATERIA PRIMA (Tabla inferior de tu Excel)
+            sheet.addRow([]);
+            sheet.addRow([]);
+            sheet.addRow(['', 'Costos de Materia Prima:']).font = titleStyle;
+            const mpHeader = sheet.addRow(['', 'Und de Medida', 'Código', 'Articulo', 'Costo']);
+            mpHeader.eachCell(c => { c.font = headerStyle.font; c.fill = headerStyle.fill; });
+
+            sheet.addRow(['', 'Und', 'F30', 'Frasco Tubular R 30 ML', cF30]);
+            sheet.addRow(['', 'Und', 'F60', 'Frasco Tubular R 60 ML', cF60]);
+            sheet.addRow(['', 'Und', 'F100', 'Frasco Tubular R 100 ML', cF100]);
+            sheet.addRow(['', 'Kilogramos', 'FIJADOR', 'Fijador', cFij]);
+            sheet.addRow(['', 'Kilogramos', 'ESENCIA', 'Esencia Surtida Mix', cEse]);
+            sheet.addRow(['', 'Litros', 'ALCOHOL', 'Alcohol Absoluto', cAlc]);
+
+            // Formatear las columnas de moneda en todo el Excel
+            sheet.getColumn('E').numFmt = moneyFmt;
+            sheet.getColumn('G').numFmt = moneyFmtExact;
         }
 
         // 4. RETORNO DE STREAM BINARIO DIRECTO HACIA EL NAVEGADOR
@@ -1043,7 +1170,14 @@ const descargarCierreExcel = async (req, res) => {
         
         // Parsear los detalles guardados
         const detalles = typeof cierre.detalles_json === 'string' ? JSON.parse(cierre.detalles_json) : (cierre.detalles_json || {});
-        const desglose = detalles.desglose_pagos || [];
+        
+        // 🔥 CORRECCIÓN CRÍTICA: Normalización robusta del array de pagos
+        let desglose = [];
+        if (Array.isArray(detalles.desglose_pagos)) desglose = detalles.desglose_pagos;
+        else if (detalles.desglose_pagos && Array.isArray(detalles.desglose_pagos.desglose_pagos)) desglose = detalles.desglose_pagos.desglose_pagos;
+        else if (Array.isArray(detalles.desglose_metodos)) desglose = detalles.desglose_metodos;
+        else if (detalles.desglose_pagos && typeof detalles.desglose_pagos === 'object') desglose = Object.values(detalles.desglose_pagos);
+        
         const idsVentas = detalles.ids_ventas_origen_hoy || [];
 
         const totalUsd = parseFloat(cierre.total_usd) || 0;
@@ -1072,9 +1206,6 @@ const descargarCierreExcel = async (req, res) => {
 
         for (let i = 1; i <= 4; i++) sheet.getRow(i).font = { bold: true };
 
-        // ----------------------------------------------------------------
-        // 🔥 CLASIFICADOR DE MÉTODOS (Para mostrar la matriz completa siempre)
-        // ----------------------------------------------------------------
         const metodosEstandar = {
             'EFECTIVO USD': { usd: 0, bs: 0, trx: 0 },
             'EFECTIVO BS': { usd: 0, bs: 0, trx: 0 },
@@ -1089,7 +1220,7 @@ const descargarCierreExcel = async (req, res) => {
             'OTROS': { usd: 0, bs: 0, trx: 0 }
         };
 
-        // Rellenar la plantilla con los datos del JSON histórico
+        // Ya no lanzará error porque garantizamos que desglose sea un Array
         desglose.forEach(d => {
             let m = (d.metodo || 'OTROS').toUpperCase();
             let key = 'OTROS';
@@ -1109,13 +1240,11 @@ const descargarCierreExcel = async (req, res) => {
             metodosEstandar[key].trx += parseInt(d.transacciones || d.cantidad_transacciones || 0);
         });
 
-        // Cabecera de Tabla
         const rowHead = sheet.addRow(['MÉTODO DE PAGO', 'CANT. OPERACIONES', 'TOTAL INGRESOS (USD)', 'TOTAL INGRESOS (BS)']);
         rowHead.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
         rowHead.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } }; 
         rowHead.alignment = { horizontal: 'center' };
 
-        // Imprimir todos los métodos (incluso los que están en cero)
         Object.keys(metodosEstandar).forEach(key => {
             const fila = sheet.addRow([
                 key, 
@@ -1126,13 +1255,11 @@ const descargarCierreExcel = async (req, res) => {
             fila.getCell(1).font = { bold: true };
         });
 
-        // Fila de Totalizador Final
         sheet.addRow([]);
         const rowData = sheet.addRow(['BALANCE GENERAL DE CAJA', parseInt(cierre.cantidad_ventas) || 0, totalUsd, totalBs]);
         rowData.font = { bold: true, size: 12 };
         rowData.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } }; 
 
-        // Estilos y anchos
         sheet.getColumn(1).width = 30;
         sheet.getColumn(2).width = 20;
         sheet.getColumn(3).width = 25;
@@ -1145,7 +1272,6 @@ const descargarCierreExcel = async (req, res) => {
         // ==========================================
         // HOJA 2: DETALLE DE FACTURAS (TRANSACCIONES)
         // ==========================================
-        // 🔥 MAGIA: Si el cierre guardó qué facturas lo componen, armamos la hoja de detalles.
         if (idsVentas.length > 0) {
             const sheetDetalle = workbook.addWorksheet('Desglose de Facturas');
             
@@ -1157,7 +1283,6 @@ const descargarCierreExcel = async (req, res) => {
             headerDetalle.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             headerDetalle.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } }; 
 
-            // Consultamos los pagos reales de esas facturas
             const trxRes = await client.query(`
                 SELECT p.metodo, p.moneda, COALESCE(p.monto::numeric, 0) as monto, 
                        COALESCE(p.tasa_cambio::numeric, 0) as tasa, v.id as venta_id,
@@ -1291,8 +1416,11 @@ const crearVenta = async (req, res) => {
                     }
 
                     // C. Fijador
-                    if (f.gramos_fijador > 0) {
-                        const totalFijador = f.gramos_fijador * cant;
+                    const gramosFijadorExtra = parseFloat(item.gramos_fijador_extra) || 0;
+                    const gramosFijadorFormula = parseFloat(f.gramos_fijador) || 0;
+                    const totalFijador = (gramosFijadorFormula + gramosFijadorExtra) * cant;
+
+                    if (totalFijador > 0) {
                         // 🔒 CANDADO: Agregamos "AND tienda_id = $2" para amarrar la búsqueda
                         const fijadorRes = await client.query(`
                             SELECT id, nombre FROM productos 
@@ -1302,7 +1430,7 @@ const crearVenta = async (req, res) => {
                             AND tienda_id = $2
                             ORDER BY stock_estante DESC LIMIT 1 FOR UPDATE
                         `, [totalFijador, idTiendaLocal]); 
-
+                        
                         if (fijadorRes.rows.length === 0) throw new Error(`🚫 FALTA FIJADOR: Se necesitan ${totalFijador.toFixed(2)}g en los estantes de esta sucursal.`);
                         await validarYDescontarEstante(client, fijadorRes.rows[0].id, totalFijador, "Fijador", idTiendaLocal, confirmacion_almacen);
                     }

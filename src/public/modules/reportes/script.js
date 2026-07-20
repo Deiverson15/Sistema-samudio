@@ -91,9 +91,16 @@ window.abrirModalReporte = async function(element) {
                 <select id="filterMetodo" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900">
                     <option value="todos">Consolidado Total (Todos)</option>
                     <option value="EFECTIVO USD">Solo Efectivo USD</option>
+                    <option value="EFECTIVO BS">Solo Efectivo Bs</option>
                     <option value="ZELLE">Solo Zelle</option>
-                    <option value="PUNTO DE VENTA">Solo Punto de Venta</option>
-                    <option value="PAGO MOVIL">Solo Pago Móvil</option>
+                    <!-- Usamos valores clave cortos para que coincidan exacto con la Base de Datos -->
+                    <option value="PUNTO">Solo Punto de Venta</option>
+                    <option value="MOVIL">Solo Pago Móvil</option>
+                    <option value="TRANSFERENCIA">Solo Transferencia Bs</option>
+                    <option value="BIO">Solo Bio Pago</option>
+                    <option value="BINANCE">Solo Binance</option>
+                    <option value="CASHEA">Solo Cashea</option>
+                    <option value="CXC">Solo CXC (Crédito)</option>
                 </select>
             </div>`;
     }

@@ -141,7 +141,7 @@ const completarOrden = async (req, res) => {
         
         let costoTotalProduccion = 0;
 
-        // 2. Liberar reservas y aplicar consumo real
+        // 2. Liberar reservas y aplicar consumo real con conversión métrica de costos
         for (const insumo of insumos) {
             await client.query('UPDATE productos SET stock_reservado = GREATEST(stock_reservado - $1, 0) WHERE id = $2', [insumo.reservado, insumo.id]);
 
@@ -152,8 +152,20 @@ const completarOrden = async (req, res) => {
                 consumoReal += (consumoPorUnidad * merma); 
             }
 
-            const prodAct = await client.query('UPDATE productos SET stock_unidades = GREATEST(stock_unidades - $1, 0) WHERE id = $2 RETURNING costo', [consumoReal, insumo.id]);
-            costoTotalProduccion += (consumoReal * parseFloat(prodAct.rows[0].costo || 0));
+            // 🔥 Traemos costo, unidad_medida y categoria para aplicar el divisor inteligente
+            const prodAct = await client.query('UPDATE productos SET stock_unidades = GREATEST(stock_unidades - $1, 0) WHERE id = $2 RETURNING costo, unidad_medida, categoria', [consumoReal, insumo.id]);
+            const rowInsumo = prodAct.rows[0];
+            
+            let costoUnitarioInsumo = parseFloat(rowInsumo.costo || 0);
+            const uniUpper = (rowInsumo.unidad_medida || '').toUpperCase();
+            const catUpper = (rowInsumo.categoria || '').toUpperCase();
+
+            // 🧠 DIVISOR INTELIGENTE: Si el insumo está registrado en gramos/ml pero el costo es por kilo/litro, dividimos entre 1000
+            if (uniUpper === 'GRAMOS' || uniUpper === 'ML' || catUpper === 'ESENCIAS' || catUpper === 'ALCOHOL' || catUpper === 'FIJADOR') {
+                costoUnitarioInsumo = costoUnitarioInsumo / 1000;
+            }
+
+            costoTotalProduccion += (consumoReal * costoUnitarioInsumo);
 
             await client.query(`
                 INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, motivo, fecha, tienda_id, usuario_id)
@@ -169,20 +181,16 @@ const completarOrden = async (req, res) => {
             const formRes = await client.query('SELECT nombre FROM formulas WHERE id = $1', [orden.formula_id]);
             const nombreFormula = formRes.rows.length > 0 ? formRes.rows[0].nombre : "Fórmula";
 
-            // Datos base del producto (Usamos la primera esencia para heredar código/género)
             const firstEsencia = composicion[0];
             const essRes = await client.query('SELECT codigo, nombre, marca, genero FROM productos WHERE id = $1', [firstEsencia.id]);
             const base = essRes.rows.length > 0 ? essRes.rows[0] : { codigo: `FAB-${id}`, nombre: "LOTE MIXTO", marca: "VARIA", genero: "UNISEX" };
             
-            // 🔥 Nombre limpio (quitamos palabra ESENCIA)
             let nombreLimpio = base.nombre.toUpperCase().replace(/ESENCIA/gi, '').trim();
             const nombrePerfume = `PERFUME ${nombreLimpio} ${nombreFormula}`.toUpperCase();
             
-            // 🔥 Generación de código único (agregando -T para evitar duplicidad de llave primaria)
             const codigoFinal = `${base.codigo}-T`; 
             const codigoLote = `LOT-${Date.now().toString().slice(-4)}`;
 
-            // Buscar si ya existe este perfume en el catálogo
             const checkPerf = await client.query('SELECT id FROM productos WHERE nombre = $1 AND tienda_id = $2 AND es_producto_terminado = true', [nombrePerfume, idTiendaLocal]);
 
             if (checkPerf.rows.length > 0) {
@@ -196,15 +204,14 @@ const completarOrden = async (req, res) => {
                 productoFinalId = insertPerf.rows[0].id;
             }
 
-            // Registrar lote
+            // 📦 CREACIÓN AUTOMÁTICA DEL LOTE DE TRAZABILIDAD
             await client.query(`
                 INSERT INTO lotes (producto_id, codigo_lote, cantidad_inicial, cantidad_actual, fecha_vencimiento, costo_unitario, tienda_id)
                 VALUES ($1, $2, $3, $3, NOW() + interval '2 years', $4, $5)
             `, [productoFinalId, codigoLote, completada, costoUnitarioFinal, idTiendaLocal]);
 
-            // Registrar ingreso
             await client.query(`
-                INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, motivo, fecha, tienda_id, usuario_id)
+                INSERT INTO historial_movimientos (producto_id, tipo_movimiento, candy, motivo, fecha, tienda_id, usuario_id)
                 VALUES ($1, 'ENTRADA', $2, $3, NOW(), $4, $5)
             `, [productoFinalId, completada, `Ingreso Producción. Lote: ${codigoLote}`, idTiendaLocal, usuarioId]);
         }

@@ -62,6 +62,7 @@ export async function init() {
     window.toggleUsuario = toggleUsuario;
     window.verActividad = verActividad;
     window.eliminarUsuario = eliminarUsuario;
+    window.prepararEdicionUsuario = prepararEdicionUsuario;
 }
 
 // ==========================================
@@ -320,13 +321,42 @@ window.prepararEdicion = (id) => {
     }
 };
 
-window.cerrarModalEditarUsuario = () => {
-    document.getElementById('modalEditarUsuario').classList.add('hidden');
+// ==========================================
+// ✏️ FUNCIÓN: PREPARAR EDICIÓN DE USUARIO
+// ==========================================
+window.prepararEdicionUsuario = (id) => {
+    // Buscamos al usuario en la caché global
+    const u = usuariosGlobales.find(user => user.id === id);
+    if(!u) return;
+
+    // Llenamos el modal con los datos actuales
+    document.getElementById('editUserId').value = u.id;
+    document.getElementById('editNombre').value = u.nombre;
+    document.getElementById('editRol').value = u.rol;
+    document.getElementById('editEmail').value = u.email;
+    document.getElementById('editDireccion').value = u.direccion || '';
+    
+    // Cargamos las tiendas y seleccionamos la del usuario
+    document.getElementById('editTienda').innerHTML = cacheTiendasListaHTML;
+    document.getElementById('editTienda').value = u.tienda_id || '';
+    
+    // Limpiamos la contraseña por seguridad (para que no se envíe si no se cambia)
+    document.getElementById('editPassword').value = ''; 
+
+    // Mostramos el modal
+    document.getElementById('modalEditarUsuario').classList.remove('hidden');
 };
 
+// ==========================================
+// 🚪 FUNCIÓN: CERRAR MODAL DE EDICIÓN
+// ==========================================
 window.cerrarModalEditarUsuario = () => {
-    document.getElementById('modalEditarUsuario').classList.add('hidden');
+    const modal = document.getElementById('modalEditarUsuario');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
 };
+
 
 window.guardarEdicionUsuario = async () => {
     const id = document.getElementById('editUserId').value;
@@ -357,3 +387,16 @@ window.guardarEdicionUsuario = async () => {
         cargarUsuarios(); 
     } catch (error) { Swal.fire('Error', error.message, 'error'); }
 };
+
+// ==========================================
+// 🛡️ FUNCIÓN DE SEGURIDAD: LIMPIEZA DE TEXTOS
+// ==========================================
+function escapeHtml(unsafe) {
+    if (!unsafe) return '';
+    return String(unsafe)
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+}

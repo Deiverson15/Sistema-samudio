@@ -1550,8 +1550,26 @@ const exportarExcel = async (req, res) => {
                 fila[1] = new Date(m.fecha).toLocaleDateString();
                 fila[2] = prodCodigo;
                 fila[3] = m.nombre;
-                fila[4] = 'ARTICULOS DE VENTA';
-                fila[5] = 'MATERIA PRIMA';
+                
+                // 🔥 LÓGICA DE CLASIFICACIÓN INTELIGENTE
+                // Asegúrate de que 'm.categoria' sea la propiedad que contiene la categoría en tu consulta SQL
+                const cat = (m.categoria || '').toUpperCase();
+                
+                if (cat.includes('PERFUME')) {
+                    fila[4] = 'VENTAS';
+                    fila[5] = 'PERFUMES TERMINADOS';
+                } 
+                // 2. Identificar Materia Prima (Esencia, Fijador, Alcohol, Frascos/Envases)
+                else if (['ESENCIA', 'ALCOHOL', 'FIJADOR', 'FRASCO', 'ENVASE'].some(term => cat.includes(term))) {
+                    fila[4] = 'PRODUCCIÓN';
+                    fila[5] = 'MATERIA PRIMA';
+                } 
+                // 3. Cualquier otra cosa
+                else {
+                    fila[4] = 'GENERAL';
+                    fila[5] = 'OTROS';
+                }
+                
                 fila[6] = m.marca || 'N/A';
                 fila[7] = costoUnit;
                 
