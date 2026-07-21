@@ -10,10 +10,10 @@ const {
 // Obtener todas las órdenes (El Kanban)
 router.get('/', verifyToken, getOrdenes);
 
-// Fase 1: Crear la orden y reservar el stock
-router.post('/orden', verifyToken, verifyGerente, crearOrden);
+// Fase 1: Crear la orden (verifyGerente ya incluye verifyToken)
+router.post('/orden', verifyGerente, crearOrden);
 
-// Fase 3 y 4: Reportar producción, calcular mermas y liberar stock real
-router.post('/orden/:id/completar', verifyToken, verifyGerente, completarOrden);
+// Fase 3 y 4: Reportar producción y cerrar orden
+router.post('/orden/:id/completar', verifyGerente, completarOrden);
 
 module.exports = router;

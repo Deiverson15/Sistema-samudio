@@ -44,10 +44,21 @@ document.addEventListener('DOMContentLoaded', () => {
            const rol = usuario.rol; 
             
             const menusRestringidos = {
-                // Añadimos 'menu-fabricacion' al final de la lista del vendedor
-                vendedor: ['menu-inventario', 'menu-estante', 'menu-preparacion', 'menu-ventas', 'menu-compras', 'menu-proveedores', 'menu-reportes', 'menu-usuarios', 'menu-ajustes', 'menu-auditoria', 'menu-tiendas', 'menu-fabricacion'],
-                gerente: ['menu-usuarios', 'menu-auditoria', 'menu-tiendas'],
-                admin: ['menu-tiendas'],     
+                vendedor: [
+        'menu-dashboard', 'menu-inventario', 'menu-preparacion', 
+        'menu-compras', 'menu-proveedores', 'menu-reportes', 
+        'menu-usuarios', 'menu-ajustes', 'menu-auditoria', 
+        'menu-tiendas', 'menu-fabricacion'
+    ],
+    // HABILITADOS PARA GERENTE: fabricacion, facturacion (nota de entrega), inventario, ventas, compras, etc.
+    // SOLO BLOQUEADOS PARA GERENTE:
+    gerente: [
+        'menu-usuarios', 
+        'menu-auditoria', 
+        'menu-tiendas',
+        'menu-usuarios'
+    ],
+    admin: ['menu-tiendas'],  
                 superadmin: [], 
                 developer: []   
             };

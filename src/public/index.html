@@ -315,59 +315,57 @@
 
         function aplicarPermisosVisuales() {
             const usuarioData = localStorage.getItem('usuario');
-            if (!usuarioData) return;
-                
-            const usuario = JSON.parse(usuarioData);
-            
-            // 🔥 EL ESCUDO: Forzamos el rol a minúsculas para que no choque si dice "Dev" o "Developer"
-            const rol = usuario.rol ? usuario.rol.toLowerCase() : '';
-            
-            // Definición de qué ocultar para cada quien
-            const ocultarParaVendedor = [
-                'menu-dashboard', 'menu-inventario', 'menu-preparacion',
-                'menu-compras', 'menu-proveedores', 'menu-reportes', 
-                'menu-usuarios', 'menu-ajustes', 'menu-auditoria', 'menu-tiendas'
-            ];
-                
-            const ocultarParaGerente = [
-                'menu-usuarios', 'menu-ajustes', 'menu-auditoria', 'menu-tiendas'
-            ];
+if (!usuarioData) return;
 
-            const ocultarParaAdmin = [
-                'menu-tiendas' 
-            ];
+const usuario = JSON.parse(usuarioData);
 
-            const ocultarParaSuperAdmin = [
-                'menu-usuarios' 
-            ];
-                
-            let idsOcultar = [];
+// 1. Obtenemos el rol en minúsculas
+let rol = usuario.rol ? usuario.rol.toLowerCase() : '';
 
-            // Lógica de asignación por rol
-            if (rol === 'vendedor') {
-                idsOcultar = ocultarParaVendedor;
-            } else if (rol === 'gerente') {
-                idsOcultar = ocultarParaGerente;
-            } else if (rol === 'admin') {
-                idsOcultar = ocultarParaAdmin;
-            } else if (rol === 'superadmin') {
-                idsOcultar = ocultarParaSuperAdmin; 
-            }
+// 2. Mapeo inteligente: Si dice "gerente general", "gerente de tienda", etc., lo tratamos como 'gerente'
+if (rol.includes('gerente')) {
+    rol = 'gerente';
+}
 
-            // Aplicar el ocultamiento
-            idsOcultar.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.style.display = 'none';
-            });
+// 3. Matriz de ocultamiento
+const menusRestringidos = {
+    vendedor: [
+        'menu-dashboard', 'menu-inventario', 'menu-preparacion', 
+        'menu-compras', 'menu-proveedores', 'menu-reportes', 
+        'menu-usuarios', 'menu-ajustes', 'menu-auditoria', 
+        'menu-tiendas', 'menu-fabricacion'
+    ],
+    // 'gerente' ahora captura automáticamente a "Gerente General"
+    gerente: [
+        'menu-usuarios', 
+        'menu-auditoria', 
+        'menu-tiendas'
+    ],
+    admin: ['menu-tiendas'],     
+    superadmin: [], 
+    developer: []   
+};
 
-            // REGLA ESPECIAL PARA DEVELOPER (Panel Secreto)
-            const devMenu = document.getElementById('menu-developer');
-            if (rol === 'developer' || rol === 'dev') {
-                if (devMenu) devMenu.style.display = 'block'; 
-            } else {
-                if (devMenu) devMenu.style.display = 'none';  
-            }
-        }
+// Aplicar visibilidad a los elementos del menú
+const todosLosMenus = [
+    'menu-dashboard', 'menu-inventario', 'menu-estante', 'menu-fabricacion', 
+    'menu-facturacion', 'menu-preparacion', 'menu-ventas', 'menu-compras', 
+    'menu-proveedores', 'menu-reportes', 'menu-usuarios', 'menu-ajustes', 
+    'menu-auditoria', 'menu-tiendas'
+];
+
+todosLosMenus.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'block'; 
+});
+
+const idsParaOcultar = menusRestringidos[rol] || [];
+idsParaOcultar.forEach(id => {
+    const elemento = document.getElementById(id);
+    if (elemento) elemento.style.display = 'none';
+});
+
+}
 
         // ==========================================
         // 🔒 SISTEMA EN TIEMPO REAL (KILL SWITCH)

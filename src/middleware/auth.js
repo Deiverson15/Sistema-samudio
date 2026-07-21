@@ -1,3 +1,4 @@
+const { Router } = require('express');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db'); 
 require('dotenv').config();
@@ -25,7 +26,7 @@ const verifyToken = async (req, res, next) => {
         const secret = process.env.JWT_SECRET;
         const decoded = jwt.verify(token, secret);
 
-        // 3. VERIFICACIÓN ESTRICTA EN BASE DE DATOS (Trae tienda_id y rol reales)
+        // 3. VERIFICACIÓN ESTRICTA EN BASE DE DATOS
         const userResult = await pool.query(
             'SELECT id, rol, nombre, activo, token_sesion, tienda_id FROM usuarios WHERE id = $1', 
             [decoded.id]
@@ -60,10 +61,9 @@ const verifyToken = async (req, res, next) => {
             }
         }
 
-        // Normalizamos a minúsculas y limpiamos espacios laterales por seguridad
         const rolUsuario = user.rol ? user.rol.toLowerCase().trim() : '';
 
-        // 🔥 MODIFICADO: Ahora tanto 'developer' como 'súper administrador' rompen el bloqueo de suspensión por pago
+        // Rompen el bloqueo por pago
         const esUsuarioMaestro = rolUsuario === 'developer' || 
                                  rolUsuario === 'dev' || 
                                  rolUsuario === 'súper administrador' || 
@@ -80,7 +80,6 @@ const verifyToken = async (req, res, next) => {
             return res.status(401).json({ error: 'Sesión inválida. Se ha iniciado sesión en otro dispositivo.' });
         }
 
-        // 📦 Guardamos el usuario con su tienda_id en el request para usarlo en los controladores
         req.user = user; 
         next();
 
@@ -93,7 +92,6 @@ const checkRol = (rolesPermitidos) => {
     return (req, res, next) => {
         const rolUsuario = req.user && req.user.rol ? req.user.rol.toLowerCase().trim() : '';
         
-        // 🔥 MODIFICADO: Definimos quiénes tienen "Modo Dios" de manera estricta con tus roles reales
         const esModoDios = rolUsuario === 'developer' || 
                            rolUsuario === 'dev' || 
                            rolUsuario === 'súper administrador' || 
@@ -107,9 +105,9 @@ const checkRol = (rolesPermitidos) => {
     };
 };
 
-// 🔥 MODIFICADO: Listas de acceso calibradas con los nombres reales en minúsculas de tu BD
-const verifyAdmin = [verifyToken, checkRol(['developer', 'súper administrador', 'super administrador'])];
-const verifyGerente = [verifyToken, checkRol(['developer', 'súper administrador', 'super administrador', 'gerente general'])];
-const verifyVendedor = [verifyToken, checkRol(['developer', 'súper administrador', 'super administrador', 'gerente general', 'vendedor'])];
+// 🔥 Sincronizados con 'gerente general' y 'gerente'
+const verifyAdmin = [verifyToken, checkRol(['developer', 'súper administrador', 'super administrador', 'admin'])];
+const verifyGerente = [verifyToken, checkRol(['developer', 'súper administrador', 'super administrador', 'admin', 'gerente general', 'gerente'])];
+const verifyVendedor = [verifyToken, checkRol(['developer', 'súper administrador', 'super administrador', 'admin', 'gerente general', 'gerente', 'vendedor'])];
 
 module.exports = { verifyToken, verifyAdmin, verifyGerente, verifyVendedor };
