@@ -84,6 +84,22 @@ window.abrirModalReporte = async function(element) {
                 </select>
             </div>`;
     } 
+    else if (tipo === 'referencias') {
+        // 🔥 AGREGADO: Selector dinámico para Ventas por Referencia
+        htmlFiltros += `
+            <div>
+                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtrar por Tipo / Materia Prima</label>
+                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900">
+                    <option value="todos">Todos los Productos</option>
+                    <option value="MATERIA_PRIMA">Materia Prima (Esencia, Fijador, Alcohol, Frasco)</option>
+                    <option value="ESENCIA">Solo Esencias</option>
+                    <option value="FIJADOR">Solo Fijador</option>
+                    <option value="ALCOHOL">Solo Alcohol</option>
+                    <option value="FRASCO">Solo Frascos / Envases</option>
+                    <option value="TERMINADOS">Solo Perfumes Terminados</option>
+                </select>
+            </div>`;
+    }
     else if (tipo === 'cierres') {
         htmlFiltros += `
             <div>
@@ -93,7 +109,6 @@ window.abrirModalReporte = async function(element) {
                     <option value="EFECTIVO USD">Solo Efectivo USD</option>
                     <option value="EFECTIVO BS">Solo Efectivo Bs</option>
                     <option value="ZELLE">Solo Zelle</option>
-                    <!-- Usamos valores clave cortos para que coincidan exacto con la Base de Datos -->
                     <option value="PUNTO">Solo Punto de Venta</option>
                     <option value="MOVIL">Solo Pago Móvil</option>
                     <option value="TRANSFERENCIA">Solo Transferencia Bs</option>
@@ -104,9 +119,39 @@ window.abrirModalReporte = async function(element) {
                 </select>
             </div>`;
     }
+    else if (tipo === 'lista-precios') {
+        htmlFiltros += `
+            <div>
+                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtro: Sección / Categoría</label>
+                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900">
+                    <option value="todos">Todas las Secciones</option>
+                    <option value="ESENCIA">Solo Esencias</option>
+                    <option value="TERMINADOS">Solo Perfumes Terminados</option>
+                    <option value="ALCOHOL">Solo Alcohol</option>
+                    <option value="FIJADOR">Solo Fijador</option>
+                    <option value="FRASCO">Solo Frascos / Envases</option>
+                    <option value="ACCESORIO">Solo Accesorios</option>
+                </select>
+            </div>`;
+    }
+    else if (tipo === 'rentabilidad') {
+        htmlFiltros += `
+            <div>
+                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtrar por Tipo / Materia Prima</label>
+                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900">
+                    <option value="todos">Todos los Productos (Consolidado General)</option>
+                    <option value="MATERIA_PRIMA">MT - Materia Prima (Esencia, Fijador, Alcohol, Frasco)</option>
+                    <option value="ESENCIA">Solo Esencias</option>
+                    <option value="FIJADOR">Solo Fijador</option>
+                    <option value="ALCOHOL">Solo Alcohol</option>
+                    <option value="FRASCO">Solo Frascos / Envases</option>
+                    <option value="TERMINADOS">PT - Solo Perfumes Terminados</option>
+                </select>
+            </div>`;
+    }
 
     // El filtro de cajero sirve para facturación y reportes de desempeño
-    if (['cierres', 'referencias', 'rentabilidad'].includes(tipo)) {
+    if (['cierres', 'referencias'].includes(tipo)) {
         htmlFiltros += `
             <div>
                 <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtro: Vendedor / Cajero (Opcional)</label>
@@ -116,7 +161,6 @@ window.abrirModalReporte = async function(element) {
 
     container.innerHTML = htmlFiltros;
 };
-
 
 window.closeModal = function() {
     document.getElementById('reportModal').classList.add('hidden');
@@ -143,6 +187,8 @@ window.ejecutarDescarga = async function() {
         url = `/api/productos/reportes/excel?filtro=inventario&start=${start}&end=${end}`;
     } else if (tipo === 'kardex') {
         url = `/api/productos/reporte-kardex?inicio=${start}&fin=${end}`;
+    } else if (tipo === 'lista-precios') {
+        url = `/api/productos/reportes/lista-precios/excel?start=${start}&end=${end}&tienda_id=${tiendaId}&seccion=${encodeURIComponent(categoria)}`;
     } else {
         url = `/api/ventas/exportar/excel?filtro=${tipo}&start=${start}&end=${end}`;
     }

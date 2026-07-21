@@ -36,6 +36,18 @@ let listaUsuarios = [];
 const beepOk = new Audio('https://actions.google.com/sounds/v1/cartoon/pop.ogg');
 const beepError = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
 
+function limpiarNombreEsencia(nombre) {
+    if (!nombre) return '';
+    
+    let limpio = nombre
+        // 1. Reemplaza "PERFUME TERMINADO" o "PERFUMES TERMINADOS" por "P.T."
+        .replace(/PERFUME[S]?\s+TERMINADO[S]?\s*/gi, 'PT ')
+        // 2. Remueve la palabra "ESENCIA" o "ESENCIAS"
+        .replace(/ESENCIA[S]?\s*/gi, '')
+        .trim();
+        
+    return limpio;
+}
 
 export async function init() {
     console.log("Facturación Unificada - Iniciada");
@@ -1199,15 +1211,20 @@ window.agregarPago = function(metodo) {
     let monedaFinal = 'USD';
     let montoFinal = inputMontoValor; 
 
-    // Ajuste inteligente: Forzamos la moneda según el método de pago seleccionado
-    if (metodo === 'Pago Móvil' || metodo === 'Punto Venta') {
+    // Métodos que son estrictamente en Bolívares (BS)
+    const metodosBolivares = ['Efectivo Bs', 'P. Movil', 'Pago Móvil', 'Punto', 'Punto Venta', 'Transferencia', 'Bio Pago'];
+    
+    // Métodos que son estrictamente en Dólares (USD)
+    const metodosDivisas = ['Efectivo USD', 'Efectivo', 'Zelle', 'Binance'];
+
+    if (metodosBolivares.includes(metodo)) {
         monedaFinal = 'BS';
-        // Si el cajero lo escribió en USD, lo convertimos a Bs para guardarlo bien en la BD
+        // Si el cajero ingresó el monto en USD teniendo activo el botón $, se convierte a Bs automáticamente
         montoFinal = (monedaPagoActual === 'USD') ? (inputMontoValor * tasaCambio) : inputMontoValor;
     } 
-    else if (metodo === 'Zelle' || metodo === 'Efectivo') {
+    else if (metodosDivisas.includes(metodo)) {
         monedaFinal = 'USD';
-        // Si el cajero lo escribió en Bs, lo convertimos a USD
+        // Si el cajero ingresó el monto en Bs teniendo activo el botón Bs, se convierte a USD automáticamente
         montoFinal = (monedaPagoActual === 'BS') ? (inputMontoValor / tasaCambio) : inputMontoValor;
     }
 
@@ -1868,9 +1885,10 @@ window.confirmarPromoLote = function() {
         const tipoPrecioInicial = esModoLoteEstandar ? 'DETAL' : 'PROMO';
         const colorBadgeInicial = esModoLoteEstandar ? null : 'bg-amber-100 text-amber-700 border-amber-200';
 
+        const descLimpia = limpiarNombreEsencia(prodEsencia.nombre);
         const nombreFactura = modoRecargaActual 
-            ? `♻️ REC ${vol}ml ${prodEsencia.nombre}${tagExtraStr}${tagModo}` 
-            : `${vol}ml ${prodEsencia.nombre}${tagExtraStr}${tagModo}`;
+            ? `REC ${vol}ML PERFUME ${descLimpia}${tagExtraStr}${tagModo}` 
+            : `${vol}ML PERFUME ${descLimpia}${tagExtraStr}${tagModo}`;
 
         itemsParaAgregar.push({
             id: prodEsencia.id, 
@@ -1938,9 +1956,10 @@ window.confirmarEsenciasComboPOS = function() {
         else if (gramosExtra > 0) tagExtraStr = ` (+${gramosExtra}g Ext)`;
         else if (gramosFijadorExtra > 0) tagExtraStr = ` (+${gramosFijadorExtra}g Fij)`;
 
+        const descLimpia = limpiarNombreEsencia(prodEsencia.nombre);
         const nombreFactura = modoRecargaActual 
-            ? `♻️ REC ${volLimpio}ML ${prodEsencia.nombre}${tagExtraStr} (PROMO)` 
-            : `${volLimpio}ML ${prodEsencia.nombre}${tagExtraStr} (PROMO)`;
+            ? `REC ${vol}ML PERFUME ${descLimpia}${tagExtraStr}${tagModo}` 
+            : `${vol}ML PERFUME ${descLimpia}${tagExtraStr}${tagModo}`;
 
         itemsParaAgregar.push({
             id: prodEsencia.id, 
@@ -2073,9 +2092,10 @@ window.seleccionarFormula = async (idFormula, esPromo = false) => {
     else if (gramosExtra > 0) tagExtra = ` (+${gramosExtra}g Ext)`;
     else if (gramosFijadorExtra > 0) tagExtra = ` (+${gramosFijadorExtra}g Fij)`;
 
+    const descLimpia = limpiarNombreEsencia(productoPendiente.nombre);
     const nombreFactura = modoRecargaActual 
-        ? `♻️ REC ${vol}ml ${productoPendiente.nombre}${tagExtra}` 
-        : `${vol}ml ${productoPendiente.nombre}${tagExtra}`;
+        ? `REC ${vol}ML PERFUME ${descLimpia}${tagExtra}` 
+        : `${vol}ML PERFUME ${descLimpia}${tagExtra}`;
 
     carrito.push({
         id: productoPendiente.id, 
@@ -2449,7 +2469,6 @@ function agregarItemEspecial(newItem) {
 // Busca la función imprimirTicketFactura y reemplázala por esta:
 
 function imprimirTicketFactura(datos) {
-    // 1. FORMATEADOR (Miles con punto, decimales con coma)
     const formatVE = (valor) => {
         return new Intl.NumberFormat('es-VE', { 
             minimumFractionDigits: 2, 
@@ -2457,21 +2476,12 @@ function imprimirTicketFactura(datos) {
         }).format(valor);
     };
 
-    // 2. CÁLCULOS (MODIFICADO: INGENIERÍA INVERSA)
-    let totalGlobalBs = 0; // Acumulador del total final (con IVA)
+    let totalGlobalBs = 0;
 
     const itemsHTML = datos.items.map(item => {
-        // Precio Unitario Final en Bs (Precio Carrito * Tasa)
         const precioFinalBs = item.precio * datos.tasa;
-        
-        // Subtotal Final en Bs (Lo que paga el cliente por este item con IVA incluido)
         const subtotalFinalBs = precioFinalBs * item.cantidad;
-        
-        // Desglosamos la base de este item para mostrarla en la columna "TOTAL" de la fila
-        // (En facturas fiscales, las líneas suelen mostrar la base imponible)
         const subtotalBaseBs = subtotalFinalBs / 1.16;
-        
-        // Acumulamos el Total Final (para asegurar que el monto a pagar sea exacto al cobrado)
         totalGlobalBs += subtotalFinalBs;
         
         return `
@@ -2482,17 +2492,26 @@ function imprimirTicketFactura(datos) {
         </tr>`;
     }).join('');
 
-    // CÁLCULOS GLOBALES HACIA ATRÁS
-    // Tomamos el total acumulado y extraemos la base y el IVA
     const baseImponibleBs = totalGlobalBs / 1.16;
     const ivaBs = totalGlobalBs - baseImponibleBs;
     const totalPagarBs = totalGlobalBs;
 
-    // 3. DEFINIR CONTENIDO
+    // 🔥 DIBUJAR LAS FORMAS DE PAGO CON SUS MONTOS Y REFERENCIAS
+    const pagosHTML = (datos.pagos && datos.pagos.length > 0) 
+        ? datos.pagos.map(p => {
+            const montoStr = p.moneda === 'USD' ? `$${formatVE(p.monto)}` : `Bs ${formatVE(p.monto)}`;
+            const refStr = (p.referencia && p.referencia !== 'S/N') ? ` (REF: ${p.referencia})` : '';
+            return `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                <span>${p.metodo.toUpperCase()}${refStr}:</span>
+                <span class="font-bold">${montoStr}</span>
+            </div>`;
+        }).join('')
+        : '<div>CONTADO</div>';
+
     let contenidoCuerpo = '';
 
     if (datos.tipoDocumento === 'FACTURA') {
-        // --- DISEÑO FACTURA ---
         contenidoCuerpo = `
             <div class="text-center">
                 <div class="font-bold text-lg">INVERSIONES BEAST MODE C.A.</div>
@@ -2570,6 +2589,13 @@ function imprimirTicketFactura(datos) {
                 </div>
             </div>
 
+            <!-- 🔥 SECCIÓN NUEVA: METODOS DE PAGO ABAJO DEL TOTAL -->
+            <div class="divider-solid"></div>
+            <div class="text-left" style="font-size: 10px; margin-top: 5px;">
+                <div class="font-bold" style="margin-bottom: 4px; text-decoration: underline;">FORMAS DE PAGO:</div>
+                ${pagosHTML}
+            </div>
+
             <div class="divider-solid" style="margin-top: 15px;"></div>
 
             <div class="text-center text-xs">
@@ -2578,7 +2604,7 @@ function imprimirTicketFactura(datos) {
         `;
 
     } else {
-        // --- DISEÑO NOTA DE ENTREGA ---
+        // --- NOTA DE ENTREGA ---
         contenidoCuerpo = `
             <div class="text-center">
                 <div class="header-nota">NOTA DE ENTREGA</div>
@@ -2638,6 +2664,13 @@ function imprimirTicketFactura(datos) {
                 </div>
             </div>
 
+            <!-- 🔥 SECCIÓN NUEVA: METODOS DE PAGO ABAJO DEL TOTAL EN NOTA DE ENTREGA -->
+            <div class="divider-solid"></div>
+            <div class="text-left" style="font-size: 10px; margin-top: 5px;">
+                <div class="font-bold" style="margin-bottom: 4px; text-decoration: underline;">FORMAS DE PAGO:</div>
+                ${pagosHTML}
+            </div>
+
             <div class="divider-solid" style="margin-top: 15px;"></div>
             
             <div class="text-center text-xs">
@@ -2646,17 +2679,16 @@ function imprimirTicketFactura(datos) {
         `;
     }
 
-    // 4. IMPRIMIR
     const ventana = window.open('', 'PRINT', 'height=600,width=400');
 
     if (!ventana) {
         Swal.fire({
             title: '¡Ticket Bloqueado!',
-            text: 'Tu navegador bloqueó la ventana de impresión (Pop-up). Por favor, busca el ícono en la barra de direcciones y permite las ventanas emergentes para este sitio.',
+            text: 'Tu navegador bloqueó la ventana de impresión (Pop-up). Por favor permite ventanas emergentes.',
             icon: 'warning',
             confirmButtonColor: '#dc2626'
         });
-        return; // Detenemos la función aquí para que no de el error rojo
+        return;
     }
     
     ventana.document.write(`
@@ -2685,9 +2717,6 @@ function imprimirTicketFactura(datos) {
                     .divider { border-bottom: 1px dashed #000; margin: 4px 0; }
                     .divider-solid { border-bottom: 1px solid #000; margin: 6px 0; }
 
-                    .header-seniat { 
-                        font-weight: bold; font-size: 16px; margin-bottom: 5px; letter-spacing: 2px; 
-                    }
                     .header-nota { 
                         font-weight: bold; font-size: 14px; margin-bottom: 5px; 
                         border: 2px solid #000; padding: 4px; display: inline-block; 
@@ -2713,6 +2742,7 @@ function imprimirTicketFactura(datos) {
         ventana.close();
     }, 500);
 }
+
 
 window.actualizarCantidadCarrito = function(index, nuevaCantidad) {
     let cant = parseInt(nuevaCantidad);

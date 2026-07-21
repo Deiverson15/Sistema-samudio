@@ -164,7 +164,7 @@ const exportarReporteGeneral = async (req, res) => {
         const borderStyle = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
 
         // =========================================================
-        // REPORTE A: CIERRES DE CAJAS (CORREGIDO FECHAS Y MÉTODOS)
+        // REPORTE A: CIERRES DE CAJAS (MULTI-SUCURSAL Y TASA DÓLAR)
         // =========================================================
         if (filtro === 'cierres') {
             const sheet = workbook.addWorksheet('Cierres de Caja');
@@ -174,19 +174,20 @@ const exportarReporteGeneral = async (req, res) => {
             rowTitulo.font = { bold: true, size: 12 };
             sheet.addRow([]); 
 
-            // 🔥 SE AGREGÓ LA COLUMNA "MÉTODOS USADOS" Y "OTROS"
+            // 🔥 SE AGREGARON LAS COLUMNAS "SUCURSAL" Y "TASA DÓLAR (BS/USD)"
             const rowHeaders = sheet.addRow([
-                'Fecha / Hora', 'N° Cierre', 'Cajero', 'Sucursal', 'MÉTODOS USADOS',
+                'Fecha / Hora', 'N° Cierre', 'Cajero', 'Sucursal', 'TASA DÓLAR (BS/USD)', 'MÉTODOS USADOS',
                 'EFECTIVO DIVISAS', 'EFECTIVO BS', 'PUNTO DE VENTA', 'TRANSFERENCIA', 
                 'PAGO MOVIL', 'CASHEA', 'ZELLE', 'BIOPAGO', 'BINANCE', 'CXC', 'OTROS', 
                 'TOTAL INGRESO USD', 'TOTAL INGRESO BS.'
             ]);
             rowHeaders.font = { bold: true };
 
+            // 🛡️ Lógica para "Todas las Tiendas" vs "Tienda Específica"
             let filtroTiendaCierre = '';
-            if (esUsuarioMaestro && tienda && tienda !== 'todas') {
+            if (tienda && tienda !== 'todas') {
                 filtroTiendaCierre = ` AND c.tienda_id = ${parseInt(tienda, 10)}`;
-            } else if (!esUsuarioMaestro) {
+            } else if (!esUsuarioMaestro && (!tienda || tienda !== 'todas')) {
                 filtroTiendaCierre = ` AND c.tienda_id = ${idTiendaLocal}`;
             }
 
@@ -195,7 +196,6 @@ const exportarReporteGeneral = async (req, res) => {
                 filtroVendedorCierre = ` AND u.nombre ILIKE '%${vendedor.trim()}%'`;
             }
 
-            // 🔥 CORRECCIÓN: Filtro de fechas usando DATE() para que no se coma el último día
             let querySQL = `
                 SELECT 
                     c.id,
@@ -204,9 +204,11 @@ const exportarReporteGeneral = async (req, res) => {
                     c.total_bs,
                     c.tienda_id,
                     c.detalles_json,
-                    u.nombre as usuario
+                    u.nombre as usuario,
+                    COALESCE(t.nombre, 'Sede Principal') as tienda_nombre
                 FROM cierres_caja c
                 LEFT JOIN usuarios u ON c.usuario_id = u.id
+                LEFT JOIN tiendas t ON c.tienda_id = t.id
                 WHERE DATE(c.fecha_cierre) BETWEEN $1 AND $2 
                   ${filtroTiendaCierre} ${filtroVendedorCierre}
                 ORDER BY c.fecha_cierre ASC
@@ -220,8 +222,12 @@ const exportarReporteGeneral = async (req, res) => {
                 const fechaCierre = new Date(cierre.fecha_cierre).toLocaleString('es-VE');
                 const numCierre = String(cierre.id).padStart(6, '0');
                 const cajero = cierre.usuario || 'Sistema';
-                const sucursalStr = `T-${cierre.tienda_id}`;
+                const sucursalStr = (cierre.tienda_nombre || 'Sede Principal').toUpperCase();
                 
+                const cierreUsd = parseFloat(cierre.total_usd || 0);
+                const cierreBs = parseFloat(cierre.total_bs || 0);
+                const tasaDolar = cierreUsd > 0 ? (cierreBs / cierreUsd) : 0;
+
                 const detalles = typeof cierre.detalles_json === 'string' ? JSON.parse(cierre.detalles_json) : (cierre.detalles_json || {});
                 let desglose = [];
                 if (Array.isArray(detalles.desglose_pagos)) desglose = detalles.desglose_pagos;
@@ -231,13 +237,12 @@ const exportarReporteGeneral = async (req, res) => {
 
                 let hasMethod = false;
                 const filaData = { divisas: 0, bs: 0, punto: 0, trans: 0, pmovil: 0, cashea: 0, zelle: 0, biopago: 0, binance: 0, cxc: 0, otros: 0 };
-                const metodosNombres = []; // Array para capturar los nombres de los métodos usados
+                const metodosNombres = [];
 
                 desglose.forEach(d => {
                     const met = (d.metodo || 'OTROS').toUpperCase();
                     const montoUSD = parseFloat(d.total_usd || d.usd || 0);
                     
-                    // Solo guardamos el nombre si tiene un monto asignado
                     if (!metodosNombres.includes(met) && montoUSD > 0) metodosNombres.push(met);
 
                     if (metodo && metodo !== 'todos' && met.includes(metodo.toUpperCase())) {
@@ -259,11 +264,8 @@ const exportarReporteGeneral = async (req, res) => {
 
                 if (metodo && metodo !== 'todos' && !hasMethod && desglose.length > 0) return;
 
-                const cierreUsd = parseFloat(cierre.total_usd || 0);
-                const cierreBs = parseFloat(cierre.total_bs || 0);
-
                 sheet.addRow([
-                    fechaCierre, numCierre, cajero, sucursalStr, metodosNombres.join(', '), // Insertamos los métodos en texto
+                    fechaCierre, numCierre, cajero, sucursalStr, tasaDolar, metodosNombres.join(', '),
                     filaData.divisas, filaData.bs, filaData.punto, filaData.trans, filaData.pmovil, 
                     filaData.cashea, filaData.zelle, filaData.biopago, filaData.binance, filaData.cxc, filaData.otros,
                     cierreUsd, cierreBs
@@ -276,7 +278,7 @@ const exportarReporteGeneral = async (req, res) => {
             });
 
             const rowTotal = sheet.addRow([
-                '', '', '', '', 'TOTALES:', 
+                '', '', '', '', 'TOTALES:', '',
                 totales.divisas, totales.bs, totales.punto, totales.trans, totales.pmovil,
                 totales.cashea, totales.zelle, totales.biopago, totales.binance, totales.cxc, totales.otros,
                 totales.total_usd, totales.total_bs
@@ -286,33 +288,60 @@ const exportarReporteGeneral = async (req, res) => {
             sheet.getColumn(1).width = 20; 
             sheet.getColumn(2).width = 12; 
             sheet.getColumn(3).width = 20; 
-            sheet.getColumn(4).width = 10; 
-            sheet.getColumn(5).width = 25; // Ancho para la nueva columna "MÉTODOS USADOS"
-            for (let i = 6; i <= 18; i++) {
+            sheet.getColumn(4).width = 22; // Ancho para el nombre de la Sucursal
+            sheet.getColumn(5).width = 22; // Ancho para Tasa Dólar
+            sheet.getColumn(5).numFmt = '"Bs "#,##0.00';
+            sheet.getColumn(6).width = 25; 
+            
+            for (let i = 7; i <= 19; i++) {
                 sheet.getColumn(i).width = 15; 
-                sheet.getColumn(i).numFmt = i === 18 ? '"Bs "#,##0.00' : '"$"#,##0.00';
+                sheet.getColumn(i).numFmt = i === 19 ? '"Bs "#,##0.00' : '"$"#,##0.00';
             }
         }
 
         // =========================================================
-        // REPORTE B: VENTAS POR REFERENCIAS (EVOLUCIONADO ANTI N/A Y FECHAS)
+        // REPORTE B: VENTAS POR REFERENCIAS (CON FILTRO DE MATERIA PRIMA)
         // =========================================================
         if (filtro === 'referencias') {
             const sheet = workbook.addWorksheet('Ventas por Referencia');
 
             sheet.addRow([]);
-            const rowTitulo = sheet.addRow(['Reporte de Venta Producto Terminado']);
+            const rowTitulo = sheet.addRow(['Reporte de Venta por Referencia']);
             rowTitulo.font = { bold: true, size: 12 };
+            
+            // Etiqueta del filtro seleccionado
+            const labelFiltroMat = categoria && categoria !== 'todos' ? `Filtro Aplicado: ${categoria.toUpperCase()}` : 'Filtro Aplicado: Catálogo Completo';
+            sheet.addRow([labelFiltroMat]);
             sheet.addRow([]);
 
             const rowHeaders = sheet.addRow([
-                'Medida / Unidad', 'Genero', 'Referencia', 'Descripción', 'Marca', 
+                'Medida / Unidad', 'Género', 'Referencia', 'Descripción', 'Marca', 
                 'Uds. Vendidas', 'Monto $ Precio Base Imponible'
             ]);
             rowHeaders.font = { bold: true };
             rowHeaders.alignment = { horizontal: 'center' };
 
-            // 🔥 CORRECCIÓN: Usamos DATE(v.fecha) para asegurar la captura del día completo
+            // 🛡️ Filtro de Categoría / Materia Prima
+            let filtroCategoriaStr = '';
+            if (categoria && categoria !== 'todos') {
+                const catUpper = categoria.toUpperCase();
+                if (catUpper === 'MATERIA_PRIMA') {
+                    filtroCategoriaStr = ` AND (
+                        p.categoria ILIKE '%esencia%' OR 
+                        p.categoria ILIKE '%fijador%' OR 
+                        p.categoria ILIKE '%alcohol%' OR 
+                        p.categoria ILIKE '%frasco%' OR 
+                        p.categoria ILIKE '%envase%'
+                    )`;
+                } else if (catUpper === 'TERMINADOS') {
+                    filtroCategoriaStr = ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
+                } else if (catUpper === 'FRASCO') {
+                    filtroCategoriaStr = ` AND (p.categoria ILIKE '%frasco%' OR p.categoria ILIKE '%envase%')`;
+                } else {
+                    filtroCategoriaStr = ` AND p.categoria ILIKE '%${categoria.trim()}%'`;
+                }
+            }
+
             const resReferencias = await client.query(`
                 SELECT 
                     COALESCE(
@@ -334,7 +363,7 @@ const exportarReporteGeneral = async (req, res) => {
                 LEFT JOIN formulas f ON dv.formula_id = f.id
                 LEFT JOIN usuarios u ON v.usuario_id = u.id
                 WHERE DATE(v.fecha) BETWEEN $1 AND $2 
-                  ${filtroTiendaGeneral} ${filtroVendedorStr}
+                  ${filtroTiendaGeneral} ${filtroVendedorStr} ${filtroCategoriaStr}
                 GROUP BY 
                     COALESCE(
                         NULLIF(dv.tamano, 'N/A'),
@@ -383,7 +412,7 @@ const exportarReporteGeneral = async (req, res) => {
         }
 
         // =========================================================
-        // REPORTE C: VENTAS CONSOLIDADAS POR TIENDA (MATRIZ COMPLETA)
+        // REPORTE C: VENTAS CONSOLIDADAS POR TIENDA (DYNAMIC PROMOS)
         // =========================================================
         if (filtro === 'tiendas') {
             const sheet = workbook.addWorksheet('Consolidado Tiendas');
@@ -413,14 +442,15 @@ const exportarReporteGeneral = async (req, res) => {
             const resTiendas = await client.query(queryTiendasInfo, paramsTiendas);
 
             const report = {};
-            const tarifasObligatorias = ['PVP TIENDA DETAL', 'PVP TIENDA MAYOR 12', 'PVTIENDA MAYOR DE 100'];
+            // Tarifas base obligatorias en la vista
+            const tarifasBase = ['PVP TIENDA DETAL', 'PVP TIENDA MAYOR 12', 'PVTIENDA MAYOR DE 100', 'PVP PROMOS'];
             const tiendasOrdenadas = resTiendas.rows.sort((a, b) => a.nombre.localeCompare(b.nombre));
 
             tiendasOrdenadas.forEach(t => {
                 const tName = t.nombre;
                 report[tName] = { codigo: `T-${t.id}`, tarifas: {} };
                 
-                tarifasObligatorias.forEach(tarifa => {
+                tarifasBase.forEach(tarifa => {
                     report[tName].tarifas[tarifa] = {
                         u30: 0, c30: 0, p30: 0, r30: 0,
                         u60: 0, c60: 0, p60: 0, r60: 0,
@@ -431,7 +461,7 @@ const exportarReporteGeneral = async (req, res) => {
                 });
             });
 
-            // 🔥 CORRECCIÓN: Filtro de fecha exacto
+            // Consulta SQL de detalles de venta por tienda
             const resData = await client.query(`
                 SELECT 
                     t.nombre as tienda_nombre,
@@ -453,11 +483,26 @@ const exportarReporteGeneral = async (req, res) => {
                 const tName = r.tienda_nombre;
                 if (!report[tName]) return;
 
-                let tarifaReal = (r.tarifa || 'PVP TIENDA DETAL').toUpperCase().trim();
-                if (tarifaReal.includes('12')) tarifaReal = 'PVP TIENDA MAYOR 12';
-                else if (tarifaReal.includes('100')) tarifaReal = 'PVTIENDA MAYOR DE 100';
-                else if (tarifaReal.includes('DETAL')) tarifaReal = 'PVP TIENDA DETAL';
+                const rawTarifa = (r.tarifa || 'PVP TIENDA DETAL').toUpperCase().trim();
+                let tarifaReal = rawTarifa;
 
+                // 🧠 NORMALIZACIÓN INTELIGENTE DE TARIFAS Y PROMOS
+                if (rawTarifa.includes('PROMO')) {
+                    // Si trae nombre específico (ej: PROMO 100, PROMO PACK, etc.), preservamos el detalle
+                    if (rawTarifa.length > 5) {
+                        tarifaReal = `PVP ${rawTarifa}`;
+                    } else {
+                        tarifaReal = 'PVP PROMOS';
+                    }
+                } else if (rawTarifa.includes('MAYOR 12') || (rawTarifa.includes('MAYOR') && !rawTarifa.includes('100') && !rawTarifa.includes('GRAN'))) {
+                    tarifaReal = 'PVP TIENDA MAYOR 12';
+                } else if (rawTarifa.includes('MAYOR DE 100') || rawTarifa.includes('GRAN MAYOR') || rawTarifa.includes('100')) {
+                    tarifaReal = 'PVTIENDA MAYOR DE 100';
+                } else if (rawTarifa.includes('DETAL')) {
+                    tarifaReal = 'PVP TIENDA DETAL';
+                }
+
+                // Si se detecta una tarifa/promo nueva, se inicializa su estructura dinámicamente
                 if (!report[tName].tarifas[tarifaReal]) {
                     report[tName].tarifas[tarifaReal] = {
                         u30: 0, c30: 0, p30: 0, r30: 0, u60: 0, c60: 0, p60: 0, r60: 0,
@@ -487,6 +532,7 @@ const exportarReporteGeneral = async (req, res) => {
                 cat.ut += cant; cat.ct += costoTot; cat.pt += precio; cat.rt += rentabilidad;
             });
 
+            // Dibujar cada tienda en el libro de Excel
             Object.keys(report).forEach(tName => {
                 const tiendaData = report[tName];
                 sheet.addRow([]);
@@ -607,20 +653,41 @@ const exportarReporteGeneral = async (req, res) => {
         }
 
         // =========================================================
-        // ⭐ REPORTE F NUEVO: AUDITORÍA DE RENTABILIDAD Y MÁRGENES
+        // ⭐ REPORTE F: AUDITORÍA DE RENTABILIDAD Y MÁRGENES (CON FILTROS MT / PT)
         // =========================================================
         if (filtro === 'rentabilidad') {
             const sheet = workbook.addWorksheet('Rentabilidad');
             sheet.addRow(['ANÁLISIS DE RENTABILIDAD Y MÁRGENES DE UTILIDAD']);
-            sheet.addRow([`Período:`, `${start} al ${end}`]);
+            
+            const labelFiltroMat = categoria && categoria !== 'todos' ? `Filtro Tipo: ${categoria.toUpperCase()}` : 'Filtro Tipo: Consolidado General';
+            sheet.addRow([`Período: ${start} al ${end}`, '', labelFiltroMat]);
             sheet.addRow([]);
             
             const rowHeaders = sheet.addRow(['PRODUCTO', 'CATEGORÍA', 'UNIDADES VENDIDAS', 'INGRESO BRUTO ($)', 'COSTO INSUMOS ($)', 'UTILIDAD NETA ($)', 'MARGEN (%)']);
             rowHeaders.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             rowHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } }; 
 
-            // 🔥 CORRECCIÓN CRÍTICA: Motor SQL con divisor inteligente para Materia Prima
-            // Esto divide el costo entre 1000 automáticamente si el producto vendido es un insumo
+            // 🛡️ Filtro de Categoría / Materia Prima (MT vs PT)
+            let filtroCategoriaStr = '';
+            if (categoria && categoria !== 'todos') {
+                const catUpper = categoria.toUpperCase();
+                if (catUpper === 'MATERIA_PRIMA' || catUpper === 'MT') {
+                    filtroCategoriaStr = ` AND (
+                        p.categoria ILIKE '%esencia%' OR 
+                        p.categoria ILIKE '%fijador%' OR 
+                        p.categoria ILIKE '%alcohol%' OR 
+                        p.categoria ILIKE '%frasco%' OR 
+                        p.categoria ILIKE '%envase%'
+                    )`;
+                } else if (catUpper === 'TERMINADOS' || catUpper === 'PT') {
+                    filtroCategoriaStr = ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
+                } else if (catUpper === 'FRASCO') {
+                    filtroCategoriaStr = ` AND (p.categoria ILIKE '%frasco%' OR p.categoria ILIKE '%envase%')`;
+                } else {
+                    filtroCategoriaStr = ` AND p.categoria ILIKE '%${categoria.trim()}%'`;
+                }
+            }
+
             const qRenta = `
                 SELECT p.nombre, p.categoria, SUM(dv.cantidad) as uds, SUM(dv.subtotal) as ingreso,
                        SUM(
@@ -636,7 +703,7 @@ const exportarReporteGeneral = async (req, res) => {
                 JOIN ventas v ON dv.venta_id = v.id
                 JOIN productos p ON dv.producto_id = p.id
                 LEFT JOIN usuarios u ON v.usuario_id = u.id
-                WHERE v.fecha::date BETWEEN $1 AND $2 ${filtroTiendaGeneral} ${filtroVendedorStr}
+                WHERE v.fecha::date BETWEEN $1 AND $2 ${filtroTiendaGeneral} ${filtroVendedorStr} ${filtroCategoriaStr}
                 GROUP BY p.id, p.nombre, p.categoria
                 ORDER BY ingreso DESC
             `;
@@ -662,10 +729,8 @@ const exportarReporteGeneral = async (req, res) => {
             
             sheet.getColumn(1).width = 40; 
             sheet.getColumn(4).numFmt = '"$"#,##0.00'; 
-            // 🔥 Ajuste de precisión: Mostramos 4 decimales en costo para ver el valor real del gramo
             sheet.getColumn(5).numFmt = '"$"#,##0.0000'; 
             sheet.getColumn(6).numFmt = '"$"#,##0.00'; 
-            // Excel transformará esto a formato de porcentaje preciso (ej: 98.89%)
             sheet.getColumn(7).numFmt = '0.00%'; 
         }
 
@@ -2887,6 +2952,143 @@ const exportarCierreDeHoyExcel = async (req, res) => {
     }
 };
 
+
+const obtenerPodioDinamico = async (req, res) => {
+    const { tipo, rango, start, end } = req.query;
+    const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;
+    const client = await pool.connect();
+
+    try {
+        let filterFecha = "";
+        let valores = [idTiendaLocal];
+        let paramCount = 2;
+
+        // 1. Filtro de Fechas
+        if (rango === 'CUSTOM' && start && end) {
+            filterFecha = `AND v.fecha::date BETWEEN $${paramCount} AND $${paramCount + 1}`;
+            valores.push(start, end);
+            paramCount += 2;
+        } else if (rango === '1') {
+            filterFecha = `AND v.fecha >= NOW() - INTERVAL '1 day'`;
+        } else if (rango === '7') {
+            filterFecha = `AND v.fecha >= NOW() - INTERVAL '7 days'`;
+        } else if (rango === '30') {
+            filterFecha = `AND v.fecha >= NOW() - INTERVAL '30 days'`;
+        }
+
+        // 2. Filtro de Tipo de Producto
+        let filterTipo = "";
+        if (tipo === 'TERMINADOS') {
+            filterTipo = `AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminados%')`;
+        } else if (tipo === 'ESENCIAS') {
+            filterTipo = `AND p.categoria ILIKE '%esencia%'`;
+        }
+
+        // Consulta SQL Maestra
+        const query = `
+            SELECT 
+                p.nombre, 
+                p.categoria, 
+                SUM(dv.cantidad) as total_unidades, 
+                SUM(dv.subtotal) as total_ingresos
+            FROM detalle_ventas dv
+            JOIN ventas v ON dv.venta_id = v.id
+            JOIN productos p ON dv.producto_id = p.id
+            WHERE v.tienda_id = $1
+            ${filterFecha}
+            ${filterTipo}
+            GROUP BY p.id, p.nombre, p.categoria
+            ORDER BY total_unidades DESC
+            LIMIT 15
+        `;
+
+        const resultado = await client.query(query, valores);
+        res.json(resultado.rows);
+
+    } catch (error) {
+        console.error("Error en Podio:", error);
+        res.status(500).json({ error: error.message });
+    } finally {
+        client.release();
+    }
+};
+
+const exportarPodioExcel = async (req, res) => {
+    const { tipo, rango, start, end } = req.query;
+    const client = await pool.connect();
+
+    try {
+        let filterFecha = "", filterTipo = "";
+        let valores = [];
+        let paramCount = 1;
+
+        if (rango === 'CUSTOM' && start && end) {
+            filterFecha = `AND v.fecha::date BETWEEN $${paramCount} AND $${paramCount + 1}`;
+            valores.push(start, end);
+            paramCount += 2;
+        } else if (rango === '1') { filterFecha = `AND v.fecha >= NOW() - INTERVAL '1 day'`;
+        } else if (rango === '7') { filterFecha = `AND v.fecha >= NOW() - INTERVAL '7 days'`;
+        } else if (rango === '30') { filterFecha = `AND v.fecha >= NOW() - INTERVAL '30 days'`; }
+
+        if (tipo === 'TERMINADOS') filterTipo = `AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminados%')`;
+        else if (tipo === 'ESENCIAS') filterTipo = `AND p.categoria ILIKE '%esencia%'`;
+
+        const query = `
+            SELECT p.nombre, p.categoria, SUM(dv.cantidad) as total_unidades, SUM(dv.subtotal) as total_ingresos
+            FROM detalle_ventas dv
+            JOIN ventas v ON dv.venta_id = v.id
+            JOIN productos p ON dv.producto_id = p.id
+            WHERE 1=1 ${filterFecha} ${filterTipo}
+            GROUP BY p.id, p.nombre, p.categoria
+            ORDER BY total_unidades DESC LIMIT 50
+        `;
+        
+        const resultado = await client.query(query, valores);
+
+        // Crear Libro Excel
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Top Ventas');
+
+        // Estilos
+        const headerStyle = { font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } } };
+
+        sheet.addRow(['REPORTE DE TOP VENTAS (PODIO)']).font = { bold: true, size: 14 };
+        sheet.addRow([`Filtro de Producto: ${tipo}`]);
+        sheet.addRow([`Período: ${rango === 'CUSTOM' ? `${start} al ${end}` : `Últimos ${rango} días`}`]);
+        sheet.addRow([]);
+
+        const headers = sheet.addRow(['RANGO', 'PRODUCTO', 'CATEGORÍA', 'UNIDADES VENDIDAS', 'INGRESOS TOTALES ($)']);
+        headers.eachCell(c => { c.font = headerStyle.font; c.fill = headerStyle.fill; });
+
+        resultado.rows.forEach((r, idx) => {
+            sheet.addRow([
+                `#${idx + 1}`,
+                r.nombre,
+                r.categoria,
+                parseFloat(r.total_unidades),
+                parseFloat(r.total_ingresos)
+            ]);
+        });
+
+        // Formato Moneda
+        sheet.getColumn(5).numFmt = '"$"#,##0.00';
+        sheet.columns.forEach(column => { column.width = 25; });
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="Podio_Ventas_${tipo}.xlsx"`);
+        await workbook.xlsx.write(res);
+        res.end();
+
+    } catch (error) {
+        console.error("Error Exportando Podio:", error);
+        res.status(500).send("Error generando el Excel");
+    } finally {
+        client.release();
+    }
+};
+
+
+
 module.exports = { crearVenta, getReportes, getReportesConsolidadosRed, getFacturaPDF, getFacturaExcel, getDashboardKPIs, getVentas, getVentaById, descontarEstante,
     previsualizarCierre, 
     guardarCierre, 
@@ -2908,5 +3110,7 @@ module.exports = { crearVenta, getReportes, getReportesConsolidadosRed, getFactu
     getVentasAnuladas,
     restaurarVentaAnulada,
     getListaTiendas,
-    exportarCierreDeHoyExcel
+    exportarCierreDeHoyExcel,
+    obtenerPodioDinamico,
+    exportarPodioExcel,
 };

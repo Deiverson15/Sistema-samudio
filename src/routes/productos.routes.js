@@ -33,8 +33,12 @@ const {
     moverStockEstante,vaciadoMasivoEstante,getReporteKardex, descargarAuditoriaExcel
 } = require('../controllers/productos.controller');
 
+const { obtenerEstancamiento, exportarEstancamientoExcel } = require('../controllers/productos.controller');
 
+const { getReporteListaPrecios, exportarListaPreciosExcel } = require('../controllers/productos.controller');
 
+router.get('/reportes/lista-precios', verifyToken, getReporteListaPrecios);
+router.get('/reportes/lista-precios/excel', verifyToken, exportarListaPreciosExcel);
 
 // ==========================================
 // RUTAS DE PRODUCTOS (INVENTARIO GENERAL)
@@ -59,6 +63,8 @@ router.put('/:id/reactivar', verifyToken, verifyAdmin, reactivarProducto);
 // Importación y Exportación
 router.post('/importar', verifyToken, verifyGerente, importarMasivo);
 router.get('/reportes/excel', verifyToken, exportarExcel); // ?filtro=todo|inventario|estante
+router.get('/estancamiento', verifyToken, obtenerEstancamiento);
+router.get('/estancamiento/excel', verifyToken, exportarEstancamientoExcel);
 
 
 // ==========================================

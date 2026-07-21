@@ -104,29 +104,55 @@
     <!-- ========================================================== -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
         
-        <!-- Bloque Izquierdo (7/12): Distribución / Ranking de Ventas -->
-        <div class="lg:col-span-7 bg-white border border-neutral-300 rounded-none flex flex-col h-full border-t-4 border-t-neutral-950">
-            <div class="p-6 bg-white border-b border-neutral-200 flex justify-between items-center shrink-0">
-                <h3 class="font-black text-neutral-950 text-xs uppercase tracking-widest flex items-center gap-2">
-                    <i class="fa-solid fa-ranking-star text-neutral-400"></i> Perfumes más vendidos (Podio)
-                </h3>
-                <!-- Selector de Rendimiento -->
-                <select id="filtroRankingVentas" onchange="renderizarMiniRanking()" class="bg-neutral-50 border border-neutral-300 text-[10px] font-black px-3 py-1.5 outline-none rounded-none text-neutral-950 cursor-pointer uppercase tracking-widest">
-                    <option value="top">Más Vendidas</option>
-                    <option value="bottom">Menos Vendidas</option>
-                </select>
-            </div>
+        <!-- 🔥 NUEVO BLOQUE IZQUIERDO (7/12): PANEL TOP VENTAS (PODIO) AVANZADO -->
+        <div class="lg:col-span-7 bg-white border border-neutral-300 rounded-none flex flex-col h-full border-t-4 border-t-neutral-950 animate-fade-in">
             
-            <div class="p-6 bg-white flex-1">
-                <ul id="listaMiniRanking" class="divide-y divide-neutral-200 space-y-1">
-                    <!-- JS inyectará el podio aquí -->
-                </ul>
+            <!-- ENCABEZADO Y CONTROLES -->
+            <div class="p-6 border-b border-neutral-800 bg-neutral-950 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 shrink-0">
+                <div>
+                    <h3 class="font-black text-white text-xs uppercase tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-trophy text-amber-400"></i> Podio de Más Vendidos
+                    </h3>
+                </div>
+
+                <!-- BARRA DE FILTROS -->
+                <div class="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+                    
+                    <!-- Selector de Tipo -->
+                    <select id="filtroTipoPodio" onchange="cargarPodioDinamico()" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
+                        <option value="TODOS">Todas las Categorías</option>
+                        <option value="TERMINADOS">Perfumes Terminados</option>
+                        <option value="ESENCIAS">Esencias (Puras/Granel)</option>
+                    </select>
+
+                    <!-- Selector de Tiempo -->
+                    <select id="filtroTiempoPodio" onchange="manejarFiltroTiempoPodio()" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
+                        <option value="7">Últimos 7 Días</option>
+                        <option value="1">Hoy (24 Horas)</option>
+                        <option value="30">Últimos 30 Días</option>
+                        <option value="CUSTOM">Rango Manual...</option>
+                    </select>
+
+                    <!-- Rango Personalizado (Oculto por defecto) -->
+                    <div id="cajaFechasPodio" class="hidden items-center gap-2">
+                        <input type="date" id="podioFechaStart" class="bg-neutral-800 text-white border border-neutral-600 p-1.5 text-[10px] font-bold outline-none uppercase">
+                        <span class="text-neutral-500 font-bold">-</span>
+                        <input type="date" id="podioFechaEnd" class="bg-neutral-800 text-white border border-neutral-600 p-1.5 text-[10px] font-bold outline-none uppercase">
+                        <button onclick="cargarPodioDinamico()" class="bg-white text-neutral-950 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 transition-colors">
+                            <i class="fa-solid fa-check"></i>
+                        </button>
+                    </div>
+
+                    <!-- Botón Excel -->
+                    <button onclick="exportarPodioExcel()" class="bg-green-600 hover:bg-green-500 text-white border border-green-700 p-2 text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-file-excel"></i> Exportar
+                    </button>
+                </div>
             </div>
-            
-            <div class="p-6 bg-neutral-50 border-t border-neutral-200">
-                <button onclick="abrirModalRanking()" class="w-full border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white text-neutral-900 font-black text-[10px] uppercase tracking-widest py-4 transition-colors">
-                    <i class="fa-solid fa-list mr-2"></i> Ver Detalles Completos
-                </button>
+
+            <!-- CONTENEDOR DONDE SE INYECTAN LOS RESULTADOS -->
+            <div id="contenedorPodioResultados" class="p-6 bg-neutral-50 flex-1 overflow-y-auto space-y-3 min-h-[300px]">
+                <!-- El JS llenará esto -->
             </div>
         </div>
 
@@ -134,43 +160,7 @@
         <div class="lg:col-span-5 flex flex-col gap-6 h-full">
             
             <!-- Componente Reinyectado: Métricas de Distribución Antigua -->
-            <div class="bg-white border border-neutral-300 rounded-none flex flex-col h-full border-t-4 border-t-neutral-950 p-6">
-                <div class="flex justify-between items-center border-b border-neutral-200 pb-4 mb-4">
-                    <h3 class="font-black text-neutral-950 text-xs uppercase tracking-widest flex items-center gap-2">
-                        <i class="fa-solid fa-truck-ramp-box text-neutral-400"></i> Despachos y Distribución
-                    </h3>
-                    <span class="text-[8px] bg-neutral-950 text-white font-mono font-black px-2 py-0.5 tracking-widest uppercase">Métricas</span>
-                </div>
-                
-                <div class="space-y-4 flex-1 flex flex-col justify-center font-sans">
-                    <!-- Despachos Hoy -->
-                    <div class="flex justify-between items-center bg-neutral-50 p-4 border border-neutral-200 hover:border-neutral-950 transition-colors">
-                        <div>
-                            <div class="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Despachos Ejecutados (Hoy)</div>
-                            <div class="text-xs font-bold text-neutral-500 uppercase tracking-wider mt-0.5">Movimientos a mostrador</div>
-                        </div>
-                        <div class="text-2xl font-black text-neutral-950 tracking-tight" id="distHoy">0</div>
-                    </div>
-
-                    <!-- Despachos Semana -->
-                    <div class="flex justify-between items-center bg-neutral-50 p-4 border border-neutral-200 hover:border-neutral-950 transition-colors">
-                        <div>
-                            <div class="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Carga Consolidada (Semana)</div>
-                            <div class="text-xs font-bold text-neutral-500 uppercase tracking-wider mt-0.5">Traslados de lotes</div>
-                        </div>
-                        <div class="text-2xl font-black text-neutral-950 tracking-tight" id="distSemana">0</div>
-                    </div>
-
-                    <!-- Despachos Mes -->
-                    <div class="flex justify-between items-center bg-neutral-50 p-4 border border-neutral-200 hover:border-neutral-950 transition-colors">
-                        <div>
-                            <div class="text-[9px] font-black text-neutral-400 uppercase tracking-widest">Volumen Consolidado (Mes)</div>
-                            <div class="text-xs font-bold text-neutral-500 uppercase tracking-wider mt-0.5">Cierre mensual interno</div>
-                        </div>
-                        <div class="text-2xl font-black text-neutral-950 tracking-tight" id="distMes">0</div>
-                    </div>
-                </div>
-            </div>
+            
 
             <!-- Panel de Accesos Rápidos Modulares -->
             <div class="bg-white p-6 border border-neutral-300 rounded-none space-y-3">
@@ -186,10 +176,6 @@
                     <i class="fa-solid fa-arrow-right text-xs"></i>
                 </button>
                 
-                <button onclick="navegarA('auditoria')" class="w-full flex items-center justify-between bg-white text-neutral-900 p-4 font-bold hover:bg-neutral-950 hover:text-white transition-colors group border border-neutral-300 text-[10px] uppercase tracking-widest rounded-none">
-                    <div class="flex items-center gap-3"><i class="fa-solid fa-shield-halved text-neutral-400 group-hover:text-white transition-colors"></i> Auditoría</div>
-                    <i class="fa-solid fa-arrow-right text-xs"></i>
-                </button>
             </div>
         </div>
     </div>
@@ -197,38 +183,111 @@
     <!-- ========================================================== -->
     <!-- FILA 4: TABLA DE ANÁLISIS DE ESTANCAMIENTO (HUESOS)        -->
     <!-- ========================================================== -->
-    <div class="grid grid-cols-1 gap-6 mt-6">
-        <div class="bg-white p-8 border-t-4 border-neutral-950 border-l border-r border-b border-neutral-300 rounded-none">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
-                <div>
-                    <h3 class="font-black text-neutral-950 flex items-center text-sm uppercase tracking-widest">
-                        <i class="fa-solid fa-box-archive mr-3 text-neutral-400"></i> Análisis de Estancamiento
-                    </h3>
-                    <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Inventario inmovilizado sin rotación comercial</p>
-                </div>
-                <div class="flex gap-4 border border-neutral-300 p-2 bg-neutral-50 font-mono text-[10px] font-black uppercase tracking-widest text-neutral-600">
-                    <span>Costo total en stock: <b id="dashValorTotal" class="text-neutral-950">$0.00</b></span>
-                </div>
+    <div class="grid grid-cols-1 gap-6 mt-6 animate-fade-in">
+    <div class="bg-white p-8 border-t-4 border-neutral-950 border-l border-r border-b border-neutral-300 rounded-none shadow-sm">
+        
+        <!-- ENCABEZADO Y FILTROS TÁCTICOS -->
+        <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 gap-4">
+            <div>
+                <h3 class="font-black text-neutral-950 flex items-center text-sm uppercase tracking-widest">
+                    <i class="fa-solid fa-box-archive mr-3 text-amber-600"></i> Auditoría de Inventario Inmovilizado (Huesos)
+                </h3>
+                <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Detección de capital atrapado sin rotación en punto de venta o almacén</p>
             </div>
-            
-            <div class="overflow-x-auto border border-neutral-200 bg-neutral-50">
-                <table class="min-w-full text-sm text-left border-collapse">
-                    <thead class="text-[10px] text-neutral-950 font-black uppercase tracking-widest bg-neutral-100 border-b border-neutral-300">
-                        <tr>
-                            <th class="px-6 py-4">Producto</th>
-                            <th class="px-6 py-4">Categoría</th>
-                            <th class="px-6 py-4 text-center">Stock Estancado</th>
-                            <th class="px-6 py-4 text-center">Dinero Dormido</th>
-                            <th class="px-6 py-4 " style="text-align: right; padding-right: 24px;">Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tablaHuesos" class="text-neutral-700 font-medium divide-y divide-neutral-200 bg-white">
-                        <tr><td colspan="5" class="text-center py-8 text-neutral-400 font-bold text-xs uppercase tracking-widest">Procesando datos del inventario corporativo...</td></tr>
-                    </tbody>
-                </table>
+
+            <!-- CONTROLES DE AUDITORÍA -->
+            <div class="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+                <!-- Umbral de Inactividad -->
+                <select id="filtroInactividadHuesos" onchange="cargarAuditoriaEstancamiento()" class="bg-neutral-900 text-white border border-neutral-700 p-2.5 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
+                    <option value="30">Sin movimiento >= 30 Días (1 Mes)</option>
+                    <option value="60">Sin movimiento >= 60 Días (2 Meses)</option>
+                    <option value="90">Sin movimiento >= 90 Días (3 Meses)</option>
+                    <option value="180">Sin movimiento >= 180 Días (6 Meses)</option>
+                    <option value="LOTES_NUEVOS">Lotes Recientes Sin Vender</option>
+                    <option value="CUSTOM">Rango de Fechas Personalizado...</option>
+                </select>
+
+                <div id="cajaFechasHuesos" class="hidden items-center gap-2">
+                    <input type="date" id="huesosFechaStart" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-bold outline-none uppercase">
+                    <span class="text-neutral-500 font-bold">-</span>
+                    <input type="date" id="huesosFechaEnd" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-bold outline-none uppercase">
+                    <button onclick="cargarAuditoriaEstancamiento()" class="bg-white text-neutral-950 px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 transition-colors">
+                        <i class="fa-solid fa-check"></i>
+                    </button>
+                </div>
+
+                <!-- Categoría -->
+                <select id="filtroCatHuesos" onchange="cargarAuditoriaEstancamiento()" class="bg-neutral-900 text-white border border-neutral-700 p-2.5 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
+                    <option value="TODOS">Todas las Categorías</option>
+                    <option value="ESENCIAS">Esencias Puras</option>
+                    <option value="TERMINADOS">Perfumes Terminados</option>
+                    <option value="INSUMOS">Materias Primas / Envases</option>
+                </select>
+
+                <!-- Botón Excel Contable -->
+                <button onclick="exportarEstancamientoExcel()" class="bg-green-600 hover:bg-green-500 text-white border border-green-700 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2">
+                    <i class="fa-solid fa-file-excel"></i> Exportar Audit
+                </button>
+            </div>
+        </div>
+
+        <!-- RESUMEN DE IMPACTO FINANCIERO -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-neutral-100 p-4 border border-neutral-300">
+            <div class="border-r border-neutral-300 pr-4">
+                <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">Capital Inmovilizado:</span>
+                <span id="txtCapitalInmovilizado" class="text-lg font-black text-red-600">$0.00</span>
+            </div>
+            <div class="border-r border-neutral-300 pr-4">
+                <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">SKUs Estancados:</span>
+                <span id="txtSkusEstancados" class="text-lg font-black text-neutral-950">0 Productos</span>
+            </div>
+            <div>
+                <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">Riesgo Financiero:</span>
+                <span id="txtRiesgoEstancamiento" class="text-xs font-black text-amber-600 uppercase tracking-wider">Bajo</span>
+            </div>
+        </div>
+
+        <!-- TABLA RESUMIDA -->
+        <div class="overflow-x-auto border border-neutral-200 bg-neutral-50">
+            <table class="min-w-full text-sm text-left border-collapse">
+                <thead class="text-[10px] text-neutral-950 font-black uppercase tracking-widest bg-neutral-100 border-b border-neutral-300">
+                    <tr>
+                        <th class="px-6 py-4">Producto / Insumo</th>
+                        <th class="px-6 py-4">Categoría</th>
+                        <th class="px-6 py-4 text-center">Último Movimiento / Carga</th>
+                        <th class="px-6 py-4 text-center">Stock Atrapado</th>
+                        <th class="px-6 py-4 text-center">Costo Atrapado ($)</th>
+                        <th class="px-6 py-4 text-right pr-6">Acción</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaHuesos" class="text-neutral-700 font-medium divide-y divide-neutral-200 bg-white">
+                    <tr><td colspan="6" class="text-center py-8 text-neutral-400 font-bold text-xs uppercase tracking-widest">Calculando vectores de inactividad...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    </div>
+
+<!-- MODAL DE DETALLE DE LOTE ESTANCADO -->
+<div id="modalDetalleEstancado" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm" onclick="cerrarModalEstancado()"></div>
+        <div class="relative bg-white w-full max-w-2xl border border-neutral-400 shadow-2xl rounded-none">
+            <div class="bg-neutral-950 px-6 py-4 border-b border-neutral-800 flex justify-between items-center text-white">
+                <h3 class="text-xs font-black uppercase tracking-widest flex items-center gap-2">
+                    <i class="fa-solid fa-magnifying-glass-dollar text-amber-400"></i> Auditoría de Trazabilidad de SKU
+                </h3>
+                <button onclick="cerrarModalEstancado()" class="text-neutral-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="contenidoModalEstancado" class="p-6 space-y-4 bg-neutral-50">
+                <!-- JS Inyectará la auditoría completa del lote -->
+            </div>
+            <div class="p-4 bg-neutral-100 border-t border-neutral-300 flex justify-end">
+                <button onclick="cerrarModalEstancado()" class="px-6 py-2.5 bg-neutral-950 text-white font-black text-[10px] uppercase tracking-widest">Cerrar</button>
             </div>
         </div>
     </div>
+</div>
 
     <!-- ========================================================== -->
     <!-- ZONA DE MODALES GLOBALES                                   -->

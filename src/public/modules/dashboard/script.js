@@ -375,7 +375,7 @@ function cerrarModalCritico() {
 }
 
 
-// 1. ÚNICA FUNCIÓN DE FILTRADO (Asegúrate de que no haya otra llamada igual en este archivo)
+
 window.cambiarRango = async function(valor) {
     console.log("🔄 Ejecutando filtro para:", valor);
 
@@ -405,7 +405,7 @@ window.cambiarRango = async function(valor) {
                 showCancelButton: true,
                 confirmButtonText: 'APLICAR FILTRO',
                 cancelButtonText: 'CANCELAR',
-                confirmButtonColor: '#0f172a', // Tu color original neutro
+                confirmButtonColor: '#0f172a',
                 cancelButtonColor: '#94a3b8',
                 customClass: {
                     popup: 'rounded-none border border-neutral-400',
@@ -425,7 +425,8 @@ window.cambiarRango = async function(valor) {
 
             if (!formValues) {
                 console.log("❌ Filtro cancelado por el usuario.");
-                document.getElementById('rangoTiempo').value = '7d';
+                const inputRango = document.getElementById('rangoTiempo');
+                if (inputRango) inputRango.value = '7d';
                 return;
             }
 
@@ -464,7 +465,7 @@ window.cambiarRango = async function(valor) {
         const dataReportes = await resReportes.json();
         const dataKPIs = await resKPIs.json();
 
-        // C. ENTREGA DE DATOS A TUS FUNCIONES (Diseño Intacto)
+        // C. ENTREGA DE DATOS A TUS FUNCIONES (Graficas)
         if (resReportes.ok) {
             console.log("📊 Datos recibidos, limpiando lienzos para repintar...");
             
@@ -486,7 +487,7 @@ window.cambiarRango = async function(valor) {
             const chartDistribucionViejo = Chart.getChart("dashDistribucionChart");
             if (chartDistribucionViejo) chartDistribucionViejo.destroy();
 
-            // ALIMENTAMOS TUS FUNCIONES ORIGINALES EXACTAS
+            // ALIMENTAMOS TUS FUNCIONES
             if (typeof renderFinanzasChart === 'function') {
                 renderFinanzasChart(dataReportes.financiero);
             }
@@ -498,12 +499,21 @@ window.cambiarRango = async function(valor) {
             }
         }
 
-        // D. ACTUALIZACIÓN DE TARJETAS SUPERIORES Y NUEVOS MÓDULOS
+        // D. ACTUALIZACIÓN SEGURA DE TARJETAS SUPERIORES Y MÓDULOS (BLINDADO CON IF)
         if (resKPIs.ok && dataKPIs.sales) {
-            // Tarjetas Originales
-            document.getElementById('dashVentasHoy').innerText = `$${parseFloat(dataKPIs.sales.ventas_hoy).toFixed(2)}`;
-            document.getElementById('dashTransacciones').innerText = dataKPIs.sales.transacciones_hoy;
+            // Ventas Hoy
+            const elVentas = document.getElementById('dashVentasHoy');
+            if (elVentas) {
+                elVentas.innerText = `$${parseFloat(dataKPIs.sales.ventas_hoy || 0).toFixed(2)}`;
+            }
+
+            // Transacciones
+            const elTrans = document.getElementById('dashTransacciones');
+            if (elTrans) {
+                elTrans.innerText = dataKPIs.sales.transacciones_hoy || 0;
+            }
             
+            // Flecha de Tendencia
             const trendArrow = document.getElementById('trendArrow');
             if (trendArrow) {
                 const actual = parseFloat(dataKPIs.sales.ventas_hoy || 0);
@@ -514,36 +524,44 @@ window.cambiarRango = async function(valor) {
                     trendArrow.innerHTML = `<i class="fa-solid fa-arrow-down text-red-600"></i>`;
                 }
             }
+
+            // Stock Crítico
             if (dataKPIs.lowStock) {
-                document.getElementById('dashLowStock').innerText = dataKPIs.lowStock.low_stock_count;
+                const elLowStock = document.getElementById('dashLowStock');
+                if (elLowStock) {
+                    elLowStock.innerText = dataKPIs.lowStock.low_stock_count || 0;
+                }
             }
 
-            // Tarjetas Financieras
+            // Tarjetas Financieras (Protegidas)
             if (dataKPIs.inventory) {
-                // Capital en Stock Normal
-                document.getElementById('dashValorTotal').innerText = `$${parseFloat(dataKPIs.inventory.valor_total_venta).toFixed(2)}`;
+                const elValorTotal = document.getElementById('dashValorTotal');
+                if (elValorTotal) {
+                    elValorTotal.innerText = `$${parseFloat(dataKPIs.inventory.valor_total_venta || 0).toFixed(2)}`;
+                }
                 
-                // 🔥 NUEVO: Capital Estancado (+30 Días)
                 const capTotal = parseFloat(dataKPIs.inventory.valor_total_venta) || 0;
                 const capEstancado = parseFloat(dataKPIs.inventory.capital_estancado) || 0;
                 
                 const elEstancado = document.getElementById('dashCapitalEstancado');
-                if(elEstancado) elEstancado.innerText = `$${capEstancado.toFixed(2)}`;
+                if (elEstancado) elEstancado.innerText = `$${capEstancado.toFixed(2)}`;
                 
                 let porcentaje = 0;
                 if (capTotal > 0) porcentaje = (capEstancado / capTotal) * 100;
                 
                 const barraEst = document.getElementById('barraEstancado');
-                if(barraEst) barraEst.style.width = `${porcentaje}%`;
+                if (barraEst) barraEst.style.width = `${porcentaje}%`;
                 
                 const porcEst = document.getElementById('dashPorcentajeEstancado');
-                if(porcEst) porcEst.innerText = `${porcentaje.toFixed(1)}% del total`;
+                if (porcEst) porcEst.innerText = `${porcentaje.toFixed(1)}% del total`;
             }
             
-            // 🔥 NUEVO: Distribución de Ventas (Top Rendimiento)
+            // Podio / Mini Ranking
             if (dataKPIs.ranking) {
-                window.datosRankingGlobal = dataKPIs.ranking; // Guardamos en memoria global
-                window.renderizarMiniRanking(); // Llamamos a la función que dibuja el Podio
+                window.datosRankingGlobal = dataKPIs.ranking;
+                if (typeof window.renderizarMiniRanking === 'function') {
+                    window.renderizarMiniRanking();
+                }
             }
         }
     } catch (error) {
@@ -766,10 +784,23 @@ window.cambiarRango('7d');
 // =====================================================================
 // 🔥 NUEVO MÓDULO: RANKING Y DISTRIBUCIÓN DE VENTAS
 // =====================================================================
-window.datosRankingGlobal = []; // Array que almacena la consulta de base de datos
+window.datosRankingGlobal = [];
+
 
 window.renderizarMiniRanking = function() {
-    const filtro = document.getElementById('filtroRankingVentas').value; // Lee si dice 'top' o 'bottom'
+    // 1. Buscamos el elemento de forma segura sin pedir el .value de inmediato
+    const filtroEl = document.getElementById('filtroRankingVentas');
+    
+    // 2. Puente de compatibilidad: Si el HTML viejo ya no está, llamamos al nuevo Podio y salimos
+    if (!filtroEl) {
+        if (typeof cargarPodioDinamico === 'function') {
+            cargarPodioDinamico();
+        }
+        return; 
+    }
+
+    // 3. Si el HTML antiguo sigue ahí, leemos su valor y ejecutamos tu lógica original
+    const filtro = filtroEl.value; 
     const listaEl = document.getElementById('listaMiniRanking');
     if(!listaEl) return;
 
@@ -840,3 +871,225 @@ window.cerrarModalRanking = function() {
     const modal = document.getElementById('modalRanking');
     if(modal) modal.classList.add('hidden');
 };
+
+
+// ==========================================
+// 🏆 CONTROLADOR DEL PODIO DE VENTAS
+// ==========================================
+
+// 1. Mostrar/Ocultar calendarios si se elige CUSTOM
+window.manejarFiltroTiempoPodio = () => {
+    const tiempo = document.getElementById('filtroTiempoPodio').value;
+    const cajaFechas = document.getElementById('cajaFechasPodio');
+    
+    if (tiempo === 'CUSTOM') {
+        cajaFechas.classList.remove('hidden');
+        cajaFechas.classList.add('flex');
+    } else {
+        cajaFechas.classList.add('hidden');
+        cajaFechas.classList.remove('flex');
+        cargarPodioDinamico(); // Recarga automático si no es custom
+    }
+};
+
+// 2. Traer la data al HTML
+window.cargarPodioDinamico = async () => {
+    const tipo = document.getElementById('filtroTipoPodio').value;
+    const tiempo = document.getElementById('filtroTiempoPodio').value;
+    let start = '', end = '';
+
+    if (tiempo === 'CUSTOM') {
+        start = document.getElementById('podioFechaStart').value;
+        end = document.getElementById('podioFechaEnd').value;
+        if (!start || !end) return; // Si no hay fechas puestas, no buscar aún
+    }
+
+    const contenedor = document.getElementById('contenedorPodioResultados');
+    contenedor.innerHTML = '<div class="text-center p-6 text-neutral-400 uppercase font-black text-xs"><i class="fa-solid fa-circle-notch fa-spin"></i> Analizando métricas...</div>';
+
+    try {
+        const token = localStorage.getItem('token');
+        // Construimos la URL con los parámetros
+        const url = `/api/ventas/podio?tipo=${tipo}&rango=${tiempo}&start=${start}&end=${end}`;
+        
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error("Error obteniendo podio");
+        const data = await res.json();
+
+        if (data.length === 0) {
+            contenedor.innerHTML = '<div class="text-center p-6 text-neutral-500 uppercase font-bold text-xs bg-white border border-neutral-200">No hay registros de ventas para estos filtros.</div>';
+            return;
+        }
+
+        // Dibujamos las barras del podio
+        contenedor.innerHTML = data.map((item, index) => {
+            const colorPos = index === 0 ? 'text-amber-500' : (index === 1 ? 'text-neutral-400' : 'text-amber-700');
+            return `
+                <div class="flex items-center justify-between p-4 bg-white border border-neutral-200 shadow-sm hover:border-neutral-400 transition-colors">
+                    <div class="flex items-center gap-4 w-2/3">
+                        <span class="font-black text-xl w-6 text-center ${colorPos}">#${index + 1}</span>
+                        <div>
+                            <p class="font-black text-xs uppercase text-neutral-950 truncate">${item.nombre}</p>
+                            <p class="font-bold text-[9px] uppercase text-neutral-400 tracking-widest">${item.categoria}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-black text-sm text-neutral-950">${parseFloat(item.total_unidades).toFixed(0)} <span class="text-[9px] text-neutral-500">UDS</span></p>
+                        <p class="font-bold text-[10px] text-emerald-600 tracking-widest">$${parseFloat(item.total_ingresos).toFixed(2)}</p>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    } catch (error) {
+        contenedor.innerHTML = '<div class="text-center text-red-500 uppercase font-black text-xs p-6">Error de red</div>';
+    }
+};
+
+// 3. Exportar a Excel
+window.exportarPodioExcel = () => {
+    const tipo = document.getElementById('filtroTipoPodio').value;
+    const tiempo = document.getElementById('filtroTiempoPodio').value;
+    let start = document.getElementById('podioFechaStart').value || '';
+    let end = document.getElementById('podioFechaEnd').value || '';
+    const token = localStorage.getItem('token');
+
+    // Redirigimos a la ruta del backend que descarga el Excel
+    const url = `/api/ventas/exportar-podio?tipo=${tipo}&rango=${tiempo}&start=${start}&end=${end}&token=${token}`;
+    window.open(url, '_blank');
+};
+
+// Cargar al iniciar la página por defecto (7 días, TODOS)
+document.addEventListener('DOMContentLoaded', cargarPodioDinamico);
+
+
+
+// ==========================================
+// 📦 AUDITORÍA DE ESTANCAMIENTO (HUESOS)
+// ==========================================
+
+window.manejarFiltroTiempoHuesos = () => {
+    const opcion = document.getElementById('filtroInactividadHuesos').value;
+    const caja = document.getElementById('cajaFechasHuesos');
+    
+    if (opcion === 'CUSTOM') {
+        caja.classList.remove('hidden');
+        caja.classList.add('flex');
+    } else {
+        caja.classList.add('hidden');
+        caja.classList.remove('flex');
+        cargarAuditoriaEstancamiento();
+    }
+};
+
+window.cargarAuditoriaEstancamiento = async () => {
+    const inactividad = document.getElementById('filtroInactividadHuesos').value;
+    const categoria = document.getElementById('filtroCatHuesos').value;
+    let start = '', end = '';
+
+    if (inactividad === 'CUSTOM') {
+        start = document.getElementById('huesosFechaStart').value;
+        end = document.getElementById('huesosFechaEnd').value;
+        if (!start || !end) return; // Espera a que el usuario seleccione ambas fechas
+    }
+
+    const tbody = document.getElementById('tablaHuesos');
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-neutral-400 font-bold text-xs uppercase tracking-widest"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Auditando historiales de inventario y lotes...</td></tr>';
+
+    try {
+        const token = localStorage.getItem('token');
+        const url = `/api/productos/estancamiento?dias=${inactividad}&categoria=${categoria}&start=${start}&end=${end}`;
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+        
+        if (!res.ok) throw new Error("Error en auditoría");
+        const data = await res.json();
+
+        // Actualizar métricas generales
+        document.getElementById('txtCapitalInmovilizado').innerText = `$${parseFloat(data.total_capital || 0).toFixed(2)}`;
+        document.getElementById('txtSkusEstancados').innerText = `${data.items.length} SKUs`;
+        
+        const riesgo = data.total_capital > 1000 ? 'ALTO (Atención Rápida)' : (data.total_capital > 300 ? 'MODERADO' : 'BAJO');
+        document.getElementById('txtRiesgoEstancamiento').innerText = riesgo;
+
+        if (data.items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-neutral-500 font-bold text-xs uppercase bg-white">Excelente: No hay inventario estancado bajo estos parámetros.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.items.map(i => {
+            const diasTxt = i.dias_inactivo >= 0 ? `${i.dias_inactivo} días` : 'Sin Ventas Registradas';
+            const badgeColor = i.dias_inactivo > 90 ? 'bg-red-100 text-red-800 border-red-300' : 'bg-amber-100 text-amber-800 border-amber-300';
+
+            return `
+                <tr class="hover:bg-neutral-100 border-b border-neutral-200 transition-colors">
+                    <td class="px-6 py-4 font-black uppercase text-xs text-neutral-950">${i.nombre}</td>
+                    <td class="px-6 py-4 uppercase text-[10px] font-bold text-neutral-500">${i.categoria}</td>
+                    <td class="px-6 py-4 text-center">
+                        <span class="px-2 py-0.5 text-[9px] font-black border ${badgeColor} uppercase">${diasTxt}</span>
+                    </td>
+                    <td class="px-6 py-4 text-center font-black text-xs">${parseFloat(i.stock_unidades).toFixed(0)} u.</td>
+                    <td class="px-6 py-4 text-center font-black text-xs text-red-600">$${parseFloat(i.costo_estancado).toFixed(2)}</td>
+                    <td class="px-6 py-4 text-right pr-6">
+                        <button onclick='verDetalleEstancado(${JSON.stringify(i).replace(/'/g, "&#39;")})' class="bg-neutral-950 hover:bg-neutral-800 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest">
+                            Auditar
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-red-500 font-bold text-xs uppercase bg-red-50">Fallo de auditoría: ${e.message}</td></tr>`;
+    }
+};
+
+window.verDetalleEstancado = (item) => {
+    const contenedor = document.getElementById('contenidoModalEstancado');
+    contenedor.innerHTML = `
+        <div class="bg-white p-4 border border-neutral-300 space-y-2">
+            <p class="text-[10px] text-neutral-400 font-black uppercase tracking-widest">SKU Analizado</p>
+            <h4 class="text-sm font-black text-neutral-950 uppercase">${item.nombre}</h4>
+            <p class="text-[10px] font-bold text-neutral-500 uppercase">Categoría: ${item.categoria} | Código: ${item.codigo || 'N/A'}</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 text-center">
+            <div class="bg-neutral-100 p-3 border border-neutral-300">
+                <span class="text-[9px] font-black text-neutral-500 uppercase block">Costo Unitario Base</span>
+                <span class="text-sm font-black text-neutral-950">$${parseFloat(item.costo_unitario).toFixed(4)}</span>
+            </div>
+            <div class="bg-neutral-100 p-3 border border-neutral-300">
+                <span class="text-[9px] font-black text-neutral-500 uppercase block">Capital Inmovilizado Total</span>
+                <span class="text-sm font-black text-red-600">$${parseFloat(item.costo_estancado).toFixed(2)}</span>
+            </div>
+        </div>
+
+        <div class="bg-white p-4 border border-neutral-300 space-y-1">
+            <p class="text-[9px] font-black text-neutral-950 uppercase">Dictamen de Auditoría:</p>
+            <p class="text-[10px] text-neutral-600 font-bold uppercase">
+                ${item.dias_inactivo >= 0 
+                    ? `Este producto no registra salida en el libro diario desde hace ${item.dias_inactivo} días.` 
+                    : 'Este lote o producto fue ingresado al sistema pero nunca ha registrado la primera venta.'}
+            </p>
+        </div>
+    `;
+    document.getElementById('modalDetalleEstancado').classList.remove('hidden');
+};
+
+window.cerrarModalEstancado = () => {
+    document.getElementById('modalDetalleEstancado').classList.add('hidden');
+};
+
+
+
+window.exportarEstancamientoExcel = () => {
+    const inactividad = document.getElementById('filtroInactividadHuesos').value;
+    const categoria = document.getElementById('filtroCatHuesos').value;
+    const start = document.getElementById('huesosFechaStart').value || '';
+    const end = document.getElementById('huesosFechaEnd').value || '';
+    const token = localStorage.getItem('token');
+    
+    window.open(`/api/productos/estancamiento/excel?dias=${inactividad}&categoria=${categoria}&start=${start}&end=${end}&token=${token}`, '_blank');
+};
+
+// Cargar al iniciar
+document.addEventListener('DOMContentLoaded', cargarAuditoriaEstancamiento);

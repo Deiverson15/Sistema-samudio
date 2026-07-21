@@ -2005,6 +2005,362 @@ const getReporteKardex = async (req, res) => {
     }
 };
 
+const obtenerEstancamiento = async (req, res) => {
+    const { dias, categoria, start, end } = req.query;
+    let idTiendaLocal = 1;
+    if (req.user && req.user.tienda_id !== undefined && req.user.tienda_id !== null && req.user.tienda_id !== '') {
+        idTiendaLocal = parseInt(req.user.tienda_id, 10);
+    }
+
+    const client = await pool.connect();
+
+    try {
+        let filterCat = "";
+        if (categoria === 'ESENCIAS') filterCat = "AND p.categoria ILIKE '%esencia%'";
+        else if (categoria === 'TERMINADOS') filterCat = "AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminados%')";
+        else if (categoria === 'INSUMOS') filterCat = "AND p.categoria NOT ILIKE '%esencia%' AND p.categoria NOT ILIKE '%terminados%'";
+
+        let filterInactividad = "";
+        let params = [idTiendaLocal];
+
+        // LÓGICA DE FILTRADO POR FECHA PERSONALIZADA O DÍAS ESTÁNDAR
+        if (dias === 'CUSTOM' && start && end) {
+            filterInactividad = `HAVING (MAX(v.fecha)::date NOT BETWEEN $2 AND $3 OR MAX(v.fecha) IS NULL) AND p.stock_unidades > 0`;
+            params.push(start, end);
+        } else if (dias === 'LOTES_NUEVOS') {
+            filterInactividad = "HAVING MAX(v.fecha) IS NULL AND p.stock_unidades > 0";
+        } else {
+            const numDias = parseInt(dias, 10) || 30;
+            filterInactividad = `HAVING (MAX(v.fecha) < NOW() - INTERVAL '${numDias} days' OR MAX(v.fecha) IS NULL) AND p.stock_unidades > 0`;
+        }
+
+        const query = `
+            SELECT 
+                p.id, 
+                p.codigo, 
+                p.nombre, 
+                p.categoria, 
+                p.stock_unidades, 
+                p.costo, 
+                p.unidad_medida,
+                MAX(v.fecha) as ultima_venta,
+                CASE 
+                    WHEN MAX(v.fecha) IS NULL THEN -1
+                    ELSE DATE_PART('day', NOW() - MAX(v.fecha))::integer
+                END as dias_inactivo
+            FROM productos p
+            LEFT JOIN detalle_ventas dv ON p.id = dv.producto_id
+            LEFT JOIN ventas v ON dv.venta_id = v.id
+            WHERE p.tienda_id = $1 AND p.activo = true ${filterCat}
+            GROUP BY p.id, p.codigo, p.nombre, p.categoria, p.stock_unidades, p.costo, p.unidad_medida
+            ${filterInactividad}
+            ORDER BY (p.stock_unidades * 
+                CASE 
+                    WHEN p.categoria ILIKE '%esencia%' OR p.categoria ILIKE '%alcohol%' OR p.categoria ILIKE '%fijador%' OR p.unidad_medida = 'GRAMOS' OR p.unidad_medida = 'ML' 
+                    THEN p.costo / 1000.0 ELSE p.costo 
+                END
+            ) DESC
+        `;
+
+        const result = await client.query(query, params);
+        
+        let totalCapitalAtrapado = 0;
+        const items = result.rows.map(r => {
+            const stock = parseFloat(r.stock_unidades || 0);
+            let costoUnit = parseFloat(r.costo || 0);
+            const catUpper = (r.categoria || '').toUpperCase();
+            const uniUpper = (r.unidad_medida || '').toUpperCase();
+
+            if (catUpper.includes('ESENCIA') || catUpper.includes('ALCOHOL') || catUpper.includes('FIJADOR') || uniUpper === 'GRAMOS' || uniUpper === 'ML') {
+                costoUnit = costoUnit / 1000.0;
+            }
+
+            const costoTotal = stock * costoUnit;
+            totalCapitalAtrapado += costoTotal;
+
+            return {
+                id: r.id,
+                codigo: r.codigo,
+                nombre: r.nombre,
+                categoria: r.categoria,
+                stock_unidades: stock,
+                costo_unitario: costoUnit,
+                costo_estancado: costoTotal,
+                dias_inactivo: r.dias_inactivo,
+                ultima_venta: r.ultima_venta
+            };
+        });
+
+        res.json({
+            total_capital: totalCapitalAtrapado,
+            items: items
+        });
+
+    } catch (error) {
+        console.error("Error en Auditoría Estancamiento:", error);
+        res.status(500).json({ error: error.message });
+    } finally {
+        client.release();
+    }
+};
+
+const exportarEstancamientoExcel = async (req, res) => {
+    const { dias, categoria } = req.query;
+    const client = await pool.connect();
+
+    try {
+        // Ejecutamos la consulta contable
+        let filterCat = "";
+        if (categoria === 'ESENCIAS') filterCat = "AND p.categoria ILIKE '%esencia%'";
+        else if (categoria === 'TERMINADOS') filterCat = "AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminados%')";
+
+        const numDias = parseInt(dias, 10) || 30;
+        const query = `
+            SELECT p.codigo, p.nombre, p.categoria, p.stock_unidades, p.costo, p.unidad_medida, MAX(v.fecha) as ultima_venta
+            FROM productos p
+            LEFT JOIN detalle_ventas dv ON p.id = dv.producto_id
+            LEFT JOIN ventas v ON dv.venta_id = v.id
+            WHERE p.activo = true ${filterCat}
+            GROUP BY p.id, p.codigo, p.nombre, p.categoria, p.stock_unidades, p.costo, p.unidad_medida
+            HAVING (MAX(v.fecha) < NOW() - INTERVAL '${numDias} days' OR MAX(v.fecha) IS NULL) AND p.stock_unidades > 0
+            ORDER BY p.stock_unidades DESC
+        `;
+
+        const result = await client.query(query);
+
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Auditoría Estancamiento');
+
+        const headerStyle = { font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDC2626' } } };
+
+        sheet.addRow(['INFORME CONTABLE DE INVENTARIO INMOVILIZADO (HUESOS)']).font = { bold: true, size: 14 };
+        sheet.addRow([`Parámetro: Inactividad mayor o igual a ${dias} días`]);
+        sheet.addRow([`Fecha de Auditoría: ${new Date().toLocaleDateString()}`]);
+        sheet.addRow([]);
+
+        const headers = sheet.addRow(['CÓDIGO', 'PRODUCTO / INSUMO', 'CATEGORÍA', 'STOCK ATRAPADO', 'COSTO UNITARIO ($)', 'CAPITAL INMOVILIZADO ($)', 'ÚLTIMA SALIDA']);
+        headers.eachCell(c => { c.font = headerStyle.font; c.fill = headerStyle.fill; });
+
+        let totalGeneral = 0;
+
+        result.rows.forEach(r => {
+            const stock = parseFloat(r.stock_unidades || 0);
+            let costoUnit = parseFloat(r.costo || 0);
+            const catUpper = (r.categoria || '').toUpperCase();
+            const uniUpper = (r.unidad_medida || '').toUpperCase();
+
+            if (catUpper.includes('ESENCIA') || catUpper.includes('ALCOHOL') || catUpper.includes('FIJADOR') || uniUpper === 'GRAMOS' || uniUpper === 'ML') {
+                costoUnit = costoUnit / 1000.0;
+            }
+
+            const capitalAtrapado = stock * costoUnit;
+            totalGeneral += capitalAtrapado;
+
+            sheet.addRow([
+                r.codigo || 'N/A',
+                r.nombre,
+                r.categoria,
+                stock,
+                costoUnit,
+                capitalAtrapado,
+                r.ultima_venta ? new Date(r.ultima_venta).toLocaleDateString() : 'SIN VENTAS'
+            ]);
+        });
+
+        sheet.addRow([]);
+        const rowTotal = sheet.addRow(['TOTAL CAPITAL INMOVILIZADO EN TIENDA:', '', '', '', '', totalGeneral, '']);
+        rowTotal.font = { bold: true };
+
+        sheet.getColumn(5).numFmt = '"$"#,##0.0000';
+        sheet.getColumn(6).numFmt = '"$"#,##0.00';
+        sheet.columns.forEach(c => { c.width = 22; });
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="Auditoria_Estancamiento_${dias}_dias.xlsx"`);
+        await workbook.xlsx.write(res);
+        res.end();
+
+    } catch (error) {
+        console.error("Error Exportando Auditoría:", error);
+        res.status(500).send("Error generando el Excel");
+    } finally {
+        client.release();
+    }
+};
+
+
+// =======================================================
+// 📊 REPORTE DE LISTA DE PRECIOS Y CATÁLOGO POR SUCURSAL
+// =======================================================
+const getReporteListaPrecios = async (req, res) => {
+    try {
+        const { start, end, tienda_id, seccion, search } = req.query;
+
+        let idTienda = tienda_id && tienda_id !== '' && tienda_id !== 'todas' ? parseInt(tienda_id, 10) : null;
+        if (!idTienda && req.user && req.user.tienda_id) {
+            idTienda = parseInt(req.user.tienda_id, 10);
+        }
+
+        let whereClause = "WHERE p.activo = true";
+        let params = [];
+        let paramIdx = 1;
+
+        if (idTienda) {
+            whereClause += ` AND p.tienda_id = $${paramIdx}`;
+            params.push(idTienda);
+            paramIdx++;
+        }
+
+        // Filtro por sección/categoría (incluyendo la corrección de Perfumes Terminados)
+        if (seccion && seccion !== 'todos' && seccion !== 'TODOS') {
+            if (seccion === 'TERMINADOS') {
+                whereClause += ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
+            } else {
+                whereClause += ` AND p.categoria ILIKE $${paramIdx}`;
+                params.push(`%${seccion}%`);
+                paramIdx++;
+            }
+        }
+
+        if (search && search.trim() !== '') {
+            whereClause += ` AND (p.codigo ILIKE $${paramIdx} OR p.nombre ILIKE $${paramIdx} OR p.marca ILIKE $${paramIdx})`;
+            params.push(`%${search.trim()}%`);
+            paramIdx++;
+        }
+
+        const query = `
+            SELECT 
+                p.id,
+                COALESCE(p.codigo, 'S/C') as referencia,
+                COALESCE(p.categoria, 'GENERAL') as seccion,
+                p.nombre as descripcion,
+                COALESCE(p.marca, 'N/A') as marca,
+                COALESCE(p.genero, 'UNISEX') as genero,
+                COALESCE(p.unidad_medida, 'GRAMOS') as presentacion,
+                p.precio_venta as precio,
+                p.stock_unidades,
+                p.stock_estante,
+                COALESCE(t.nombre, 'SUCURSAL GENERAL') as tienda_nombre
+            FROM productos p
+            LEFT JOIN tiendas t ON p.tienda_id = t.id
+            ${whereClause}
+            ORDER BY p.categoria ASC, p.nombre ASC
+        `;
+
+        const response = await pool.query(query, params);
+        res.json({
+            total_articulos: response.rows.length,
+            data: response.rows
+        });
+
+    } catch (error) {
+        console.error("Error en getReporteListaPrecios:", error);
+        res.status(500).json({ error: "Error al consultar la lista de precios." });
+    }
+};
+
+const exportarListaPreciosExcel = async (req, res) => {
+    try {
+        const { start, end, tienda_id, seccion } = req.query;
+
+        let idTienda = tienda_id && tienda_id !== '' && tienda_id !== 'todas' ? parseInt(tienda_id, 10) : null;
+        if (!idTienda && req.user && req.user.tienda_id) {
+            idTienda = parseInt(req.user.tienda_id, 10);
+        }
+
+        let whereClause = "WHERE p.activo = true";
+        let params = [];
+        let paramIdx = 1;
+
+        if (idTienda) {
+            whereClause += ` AND p.tienda_id = $${paramIdx}`;
+            params.push(idTienda);
+            paramIdx++;
+        }
+
+        // Filtro por sección/categoría
+        if (seccion && seccion !== 'todos' && seccion !== 'TODOS') {
+            if (seccion === 'TERMINADOS') {
+                whereClause += ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
+            } else {
+                whereClause += ` AND p.categoria ILIKE $${paramIdx}`;
+                params.push(`%${seccion}%`);
+                paramIdx++;
+            }
+        }
+
+        const query = `
+            SELECT 
+                COALESCE(p.codigo, 'S/C') as referencia,
+                COALESCE(p.categoria, 'GENERAL') as seccion,
+                p.nombre as descripcion,
+                COALESCE(p.marca, 'N/A') as marca,
+                COALESCE(p.genero, 'UNISEX') as genero,
+                COALESCE(p.unidad_medida, 'GRAMOS') as presentacion,
+                p.precio_venta as precio,
+                COALESCE(t.nombre, 'SUCURSAL GENERAL') as tienda_nombre
+            FROM productos p
+            LEFT JOIN tiendas t ON p.tienda_id = t.id
+            ${whereClause}
+            ORDER BY p.categoria ASC, p.nombre ASC
+        `;
+
+        const result = await pool.query(query, params);
+
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Lista de Precios');
+
+        sheet.addRow(['PERFUMIX C.A. - LISTA DE PRECIOS OFICIAL']).font = { bold: true, size: 14 };
+        sheet.addRow([`Sucursal: ${result.rows[0]?.tienda_nombre || 'Todas las Sucursales'}`]);
+        sheet.addRow([`Fecha de Generación: ${new Date().toLocaleDateString('es-VE')}`]);
+        sheet.addRow([]);
+
+        const headerRow = sheet.addRow(['REFERENCIA', 'SECCIÓN', 'DESCRIPCIÓN', 'MARCA', 'GÉNERO', 'PRESENTACIÓN', 'PRECIO DE VENTA ($)']);
+        headerRow.eachCell((cell) => {
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+
+        result.rows.forEach(r => {
+            sheet.addRow([
+                r.referencia,
+                r.seccion.toUpperCase(),
+                r.descripcion.toUpperCase(),
+                r.marca.toUpperCase(),
+                r.genero.toUpperCase(),
+                r.presentacion.toUpperCase(),
+                parseFloat(r.precio || 0)
+            ]);
+        });
+
+        sheet.getColumn(7).numFmt = '"$"#,##0.00';
+        
+        sheet.getColumn(1).width = 16;
+        sheet.getColumn(2).width = 18;
+        sheet.getColumn(3).width = 45;
+        sheet.getColumn(4).width = 22;
+        sheet.getColumn(5).width = 16;
+        sheet.getColumn(6).width = 18;
+        sheet.getColumn(7).width = 20;
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="Lista_Precios_${new Date().toISOString().slice(0,10)}.xlsx"`);
+
+        await workbook.xlsx.write(res);
+        res.end();
+
+    } catch (error) {
+        console.error("Error Exportando Excel Lista Precios:", error);
+        res.status(500).send("Error generando el archivo Excel.");
+    }
+};
 module.exports = { getProductos, createProducto, descargarAuditoriaExcel, cambiarSucursalActiva, updateProducto, deleteProducto, importarMasivo, getHistorialImportaciones, revertirImportacion, getKardex, getLotesProducto, eliminarFisico, reactivarProducto, reponerEstante, getProductosEstante,
     reportarMerma, getReporteKardex, organizarBotella, actualizarNivelBotella, getUbicacionSugerida, abrirBotellaGrupo, crearTester,
-    moverStockEstante, distribuirProducto, obtenerProductoPorReferencia, exportarExcel, gestionarMovimientoEstante, sincronizarStock, eliminarBotella, reponerTester, vaciadoMasivoEstante, registrarMovimiento};
+    moverStockEstante,
+    distribuirProducto, obtenerProductoPorReferencia, exportarExcel, gestionarMovimientoEstante, sincronizarStock, eliminarBotella, reponerTester, vaciadoMasivoEstante, registrarMovimiento,
+    obtenerEstancamiento,
+    exportarEstancamientoExcel,
+    getReporteListaPrecios,
+    exportarListaPreciosExcel 
+};

@@ -23,8 +23,10 @@ const {
     bajarInventarioLoteCompleto,
     getReportesConsolidadosRed,
     getListaTiendas,
-    getVentasAnuladas, // 🔥 SOLUCIÓN: Agregada la importación faltante
-    exportarCierreDeHoyExcel
+    getVentasAnuladas, 
+    exportarCierreDeHoyExcel,
+    obtenerPodioDinamico,
+    exportarPodioExcel,
 } = require('../controllers/ventas.controller');
 
 const { verifyToken } = require('../middleware/auth');
@@ -37,6 +39,8 @@ const { getResumenSemanal, exportarExcelSemanal } = require('../controllers/repo
 // =======================================================================
 router.get('/', verifyToken, getVentas);
 router.get('/dashboard-kpis', verifyToken, getDashboardKPIs);
+router.get('/podio', verifyToken, obtenerPodioDinamico);
+router.get('/exportar-podio', verifyToken, exportarPodioExcel);
 router.get('/reportes', verifyToken, getReportes); 
 router.get('/reportes-red', verifyToken, getReportesConsolidadosRed);
 router.get('/reportes/consolidado-red', verifyToken, getReportesConsolidadosRed); 

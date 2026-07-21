@@ -76,14 +76,29 @@
                 </div>
             </div>
 
-            <!-- BUSCADOR E INYECTOR A LA LISTA (MÁS ANCHO) -->
+            <!-- BUSCADOR E INYECTOR CON AUTOCOMPLETADO INTELIGENTE -->
             <div class="bg-white p-5 border border-neutral-300 space-y-3 rounded-none">
-                <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest border-b pb-1">Dosificar Fragancia al Lote</label>
+                <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest border-b pb-1">
+                    Dosificar Fragancia al Lote
+                </label>
                 <div class="flex flex-col md:flex-row gap-3">
-                    <!-- El buscador ahora se expande para nombres largos -->
-                    <select id="selectEsencia" class="flex-1 bg-neutral-50 border border-neutral-300 p-3 text-xs font-bold uppercase outline-none focus:bg-white focus:border-neutral-950">
-                        <option value="" disabled selected>-- BUSCAR FRAGANCIA --</option>
-                    </select>
+                    
+                    <!-- INPUT INTELIGENTE CON BUSCADOR DINÁMICO -->
+                    <div class="flex-1 relative">
+                        <input 
+                            type="text" 
+                            id="inputBuscarEsencia" 
+                            list="listaEsenciasDatalist" 
+                            class="w-full bg-neutral-50 border border-neutral-300 p-3 text-xs font-bold uppercase outline-none focus:bg-white focus:border-neutral-950 placeholder-neutral-400" 
+                            placeholder="ESCRIBA CÓDIGO O DESCRIPCIÓN (EJ: E010 O SAUVAGE)..."
+                            autocomplete="off"
+                        >
+                        <!-- LISTA DESPLEGABLE FILTRABLE AUTOMÁTICA -->
+                        <datalist id="listaEsenciasDatalist">
+                            <!-- El JS inyectará las 500 esencias con su código aquí -->
+                        </datalist>
+                    </div>
+
                     <!-- Cantidad y botón firmes a la derecha -->
                     <div class="flex gap-2 shrink-0 w-full md:w-auto">
                         <input type="number" id="cantEsenciaFila" class="w-24 bg-neutral-50 border border-neutral-300 p-3 text-center text-xs font-black text-neutral-950 outline-none focus:bg-white" min="1" placeholder="CANT">
@@ -136,55 +151,101 @@
     </div>
 </div>
 
-    <!-- MODAL 2: COMPLETAR Y REPORTAR MERMA -->
+<!-- MODAL 2: CIERRE Y AUDITORÍA DE PRODUCCIÓN POR FRAGANCIA -->
     <div id="modalCompletarOrden" class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 transition-all duration-300">
-        <div class="bg-white w-full max-w-md border border-neutral-400 shadow-2xl flex flex-col rounded-none animate-fade-in">
-            <div class="p-6 border-b border-neutral-800 bg-neutral-950 flex justify-between items-center text-white">
-                <h3 class="font-black text-xs uppercase tracking-widest flex items-center gap-2">
-                    <i class="fa-solid fa-clipboard-check text-neutral-400"></i> Cierre de Producción
-                </h3>
+        <div class="bg-white w-full max-w-3xl border border-neutral-400 shadow-2xl flex flex-col rounded-none animate-fade-in max-h-[90vh]">
+            
+            <!-- Encabezado -->
+            <div class="p-5 border-b border-neutral-800 bg-neutral-950 flex justify-between items-center text-white shrink-0">
+                <div>
+                    <h3 class="font-black text-xs uppercase tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-clipboard-check text-green-400"></i> Auditoría y Cierre de Lote Compuesto
+                    </h3>
+                    <p class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-0.5" id="lblOrdenCodigoCierre">Lote: ORD-0000</p>
+                </div>
                 <button onclick="cerrarModalCompletar()" class="text-neutral-400 hover:text-white transition-colors">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
             
-            <form id="formCompletarOrden" class="p-6 space-y-5 bg-neutral-50">
+            <form id="formCompletarOrden" class="p-6 space-y-5 bg-neutral-50 overflow-y-auto flex-1">
                 <input type="hidden" id="ordenIdCierre">
-                <div class="bg-neutral-950 p-4 text-center border border-neutral-800">
-                    <p class="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Planificado Original</p>
-                    <p class="font-black text-2xl text-white" id="lblPlanificado">0</p>
-                </div>
-                
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2 text-center">Unidades Listas</label>
-                        <input type="number" id="cantCompletada" class="w-full bg-white border border-neutral-300 p-3 text-center font-black text-lg text-green-700 outline-none focus:border-green-600" required>
+
+                <!-- Resumen Superior Matemático -->
+                <div class="grid grid-cols-3 gap-3 text-center border border-neutral-300 bg-white p-4">
+                    <div class="border-r border-neutral-200">
+                        <p class="text-[9px] font-black text-neutral-500 uppercase tracking-widest">Planificado Total</p>
+                        <p class="font-black text-xl text-neutral-950" id="lblPlanificado">0</p>
+                    </div>
+                    <div class="border-r border-neutral-200">
+                        <p class="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Auditado Ok</p>
+                        <p class="font-black text-xl text-emerald-600" id="lblTotalAuditadoOk">0</p>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2 text-center">Merma / Fallas</label>
-                        <input type="number" id="cantMerma" class="w-full bg-neutral-100 border border-neutral-300 p-3 text-center font-black text-lg text-red-600 outline-none" readonly>
+                        <p class="text-[9px] font-black text-red-600 uppercase tracking-widest">Merma Total</p>
+                        <p class="font-black text-xl text-red-600" id="lblTotalMerma">0</p>
                     </div>
                 </div>
 
-                <div id="divAccionMerma" class="hidden space-y-2 p-3 bg-red-50 border border-red-200">
-                    <label class="block text-[10px] font-black text-red-800 uppercase tracking-widest">¿Qué pasó con el material de la merma?</label>
-                    <select id="accionMerma" class="w-full bg-white border border-red-300 p-2 text-xs font-bold uppercase outline-none text-red-900">
-                        <option value="PERDIDA">Se derramó / Dañó (Descontar inventario)</option>
-                        <option value="SOBRANTE">No se usó (Regresar al almacén)</option>
+                <!-- BARRA DE ACCIÓN RÁPIDA: SELECCIÓN MASIVA Y BÚSQUEDA -->
+                <div class="flex justify-between items-center bg-white p-3 border border-neutral-300">
+                    <label class="flex items-center gap-2 cursor-pointer text-[10px] font-black uppercase text-neutral-950 select-none">
+                        <input type="checkbox" id="checkMarcarTodosCierre" onchange="toggleMarcarTodasEsencias(this.checked)" class="w-4 h-4 accent-neutral-950 cursor-pointer">
+                        Marcar Todo como Correcto
+                    </label>
+                    <span class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest" id="lblInfoPaginacionCierre">Mostrando esencias del lote</span>
+                </div>
+
+                <!-- TABLA DESGLOSADA DE ESENCIAS PLANIFICADAS CON PAGINACIÓN -->
+                <div class="border border-neutral-300 bg-white overflow-hidden">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead class="bg-neutral-100 border-b border-neutral-300 text-[9px] font-black uppercase tracking-widest text-neutral-900">
+                            <tr>
+                                <th class="p-3 text-center w-12">Check</th>
+                                <th class="p-3">Fragancia Planificada</th>
+                                <th class="p-3 text-center w-24">Meta</th>
+                                <th class="p-3 text-center w-28">Listas (Ok)</th>
+                                <th class="p-3 text-center w-28">Merma</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bodyCierreEsencias" class="divide-y divide-neutral-200 font-bold text-neutral-800">
+                            <!-- JS inyectará las filas paginadas aquí -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- CONTROLES DE PAGINACIÓN DE LA TABLA DE CIERRE -->
+                <div id="cajaPaginacionCierre" class="flex justify-between items-center bg-white p-3 border border-neutral-300">
+                    <button type="button" onclick="cambiarPaginaCierre(-1)" id="btnPagAntCierre" class="px-4 py-2 border border-neutral-300 text-[9px] font-black uppercase tracking-widest hover:bg-neutral-100 disabled:opacity-40">
+                        &larr; Anterior
+                    </button>
+                    <span class="text-[10px] font-black uppercase text-neutral-600" id="txtPaginaActualCierre">Página 1 de 1</span>
+                    <button type="button" onclick="cambiarPaginaCierre(1)" id="btnPagSigCierre" class="px-4 py-2 border border-neutral-300 text-[9px] font-black uppercase tracking-widest hover:bg-neutral-100 disabled:opacity-40">
+                        Siguiente &rarr;
+                    </button>
+                </div>
+
+                <!-- Selección de Destino de la Merma (Solo visible si hay mermas) -->
+                <div id="divAccionMerma" class="hidden space-y-2 p-4 bg-red-50 border border-red-200">
+                    <label class="block text-[10px] font-black text-red-800 uppercase tracking-widest">¿Qué tratamiento se dará a las mermas detectadas?</label>
+                    <select id="accionMerma" class="w-full bg-white border border-red-300 p-3 text-xs font-bold uppercase outline-none text-red-900">
+                        <option value="PERDIDA">Se derramó / Frasco roto (Descontar materia prima de inventario)</option>
+                        <option value="SOBRANTE">No se llegaron a preparar (Regresar insumos al almacén)</option>
                     </select>
                 </div>
 
                 <div>
-                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Observaciones del Cierre</label>
-                    <textarea id="notasCierre" rows="2" class="w-full bg-white border border-neutral-300 p-3 text-xs font-bold uppercase outline-none focus:border-neutral-950 resize-none" placeholder="Justifique la merma o deje en blanco..."></textarea>
+                    <label class="block text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-2">Observaciones Generales de Laboratorio</label>
+                    <textarea id="notasCierre" rows="2" class="w-full bg-white border border-neutral-300 p-3 text-xs font-bold uppercase outline-none focus:border-neutral-950 resize-none" placeholder="Indique detalles de mermas o incidencias técnicas..."></textarea>
                 </div>
-                <div class="pt-2">
-                    <button type="submit" class="w-full py-4 bg-neutral-950 text-white font-black text-[10px] uppercase tracking-widest hover:bg-neutral-800 transition-colors">Confirmar Empaquetado</button>
+                
+                <div class="pt-2 flex gap-3 border-t border-neutral-200">
+                    <button type="button" onclick="cerrarModalCompletar()" class="flex-1 py-4 border border-neutral-300 bg-white text-neutral-600 font-bold text-[10px] uppercase tracking-widest hover:bg-neutral-100 transition-colors">Cancelar</button>
+                    <button type="submit" class="flex-1 py-4 bg-neutral-950 text-white font-black text-[10px] uppercase tracking-widest hover:bg-neutral-800 transition-colors">Confirmar y Cerrar Lote</button>
                 </div>
             </form>
         </div>
     </div>
-
 
 </div>
 
