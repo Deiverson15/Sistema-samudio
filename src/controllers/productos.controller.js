@@ -395,7 +395,7 @@ const importarMasivo = async (req, res) => {
     const { productos, nombre_archivo, proveedor } = req.body; 
     const usuarioId = req.user ? req.user.id : null;
     
-    // SUCURSAL ENFORCED: Mantiene tu configuración fija de La Urbina (ID: 3)
+    // SUCURSAL ENFORCED: La Urbina (ID: 3)
     const idTiendaLocal = 3; 
 
     const client = await pool.connect();
@@ -409,49 +409,71 @@ const importarMasivo = async (req, res) => {
 
     try {
         await client.query('BEGIN');
-        
-        for (let i = 0; i < productos.length; i++) {
-            const row = productos[i];
+
+        // 🧠 DETECTOR AUTOMÁTICO DE ENCABEZADOS Y MAPEADOR DE COLUMNAS
+        let headerMap = {};
+        let startIndex = 0;
+
+        // Escanea las primeras 10 filas buscando los títulos reales
+        for (let h = 0; h < Math.min(productos.length, 10); h++) {
+            const candidateRow = productos[h];
+            let foundHeader = false;
             
-            // 🛡️ NORMALIZADOR DE COLUMNAS EN VIVO
-            const p = {};
-            for (const key in row) {
-                const cleanKey = key.toString().toLowerCase()
-                                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Quita acentos
-                                    .trim();
-                p[cleanKey] = row[key];
+            for (const key in candidateRow) {
+                const valStr = candidateRow[key] ? candidateRow[key].toString().toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : '';
+                if (valStr === 'referencia' || valStr === 'codigo' || valStr === 'cantidad' || valStr === 'seccion') {
+                    foundHeader = true;
+                    break;
+                }
             }
 
-            // 🧲 EXTRACCIÓN ULTRA-SEGURA (Todo en minúsculas emparejado con el normalizador)
-            const codigoRaw = p['referencia'];
-            const seccionRaw = p['seccion'];
-            const nombreRaw = p['descripcion'] || p['nombre'];
-            const marcaRaw = p['marca'];
-            const generoRaw = p['genero'] || 'UNISEX';
-            const presentacionRaw = p['presentacion'] || 'UND';
+            if (foundHeader) {
+                // Mapear la llave rara (ej. "__EMPTY_6") al nombre real de la columna ("cantidad")
+                for (const key in candidateRow) {
+                    if (candidateRow[key]) {
+                        const cleanHeader = candidateRow[key].toString().toLowerCase()
+                                                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                                                .trim();
+                        headerMap[key] = cleanHeader;
+                    }
+                }
+                startIndex = h + 1; // Inicia la lectura real en la siguiente fila
+                break;
+            }
+        }
+        
+        for (let i = startIndex; i < productos.length; i++) {
+            const row = productos[i];
             
-            // Failsafe: Si falta la referencia o el nombre, saltamos la fila vacía
-            if (!codigoRaw || !nombreRaw || codigoRaw.toString().trim() === '') { 
+            const p = {};
+            // Forzamos el mapeo usando el headerMap irrompible
+            for (const key in row) {
+                const targetKey = headerMap[key] || key.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                p[targetKey] = row[key];
+            }
+
+            // 🧲 EXTRACCIÓN PROTEGIDA
+            const codigoRaw = p['referencia'] || p['codigo'] || p['ref'] || p['mappin pt'];
+            
+            // Si no hay código o es la fila de totalización final (ej. 1028), la saltamos
+            if (!codigoRaw || codigoRaw.toString().trim() === '' || codigoRaw.toString().trim().toUpperCase() === 'REFERENCIA') { 
                 continue; 
             }
 
+            const seccionRaw = p['seccion'];
+            let nombreRaw = p['descripcion'] || p['nombre'] || p['producto'];
+            const marcaRaw = p['marca'];
+            const generoRaw = p['genero'];
+            const presentacionRaw = p['presentacion'] || 'UND';
+            
             // 🛡️ PARSEO SEGURO DE MONTOS NUMÉRICOS
-            let stockOriginal = 0;
-            if (p['cantidad'] !== undefined && p['cantidad'] !== "") {
-                stockOriginal = parseFloat(p['cantidad']);
-            }
+            let stockOriginal = parseFloat(p['cantidad']);
             if (isNaN(stockOriginal)) stockOriginal = 0;
 
-            let costoRaw = 0;
-            if (p['costo und'] !== undefined && p['costo und'] !== "") {
-                costoRaw = parseFloat(p['costo und']);
-            }
+            let costoRaw = parseFloat(p['costo'] || p['costo und']);
             if (isNaN(costoRaw)) costoRaw = 0;
 
-            let precioRaw = 0;
-            if (p['precio'] !== undefined && p['precio'] !== "") {
-                precioRaw = parseFloat(p['precio']);
-            }
+            let precioRaw = parseFloat(p['precio']);
             if (isNaN(precioRaw)) precioRaw = 0;
 
             const spName = `fila_${i}`;
@@ -460,18 +482,43 @@ const importarMasivo = async (req, res) => {
             try {
                 const codigo = codigoRaw.toString().trim(); 
                 const seccion = seccionRaw ? seccionRaw.toString().trim().toUpperCase() : 'GENERAL';
-                const nombre = nombreRaw.toString().trim();
-                const marca = marcaRaw ? marcaRaw.toString().trim() : 'Genérico';
-                const genero = generoRaw.toString().trim().toUpperCase();
-                const presentacion = presentacionRaw.toString().trim().toUpperCase();
+                const presentacion = presentacionRaw ? presentacionRaw.toString().trim().toUpperCase() : 'UND';
                 
+                let marca = marcaRaw ? marcaRaw.toString().trim() : 'Genérico';
+                let genero = generoRaw ? generoRaw.toString().trim().toUpperCase() : 'UNISEX';
+
+                // 🔍 BÚSQUEDA PREVIA EN BD PARA EXTRAER DATOS DE LA ESENCIA BASE
+                const busquedaEsencia = await client.query(
+                    'SELECT nombre, marca, genero FROM productos WHERE codigo = $1 AND tienda_id = $2 LIMIT 1',
+                    [codigo, idTiendaLocal]
+                );
+
+                if (busquedaEsencia.rows.length > 0) {
+                    const eb = busquedaEsencia.rows[0];
+                    if (!nombreRaw && eb.nombre) nombreRaw = eb.nombre;
+                    if ((!generoRaw || genero === 'UNISEX') && eb.genero) genero = eb.genero;
+                    if ((!marcaRaw || marca === 'Genérico') && eb.marca) marca = eb.marca;
+                }
+
+                const nombre = nombreRaw ? nombreRaw.toString().trim() : `Perfume ${codigo}`;
+
                 let stockAñadido = 0;
                 let categoria = 'General';
                 let unidad_medida = 'UNIDAD';
                 let contenido_gramos = 0;
 
-                // 🧠 MOTOR MATEMÁTICO DE CONVERSIONES (Kilos / Litros / Unidades)
-                if (seccion === 'ESENCIA' || presentacion === 'GRAMOS') {
+                // 🧠 MOTOR MATEMÁTICO DE CONVERSIONES (Perfumes Terminados / Esencias / Insumos)
+                if (seccion.includes('PERFUME TERMINADO') || seccion.includes('PERFUMES TERMINADOS')) {
+                    categoria = 'Perfumes';
+                    unidad_medida = 'UNIDAD';
+                    stockAñadido = Math.round(stockOriginal);
+
+                    const extraerNumero = codigo.match(/\d+/) || nombre.match(/\d+/);
+                    if (extraerNumero) {
+                        contenido_gramos = parseInt(extraerNumero[0], 10);
+                    }
+                }
+                else if (seccion === 'ESENCIA' || presentacion === 'GRAMOS') {
                     categoria = 'Esencias';
                     unidad_medida = 'GRAMOS';
                     stockAñadido = Math.round(stockOriginal * 1000); 
@@ -505,43 +552,47 @@ const importarMasivo = async (req, res) => {
                 const precio_venta = precioRaw;
                 const stock_minimo = 5;
 
-                // Solo sumamos a la rentabilidad del lote si realmente ingresó stock físico
-                if (stockOriginal > 0) {
-                    totalCantidades += stockOriginal;
-                    totalInversion += (costo * stockOriginal);
-                    totalProyeccion += (precio_venta * stockOriginal);
-                }
-
                 let productoId;
                 let esNuevo = false;
 
-                // Verificamos si ya existe la referencia en esta sucursal (La Urbina)
+                // Verificamos si ya existe el registro exacto en esta tienda
                 const checkRes = await client.query('SELECT id FROM productos WHERE codigo = $1 AND tienda_id = $2', [codigo, idTiendaLocal]);
                 
                 if (checkRes.rows.length > 0) {
                     productoId = checkRes.rows[0].id;
                     
-                    // Si el producto ya existe pero no se compró stock nuevo en este lote, saltamos sin pisar datos
-                    if (stockOriginal <= 0) {
+                    // Si trae stock físico para registrar (14, 10, etc.)
+                    if (stockOriginal > 0) {
+                        await client.query(`
+                            UPDATE productos 
+                            SET stock_unidades = stock_unidades + $1,
+                                marca = $2,
+                                genero = $3,
+                                categoria = $4,
+                                costo = $5,
+                                precio_venta = $6,
+                                unidad_medida = $7,
+                                activo = true
+                            WHERE id = $8 AND tienda_id = $9
+                        `, [stockAñadido, marca, genero, categoria, costo, precio_venta, unidad_medida, productoId, idTiendaLocal]);
+                        actualizados++;
+                        
+                        totalCantidades += stockOriginal;
+                        totalInversion += (costo * stockOriginal);
+                        totalProyeccion += (precio_venta * stockOriginal);
+                    } else {
                         await client.query(`RELEASE SAVEPOINT ${spName}`);
                         continue; 
                     }
-
-                    // Si trae stock real comprado, actualizamos cantidades y fijamos costos/precios
-                    await client.query(`
-                        UPDATE productos 
-                        SET stock_unidades = stock_unidades + $1,
-                            marca = $2,
-                            genero = $3,
-                            costo = $4,
-                            precio_venta = $5,
-                            activo = true -- 🛡️ CANDADO AUTOMÁTICO DE REACTIVACIÓN
-                        WHERE id = $6 AND tienda_id = $7
-                    `, [stockAñadido, marca, genero, costo, precio_venta, productoId, idTiendaLocal]);
-                    actualizados++;
                 } else {
-                    // Si el producto es NUEVO, lo insertamos en el catálogo (entre con o sin stock)
                     esNuevo = true;
+                    
+                    if (stockOriginal > 0) {
+                        totalCantidades += stockOriginal;
+                        totalInversion += (costo * stockOriginal);
+                        totalProyeccion += (precio_venta * stockOriginal);
+                    }
+                    
                     const insertQuery = `
                         INSERT INTO productos 
                         (codigo, nombre, marca, categoria, stock_unidades, stock_minimo, costo, precio_venta,
