@@ -41,40 +41,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-           const rol = usuario.rol; 
-            
-            const menusRestringidos = {
-                vendedor: [
+           const rol = usuario.rol ? usuario.rol.toLowerCase().trim() : ''; 
+const idTiendaActiva = parseInt(usuario.tienda_id, 10);
+
+const menusRestringidos = {
+    vendedor: [
         'menu-dashboard', 'menu-inventario', 'menu-preparacion', 
         'menu-compras', 'menu-proveedores', 'menu-reportes', 
         'menu-usuarios', 'menu-ajustes', 'menu-auditoria', 
         'menu-tiendas', 'menu-fabricacion'
     ],
-    // HABILITADOS PARA GERENTE: fabricacion, facturacion (nota de entrega), inventario, ventas, compras, etc.
-    // SOLO BLOQUEADOS PARA GERENTE:
     gerente: [
         'menu-usuarios', 
         'menu-auditoria', 
-        'menu-tiendas',
-        'menu-usuarios'
+        'menu-tiendas'
     ],
     admin: ['menu-tiendas'],  
-                superadmin: [], 
-                developer: []   
-            };
-
-            const todosLosMenus = ['menu-dashboard', 'menu-inventario', 'menu-estante', 'menu-preparacion', 'menu-ventas', 'menu-compras', 'menu-proveedores', 'menu-reportes', 'menu-usuarios', 'menu-ajustes', 'menu-auditoria', 'menu-tiendas', 'menu-fabricacion'];
+    superadmin: [], 
+    developer: []   
+};
+            const todosLosMenus = [
+    'menu-dashboard', 'menu-inventario', 'menu-estante', 'menu-preparacion', 
+    'menu-ventas', 'menu-compras', 'menu-proveedores', 'menu-reportes', 
+    'menu-usuarios', 'menu-ajustes', 'menu-auditoria', 'menu-tiendas', 'menu-fabricacion'
+];
             
             todosLosMenus.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.style.display = 'block'; 
-            });
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'block'; 
+});
 
             const idsParaOcultar = menusRestringidos[rol] || [];
-            idsParaOcultar.forEach(id => {
-                const elemento = document.getElementById(id);
-                if (elemento) elemento.style.display = 'none';
-            });
+idsParaOcultar.forEach(id => {
+    const elemento = document.getElementById(id);
+    if (elemento) elemento.style.display = 'none';
+});
+
+if (idTiendaActiva === 3) {
+    const menuEstante = document.getElementById('menu-estante');
+    if (menuEstante) menuEstante.style.display = 'none';
+}
             
             const devMenu = document.getElementById('menu-developer');
             if (rol === 'developer') {
@@ -83,6 +89,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (devMenu) devMenu.style.display = 'none';
             }
         }
+
+
     } catch (e) {
         console.error("Error al procesar permisos:", e);
         localStorage.removeItem('token');

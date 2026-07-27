@@ -112,12 +112,17 @@
                 </div>
 
                 <div id="viewBuscar">
-                    <div class="relative mb-4 group">
-                        <i class="fa-solid fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400 group-focus-within:text-neutral-950 transition-colors"></i>
-                        <input type="text" id="inputBuscarCliente" class="w-full pl-12 p-4 border border-neutral-300 bg-neutral-50 outline-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 text-xs font-bold uppercase tracking-wider rounded-none transition-colors placeholder-neutral-400" placeholder="NOMBRE O CÉDULA...">
-                    </div>
-                    <div id="listaResultadosClientes" class="h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar"></div>
-                </div>
+    <div class="relative mb-4 group">
+        <i class="fa-solid fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-neutral-400 group-focus-within:text-neutral-950 transition-colors"></i>
+        <input type="text" id="inputBuscarCliente" class="w-full pl-12 p-4 border border-neutral-300 bg-neutral-50 outline-none focus:bg-white focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 text-xs font-bold uppercase tracking-wider rounded-none transition-colors placeholder-neutral-400" placeholder="NOMBRE O CÉDULA...">
+    </div>
+    
+    <!-- Lista de Resultados -->
+    <div id="listaResultadosClientes" class="h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar"></div>
+    
+    <!-- 🔥 CONTENEDOR DE PAGINACIÓN AGREGADO -->
+    <div id="paginacionClientesContainer" class="hidden"></div>
+</div>
 
                 <div id="viewCrear" class="hidden space-y-4">
                     <input type="text" id="newDoc" class="w-full p-4 border border-neutral-300 text-xs font-bold uppercase tracking-wider bg-neutral-50 focus:bg-white transition-colors outline-none focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 rounded-none placeholder-neutral-400" placeholder="CÉDULA / RIF *">

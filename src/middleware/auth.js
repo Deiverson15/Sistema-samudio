@@ -14,7 +14,6 @@ const logAccesoDenegado = async (req, motivo, usuarioId = null) => {
 };
 
 const verifyToken = async (req, res, next) => {
-    // 1. Obtener el token
     const authHeader = req.headers['authorization'];
     let token = authHeader && authHeader.split(' ')[1]; 
     if (!token && req.query.token) token = req.query.token;
@@ -22,11 +21,9 @@ const verifyToken = async (req, res, next) => {
     if (!token) return res.status(403).json({ error: 'Token requerido' });
 
     try {
-        // 2. Verificar firma del token
         const secret = process.env.JWT_SECRET;
         const decoded = jwt.verify(token, secret);
 
-        // 3. VERIFICACIÓN ESTRICTA EN BASE DE DATOS
         const userResult = await pool.query(
             'SELECT id, rol, nombre, activo, token_sesion, tienda_id FROM usuarios WHERE id = $1', 
             [decoded.id]
@@ -40,7 +37,6 @@ const verifyToken = async (req, res, next) => {
             return res.status(401).json({ error: 'Su cuenta ha sido desactivada. Contacte al administrador.' });
         }
 
-        // 4. LÓGICA DE AUTO-BLOQUEO DEL SISTEMA
         const configRes = await pool.query("SELECT clave, valor FROM configuracion WHERE clave IN ('sistema_activo', 'mensaje_pago')");
         
         let sistemaActivo = true;
@@ -61,13 +57,8 @@ const verifyToken = async (req, res, next) => {
             }
         }
 
-        const rolUsuario = user.rol ? user.rol.toLowerCase().trim() : '';
-
-        // Rompen el bloqueo por pago
-        const esUsuarioMaestro = rolUsuario === 'developer' || 
-                                 rolUsuario === 'dev' || 
-                                 rolUsuario === 'súper administrador' || 
-                                 rolUsuario === 'super administrador';
+        const rolUsuario = user.rol ? user.rol.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : '';
+        const esUsuarioMaestro = ['developer', 'dev', 'super administrador', 'superadmin', 'admin'].includes(rolUsuario);
 
         if (!sistemaActivo && !esUsuarioMaestro) {
             return res.status(402).json({ 
@@ -90,14 +81,14 @@ const verifyToken = async (req, res, next) => {
 
 const checkRol = (rolesPermitidos) => {
     return (req, res, next) => {
-        const rolUsuario = req.user && req.user.rol ? req.user.rol.toLowerCase().trim() : '';
+        const rolUsuario = req.user && req.user.rol 
+            ? req.user.rol.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() 
+            : '';
         
-        const esModoDios = rolUsuario === 'developer' || 
-                           rolUsuario === 'dev' || 
-                           rolUsuario === 'súper administrador' || 
-                           rolUsuario === 'super administrador';
-        
-        if (req.user && (rolesPermitidos.includes(rolUsuario) || esModoDios)) {
+        const esModoDios = ['developer', 'dev', 'super administrador', 'superadmin'].includes(rolUsuario);
+        const rolesLimpios = rolesPermitidos.map(r => r.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim());
+
+        if (req.user && (rolesLimpios.includes(rolUsuario) || esModoDios)) {
             next();
         } else {
             res.status(403).json({ error: 'No tienes permisos para realizar esta acción.' });
@@ -105,9 +96,9 @@ const checkRol = (rolesPermitidos) => {
     };
 };
 
-// 🔥 Sincronizados con 'gerente general' y 'gerente'
-const verifyAdmin = [verifyToken, checkRol(['developer', 'súper administrador', 'super administrador', 'admin'])];
-const verifyGerente = [verifyToken, checkRol(['developer', 'súper administrador', 'super administrador', 'admin', 'gerente general', 'gerente'])];
-const verifyVendedor = [verifyToken, checkRol(['developer', 'súper administrador', 'super administrador', 'admin', 'gerente general', 'gerente', 'vendedor'])];
+// 🔥 EXPORTAMOS LOS MIDDLEWARES INDIVIDUALES O EN ARREGLOS LIMPIOS
+const verifyAdmin = [verifyToken, checkRol(['developer', 'dev', 'super administrador', 'superadmin', 'admin', 'gerente general', 'gerente'])];
+const verifyGerente = [verifyToken, checkRol(['developer', 'dev', 'super administrador', 'superadmin', 'admin', 'gerente general', 'gerente'])];
+const verifyVendedor = [verifyToken, checkRol(['developer', 'dev', 'super administrador', 'superadmin', 'admin', 'gerente general', 'gerente', 'vendedor'])];
 
 module.exports = { verifyToken, verifyAdmin, verifyGerente, verifyVendedor };

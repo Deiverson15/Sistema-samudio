@@ -33,6 +33,10 @@ let estadoCaja = false;
 
 let listaUsuarios = [];
 
+let paginaClienteActual = 1;
+let totalPaginasClientes = 1;
+let busquedaClienteActual = "";
+
 const beepOk = new Audio('https://actions.google.com/sounds/v1/cartoon/pop.ogg');
 const beepError = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
 
@@ -107,36 +111,18 @@ export async function init() {
 
 function configurarBuscadorClientes() {
     const input = document.getElementById('inputBuscarCliente');
-    if(!input) return;
+    if (!input) return;
 
-    let timeoutCliente; // Variable para controlar el tiempo de espera
+    let timeoutCliente;
 
     input.addEventListener('input', (e) => {
         const texto = e.target.value.trim();
-
-        // Limpiamos el temporizador anterior
         clearTimeout(timeoutCliente);
 
-        // Si el campo está vacío, limpiamos la lista visual
-        if(texto.length === 0) {
-            renderClientes([]);
-            return;
-        }
-
-        // Esperamos 500ms antes de llamar a la API (Para que no busque por cada letra)
         timeoutCliente = setTimeout(async () => {
-            try {
-                // Llamada al servicio
-                const res = await ClienteService.buscar(texto);
-                
-                const lista = Array.isArray(res) ? res : (res.data || []);
-                
-                renderClientes(lista);
-                
-            } catch(err) {
-                console.error("Error buscando clientes:", err);
-            }
-        }, 500); 
+            // Siempre reinicia a la página 1 cuando el usuario escribe algo nuevo
+            await cargarClientesModal(1, texto);
+        }, 300);
     });
 }
 
@@ -439,7 +425,7 @@ function renderCatalogo(lista, cargarMas = false) {
     const inputBuscador = document.getElementById('buscadorVenta');
     const busqueda = inputBuscador ? inputBuscador.value.toLowerCase() : "";
 
-    // 1. Filtramos la lista completa en memoria (Esto es ultra rápido)
+    // 1. Filtramos la lista completa en memoria
     const listaFiltrada = lista.filter(p => 
         p.nombre.toLowerCase().includes(busqueda) || 
         (p.codigo && p.codigo.toLowerCase().includes(busqueda))
@@ -450,20 +436,22 @@ function renderCatalogo(lista, cargarMas = false) {
         grid.innerHTML = '';
         window.itemsRenderizados = 0;
     } else {
-        // Si le dimos a "Cargar Más", borramos el botón viejo para meter los nuevos productos
         const btnAnterior = document.getElementById('btn-cargar-mas');
         if (btnAnterior) btnAnterior.remove();
     }
 
-    // 🔥 LA MAGIA: Dibujamos en la pantalla estricatamente de 50 en 50
     const LIMITE = 50; 
     const porcion = listaFiltrada.slice(window.itemsRenderizados, window.itemsRenderizados + LIMITE);
 
     let htmlNuevo = '';
 
-    // 4. Armamos el HTML solo de esa pequeña porción de 50
     porcion.forEach(p => {
-        const tieneStock = p.stock_estante > 0;
+        // 🔥 CÁLCULO DEL STOCK COMBINADO (ESTANTE + ALMACÉN / DEPÓSITO)
+        const stockEstante = parseFloat(p.stock_estante || 0);
+        const stockUnidades = parseFloat(p.stock_real || p.stock_unidades || 0);
+        const stockTotalCombinado = stockEstante + stockUnidades;
+
+        const tieneStock = stockTotalCombinado > 0;
         const opacity = tieneStock ? '' : 'opacity-60 grayscale';
         
         let botonesHTML = '';
@@ -484,9 +472,9 @@ function renderCatalogo(lista, cargarMas = false) {
             `;
         } else if (modoVista === 'insumos') {
             botonesHTML = `
-                <button onclick="ventaManualGranel(${p.id})" 
+                <button onclick="verificarProducto(${p.id}, false)" 
                         class="w-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-3 rounded-lg transition flex items-center justify-center gap-2 shadow-lg transform active:scale-95">
-                    <i class="fa-solid fa-box-open text-gray-300"></i> VENDER UNIDAD
+                    <i class="fa-solid fa-box-open text-gray-300"></i> SELECCIONAR MEDIDA / PROMO
                 </button>
             `;
         } else {
@@ -502,8 +490,9 @@ function renderCatalogo(lista, cargarMas = false) {
             <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between h-full ${opacity} hover:border-blue-200 transition">
                 <div class="flex justify-between items-start mb-2">
                     <span class="text-[10px] bg-gray-100 px-2 py-0.5 rounded font-mono text-gray-500">${p.codigo || 'S/C'}</span>
+                    <!-- 🔥 MUESTRA EL STOCK COMBINADO SUMADO -->
                     <span class="text-[10px] font-bold ${tieneStock ? 'text-green-600' : 'text-red-500'}">
-                        ${parseFloat(p.stock_estante).toFixed(2)} disp.
+                        ${stockTotalCombinado.toFixed(2)} disp.
                     </span>
                 </div>
                 <div class="font-bold text-slate-800 text-sm mb-4 uppercase leading-tight">
@@ -516,11 +505,9 @@ function renderCatalogo(lista, cargarMas = false) {
         `;
     });
 
-    // 5. Inyectamos el HTML de forma ultra-rápida sin borrar lo que ya estaba
     grid.insertAdjacentHTML('beforeend', htmlNuevo);
     window.itemsRenderizados += porcion.length;
 
-    // 6. Si aún quedan productos por renderizar de los 100,000, mostramos el botón inteligente de "Cargar más"
     if (window.itemsRenderizados < listaFiltrada.length) {
         const btnHTML = `
             <div id="btn-cargar-mas" class="col-span-full flex justify-center mt-6 mb-4 w-full">
@@ -921,20 +908,63 @@ window.switchTab = function(tab) {
 
 function renderClientes(lista) {
     const div = document.getElementById('listaResultadosClientes');
+    if (!div) return;
+
     div.innerHTML = '';
-    if(lista.length === 0) {
-        div.innerHTML = '<div class="text-xs text-gray-400 text-center p-4">No encontrado</div>';
+    if (lista.length === 0) {
+        div.innerHTML = '<div class="text-xs text-gray-400 text-center p-4">No se encontraron clientes</div>';
         return;
     }
+
     lista.forEach(c => {
         div.innerHTML += `
-            <div onclick="seleccionarCliente(${c.id}, '${c.nombre}', '${c.documento}')" class="p-3 border rounded-lg hover:bg-blue-50 cursor-pointer flex justify-between items-center transition mb-2">
-                <div><div class="font-bold text-sm text-gray-800">${c.nombre}</div><div class="text-xs text-gray-500 font-mono">${c.documento}</div></div>
-                <i class="fa-solid fa-check text-blue-500"></i>
+            <div onclick="seleccionarCliente(${c.id}, '${c.nombre.replace(/'/g, "\\'")}', '${c.documento}')" class="p-3 border border-neutral-200 rounded-none bg-neutral-50 hover:bg-neutral-100 cursor-pointer flex justify-between items-center transition mb-2">
+                <div>
+                    <div class="font-bold text-xs text-neutral-900 uppercase tracking-wider">${c.nombre}</div>
+                    <div class="text-[10px] text-neutral-500 font-mono mt-0.5">${c.documento}</div>
+                </div>
+                <i class="fa-solid fa-chevron-right text-neutral-400 text-xs"></i>
             </div>
         `;
     });
 }
+
+function renderPaginacionClientes() {
+    const container = document.getElementById('paginacionClientesContainer');
+    if (!container) return;
+
+    if (totalPaginasClientes <= 1) {
+        container.innerHTML = '';
+        container.classList.add('hidden');
+        return;
+    }
+
+    container.classList.remove('hidden');
+    container.innerHTML = `
+        <div class="flex justify-between items-center pt-3 mt-2 border-t border-neutral-200 text-[10px] font-bold uppercase tracking-widest text-neutral-500">
+            <button 
+                onclick="cambiarPaginaCliente(${paginaClienteActual - 1})" 
+                class="px-3 py-1.5 border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-900 ${paginaClienteActual <= 1 ? 'opacity-40 cursor-not-allowed' : ''}"
+                ${paginaClienteActual <= 1 ? 'disabled' : ''}>
+                <i class="fa-solid fa-chevron-left mr-1"></i> Ant.
+            </button>
+            
+            <span>Pág. ${paginaClienteActual} de ${totalPaginasClientes}</span>
+            
+            <button 
+                onclick="cambiarPaginaCliente(${paginaClienteActual + 1})" 
+                class="px-3 py-1.5 border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-900 ${paginaClienteActual >= totalPaginasClientes ? 'opacity-40 cursor-not-allowed' : ''}"
+                ${paginaClienteActual >= totalPaginasClientes ? 'disabled' : ''}>
+                Sig. <i class="fa-solid fa-chevron-right ml-1"></i>
+            </button>
+        </div>
+    `;
+}
+
+window.cambiarPaginaCliente = async function(nuevaPagina) {
+    if (nuevaPagina < 1 || nuevaPagina > totalPaginasClientes) return;
+    await cargarClientesModal(nuevaPagina, busquedaClienteActual);
+};
 
 window.seleccionarCliente = function(id, nombre, doc) {
     clienteActual = { id, nombre, documento: doc };
@@ -1502,7 +1532,6 @@ function abrirModalFormula(nombreProducto) {
     const modal = document.getElementById('modalSeleccionFormula');
     if (!modal) return;
 
-    // Limpiar campos extra al abrir el modal
     const inputExtraG = document.getElementById('extraGramosEsencia');
     const inputExtraP = document.getElementById('precioGramoExtra');
     if(inputExtraG) inputExtraG.value = '';
@@ -1511,10 +1540,28 @@ function abrirModalFormula(nombreProducto) {
     const label = document.getElementById('lblNombreProducto');
     if(label) label.innerText = modoRecargaActual ? `Recarga activa: ${nombreProducto}` : nombreProducto;
 
+    // 🔥 Ocultar caja de extras si estamos en modo Insumos/P.T.
+    const contenedorExtras = document.getElementById('extraGramosEsencia')?.closest('.p-4');
+    if (contenedorExtras) {
+        if (modoVista === 'insumos') {
+            contenedorExtras.classList.add('hidden');
+        } else {
+            contenedorExtras.classList.remove('hidden');
+        }
+    }
+
     comboFormulaActiva = null;
     cambiarTabModal('ESTANDAR');
     modal.classList.remove('hidden');
 }
+
+
+function obtenerVolumenDeCodigo(codigo) {
+    if (!codigo) return null;
+    const match = codigo.match(/-T(\d+)/i); // Captura los números después de -T
+    return match ? parseInt(match[1], 10) : null;
+}
+
 
 // ⚡ VENTANA INTERNA: Slots de búsqueda con memoria intermedia para combos
 window.abrirAsignacionEsenciasComboPOS = function(idFormula, monedaElegida, precioBaseCalculado) {
@@ -1559,7 +1606,10 @@ window.abrirAsignacionEsenciasComboPOS = function(idFormula, monedaElegida, prec
         </div>
         
         <datalist id="datalistEsenciasComboPOS">
-            ${esencias.map(e => `<option value="${e.nombre}">Stock en Mostrador: ${parseFloat(e.stock_estante).toFixed(0)}g</option>`).join('')}
+            ${esencias.map(e => {
+                const stockTotal = parseFloat(e.stock_estante || 0) + parseFloat(e.stock_real || e.stock_unidades || 0);
+                return `<option value="${e.nombre}">Stock Total: ${stockTotal.toFixed(0)}g</option>`;
+            }).join('')}
         </datalist>
         
         <div class="space-y-2.5 my-4 max-h-[260px] overflow-y-auto pr-1">
@@ -1842,17 +1892,21 @@ window.confirmarPromoLote = function() {
     const { idFormula, monedaElegida, precioBase, formula } = dataActiva;
     const vol = formula.volumen_total;
 
-    for (const item of loteEsenciasPromo) {
-        const prodEsencia = todosLosProductos.find(p => p.id == item.id);
-        if (!prodEsencia) continue;
-        const gEsenciaNecesariaItem = parseFloat(formula.gramos_esencia) + (item.gramos_extra || 0);
-        const esenciaNecesariaParaEsteItem = gEsenciaNecesariaItem * item.cantidad;
-        const totalDisp = parseFloat(prodEsencia.stock_estante || 0) + parseFloat(prodEsencia.stock_real || 0);
-        
-        if (totalDisp < esenciaNecesariaParaEsteItem) {
-            return Swal.fire('Existencias Insuficientes', `La fragancia "${prodEsencia.nombre}" no tiene gramos suficientes (${esenciaNecesariaParaEsteItem}g).`, 'warning');
-        }
+    // Reemplaza esta sección dentro de confirmarPromoLote:
+for (const item of loteEsenciasPromo) {
+    const prodEsencia = todosLosProductos.find(p => p.id == item.id);
+    if (!prodEsencia) continue;
+    
+    const gEsenciaNecesariaItem = parseFloat(formula.gramos_esencia) + (item.gramos_extra || 0);
+    const esenciaNecesariaParaEsteItem = gEsenciaNecesariaItem * item.cantidad;
+    
+    // 🔥 SUMA COMBINADA DE AMBOS STOCKS
+    const totalDisp = parseFloat(prodEsencia.stock_estante || 0) + parseFloat(prodEsencia.stock_real || prodEsencia.stock_unidades || 0);
+    
+    if (totalDisp < esenciaNecesariaParaEsteItem) {
+        return Swal.fire('Existencias Insuficientes', `La fragancia "${prodEsencia.nombre}" no tiene gramos suficientes (${esenciaNecesariaParaEsteItem}g requeridos, disponible total: ${totalDisp}g).`, 'warning');
     }
+}
 
     const itemsParaAgregar = [];
 
@@ -2096,23 +2150,23 @@ window.seleccionarFormula = async (idFormula, esPromo = false) => {
     const nombreFactura = modoRecargaActual 
         ? `REC ${vol}ML PERFUME ${descLimpia}${tagExtra}` 
         : `${vol}ML PERFUME ${descLimpia}${tagExtra}`;
+    const catProd = (productoPendiente.categoria || '').toUpperCase();
+    const esInsumoDirecto = modoVista === 'insumos' || catProd.includes('PERFUME') || catProd.includes('INSUMO');
 
     carrito.push({
-        id: productoPendiente.id, 
-        unique_id: `${productoPendiente.id}_F${idFormula}_${modoRecargaActual ? 'REC' : 'NEW'}_EXT${Date.now()}`, 
-        nombre: nombreFactura, 
-        precio: precioFinalUnitario, 
-        cantidad: 1, 
-        formula_id: idFormula,
-        es_recarga: modoRecargaActual,
-        gramos_extra: gramosExtra,
-        gramos_fijador_extra: gramosFijadorExtra, 
-        precio_gramo_extra: precioGramoExtraDB, 
-        precio_fijador_extra: precioFijadorExtraDB,
-        ml_alcohol_override: mlAlcoholTotal,
-        monedaElegida: monedaElegida,
-        isLocked: monedaElegida === 'BS'
-    });
+    id: productoPendiente.id, 
+    unique_id: `${productoPendiente.id}_F${idFormula}_INS_${Date.now()}`, 
+    nombre: `${vol}ML ${productoPendiente.nombre}${tagExtra}`, 
+    precio: precioFinalUnitario, 
+    cantidad: 1, 
+    // 🔥 Si es insumo o P.T., no se vincula a fórmula para descontar sólo la unidad física
+    formula_id: esInsumoDirecto ? null : idFormula, 
+    es_recarga: modoRecargaActual,
+    gramos_extra: esInsumoDirecto ? 0 : gramosExtra,
+    gramos_fijador_extra: esInsumoDirecto ? 0 : gramosFijadorExtra, 
+    monedaElegida: monedaElegida,
+    isLocked: monedaElegida === 'BS'
+});
 
     renderCarrito();
     cerrarModalFormula();
@@ -2147,11 +2201,22 @@ function renderContenidoModalFormulas() {
     if (!container || !productoPendiente) return;
     container.innerHTML = '';
 
+    // 🔥 Detectamos si la referencia trae una medida fija (Ej: E496-T30 -> 30)
+    const volumenFijo = obtenerVolumenDeCodigo(productoPendiente.codigo);
+
     if (tabModalActual === 'ESTANDAR') {
-        const formulasEstandar = formulasGlobales.filter(f => !(parseFloat(f.cantidad_promo) > 0));
+        let formulasEstandar = formulasGlobales.filter(f => !(parseFloat(f.cantidad_promo) > 0));
+
+        // 🎯 FILTRO INTELIGENTE: Si tiene medida definida (-T30), mostramos solo esa fórmula
+        if (volumenFijo) {
+            formulasEstandar = formulasEstandar.filter(f => parseInt(f.volumen_total, 10) === volumenFijo);
+        }
 
         if (formulasEstandar.length === 0) {
-            container.innerHTML = `<div class="text-center py-6 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Ninguna medida regular registrada.</div>`;
+            container.innerHTML = `
+                <div class="text-center py-6 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
+                    ${volumenFijo ? `No hay fórmula registrada para la medida de ${volumenFijo}ML.` : 'Ninguna medida regular registrada.'}
+                </div>`;
             return;
         }
 
@@ -2177,7 +2242,6 @@ function renderContenidoModalFormulas() {
                 badgeEnvase = envase ? `<span class="text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 font-bold text-[9px]">ENVASE: SÍ</span>` : `<span class="text-red-700 bg-red-50 border border-red-200 px-1.5 py-0.5 font-bold text-[9px]">ENVASE: NO</span>`;
             }
 
-            // 🔥 CAMBIO AQUÍ: Mostramos el precio de recarga que viene de la BD
             const textoPrecio = modoRecargaActual ? `$${parseFloat(f.precio_recarga || 0).toFixed(2)}` : `$${parseFloat(f.precio).toFixed(2)}`;
 
             container.innerHTML += `
@@ -2280,16 +2344,27 @@ window.iniciarEstandarLoteUI = async function(idFormula) {
 };
 
 window.filtrarPromosModal = function() {
-    if (tabModalActual !== 'PROMO') return;
+    if (tabModalActual !== 'PROMO' || !productoPendiente) return;
     
     const container = document.getElementById('contenedorFormulas');
     const buscadorTexto = document.getElementById('inputBuscarPromoModal').value.toLowerCase().trim();
     container.innerHTML = '';
 
-    const formulasPromo = formulasGlobales.filter(f => parseFloat(f.cantidad_promo) > 0);
+    // 🔥 Detectamos si la referencia trae una medida fija (Ej: E496-T30 -> 30)
+    const volumenFijo = obtenerVolumenDeCodigo(productoPendiente.codigo);
+
+    let formulasPromo = formulasGlobales.filter(f => parseFloat(f.cantidad_promo) > 0);
+
+    // 🎯 FILTRO INTELIGENTE EN PROMOS: Si la referencia es E496-T30, filtra solo promos de 30ML
+    if (volumenFijo) {
+        formulasPromo = formulasPromo.filter(f => parseInt(f.volumen_total, 10) === volumenFijo);
+    }
 
     if (formulasPromo.length === 0) {
-        container.innerHTML = `<div class="text-center py-6 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Ningún combo promocional registrado.</div>`;
+        container.innerHTML = `
+            <div class="text-center py-6 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
+                ${volumenFijo ? `Ningún combo promocional registrado para la medida de ${volumenFijo}ML.` : 'Ningún combo promocional registrado.'}
+            </div>`;
         return;
     }
 
@@ -2297,8 +2372,6 @@ window.filtrarPromosModal = function() {
     formulasPromo.forEach(f => {
         if (buscadorTexto && !f.nombre.toLowerCase().includes(buscadorTexto)) return;
         
-        // 🔥 LA CORRECCIÓN: Nos aseguramos de que el volumen se guarde estrictamente como un número limpio
-        // Para evitar que JavaScript concatene un '1' y convierta 100 en 1100
         const volLimpio = parseInt(f.volumen_total, 10);
         
         if (!gruposPorVolumen[volLimpio]) {
@@ -2312,14 +2385,12 @@ window.filtrarPromosModal = function() {
         return;
     }
 
-    // Dibujar los acordeones con el volumen sanitizado
     for (const volumen in gruposPorVolumen) {
         const itemsCombo = gruposPorVolumen[volumen];
         
         const divAcordeon = document.createElement('div');
         divAcordeon.className = "border border-neutral-300 bg-white rounded-none overflow-hidden mb-2";
         
-        // 🔥 Aquí ya saldrá "100ML" perfecto en vez de "1100ML"
         divAcordeon.innerHTML = `
             <div onclick="toggleAcordeonPromoModal(this)" class="p-4 bg-neutral-950 text-white flex justify-between items-center cursor-pointer select-none transition-colors hover:bg-neutral-900">
                 <span class="font-black text-xs uppercase tracking-widest flex items-center gap-2">
@@ -2408,23 +2479,20 @@ window.confirmarAgregarSinFormula = () => {
 };
 
 window.filtrarEsenciasLote = function(texto) {
-    clearTimeout(timeoutBuscadorLote); // Cortar la búsqueda anterior si sigue escribiendo
+    clearTimeout(timeoutBuscadorLote); 
     
     const dropdown = document.getElementById('dropdownResultadosEsencia');
     const inputOculto = document.getElementById('selectEsenciaPromo');
     
     texto = texto.trim().toUpperCase();
     
-    // Si el usuario borra todo, ocultamos el cajón
-    if(texto.length === 0) {
+    if (texto.length === 0) {
         dropdown.classList.add('hidden');
         inputOculto.value = '';
         return;
     }
 
-    // Esperar 300ms después de la última tecla para buscar
     timeoutBuscadorLote = setTimeout(() => {
-        // Filtrar sobre el inventario que ya tienes en memoria
         const inventarioEsencias = todosLosProductos.filter(p => 
             p.categoria && p.categoria.toUpperCase().includes('ESENCIA') &&
             p.nombre.toUpperCase().includes(texto)
@@ -2433,15 +2501,22 @@ window.filtrarEsenciasLote = function(texto) {
         if (inventarioEsencias.length === 0) {
             dropdown.innerHTML = '<div class="p-4 text-[10px] text-neutral-500 font-bold uppercase tracking-widest text-center bg-neutral-50">No hay fragancias con ese nombre</div>';
         } else {
-            dropdown.innerHTML = inventarioEsencias.map(e => `
+            dropdown.innerHTML = inventarioEsencias.map(e => {
+                // 🔥 CÁLCULO SUMADO: ESTANTE + DEPÓSITO/ALMACÉN
+                const stockCombinado = parseFloat(e.stock_estante || 0) + parseFloat(e.stock_real || e.stock_unidades || 0);
+
+                return `
                 <div onclick="seleccionarEsenciaDesdeDropdown(${e.id}, '${e.nombre.replace(/'/g, "\\'")}')" class="p-3 border-b border-neutral-100 hover:bg-neutral-100 cursor-pointer flex justify-between items-center transition-colors">
                     <span class="text-xs font-black text-neutral-950 uppercase tracking-wider">${e.nombre}</span>
-                    <span class="text-[10px] font-bold ${e.stock_estante > 0 ? 'text-green-600 bg-green-50 border-green-200' : 'text-red-500 bg-red-50 border-red-200'} px-2 py-1 border">Disp: ${parseFloat(e.stock_estante).toFixed(0)}g</span>
+                    <span class="text-[10px] font-bold ${stockCombinado > 0 ? 'text-green-600 bg-green-50 border-green-200' : 'text-red-500 bg-red-50 border-red-200'} px-2 py-1 border">
+                        Disp: ${stockCombinado.toFixed(0)}g
+                    </span>
                 </div>
-            `).join('');
+                `;
+            }).join('');
         }
         dropdown.classList.remove('hidden');
-    }, 300); // 300 milisegundos de delay perfecto
+    }, 300);
 };
 
 // Al hacer clic en el resultado estilo Pinterest
@@ -2478,6 +2553,7 @@ function imprimirTicketFactura(datos) {
 
     let totalGlobalBs = 0;
 
+    // 1. DIBUJAR DETALLE DE ARTÍCULOS EN BOLÍVARES
     const itemsHTML = datos.items.map(item => {
         const precioFinalBs = item.precio * datos.tasa;
         const subtotalFinalBs = precioFinalBs * item.cantidad;
@@ -2496,11 +2572,16 @@ function imprimirTicketFactura(datos) {
     const ivaBs = totalGlobalBs - baseImponibleBs;
     const totalPagarBs = totalGlobalBs;
 
-    // 🔥 DIBUJAR LAS FORMAS DE PAGO CON SUS MONTOS Y REFERENCIAS
+    // 🔥 2. DIBUJAR FORMAS DE PAGO CONVERTIENDO SIEMPRE A BOLÍVARES (INCLUSO ZELLE/USD)
     const pagosHTML = (datos.pagos && datos.pagos.length > 0) 
         ? datos.pagos.map(p => {
-            const montoStr = p.moneda === 'USD' ? `$${formatVE(p.monto)}` : `Bs ${formatVE(p.monto)}`;
+            // Si el pago se registró en USD, se multiplica por la tasa para expresarlo en Bs.
+            const montoEnBs = p.moneda === 'USD' ? (p.monto * datos.tasa) : p.monto;
+            const montoStr = `Bs ${formatVE(montoEnBs)}`;
+            
+            // Mantenemos la referencia visual si aplica
             const refStr = (p.referencia && p.referencia !== 'S/N') ? ` (REF: ${p.referencia})` : '';
+            
             return `
             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
                 <span>${p.metodo.toUpperCase()}${refStr}:</span>
@@ -2589,7 +2670,7 @@ function imprimirTicketFactura(datos) {
                 </div>
             </div>
 
-            <!-- 🔥 SECCIÓN NUEVA: METODOS DE PAGO ABAJO DEL TOTAL -->
+            <!-- 🇻🇪 FORMAS DE PAGO EXPRESADAS SIEMPRE EN BOLÍVARES -->
             <div class="divider-solid"></div>
             <div class="text-left" style="font-size: 10px; margin-top: 5px;">
                 <div class="font-bold" style="margin-bottom: 4px; text-decoration: underline;">FORMAS DE PAGO:</div>
@@ -2664,7 +2745,7 @@ function imprimirTicketFactura(datos) {
                 </div>
             </div>
 
-            <!-- 🔥 SECCIÓN NUEVA: METODOS DE PAGO ABAJO DEL TOTAL EN NOTA DE ENTREGA -->
+            <!-- 🇻🇪 FORMAS DE PAGO EXPRESADAS SIEMPRE EN BOLÍVARES EN NOTA DE ENTREGA -->
             <div class="divider-solid"></div>
             <div class="text-left" style="font-size: 10px; margin-top: 5px;">
                 <div class="font-bold" style="margin-bottom: 4px; text-decoration: underline;">FORMAS DE PAGO:</div>
@@ -3071,13 +3152,24 @@ async function procesarBajarMercanciaMasa() {
     }
 }
 
+window.abrirModalCliente = async function() { 
+    document.getElementById('modalCliente').classList.remove('hidden'); 
+    
+    // Al abrir la modal, reseteamos la búsqueda y cargamos la primera página automáticamente (Página 1)
+    paginaClienteActual = 1;
+    busquedaClienteActual = "";
+    const inputBuscador = document.getElementById('inputBuscarCliente');
+    if (inputBuscador) inputBuscador.value = "";
+    
+    await cargarClientesModal(1, "");
+};
+
 
 window.eliminarDelCarrito = eliminarDelCarrito; 
 window.abrirModalCobro = abrirModalCobro;
 window.setMoneda = setMoneda;
 window.procesarVenta = abrirModalCobro; 
 window.limpiarCarrito = limpiarCarrito;
-window.abrirModalCliente = function() { document.getElementById('modalCliente').classList.remove('hidden'); };
 window.cerrarModalCliente = function() { document.getElementById('modalCliente').classList.add('hidden'); };
 window.cerrarModalCobro = function() { document.getElementById('modalCobro').classList.add('hidden'); };
 window.finalizarVentaBackend = finalizarVentaBackend;

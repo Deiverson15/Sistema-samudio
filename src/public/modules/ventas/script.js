@@ -167,37 +167,37 @@ function renderTabla(lista) {
             metodoIcono = '<i class="fa-solid fa-arrows-split-up-and-left"></i>';
             metodoLabel = 'PAGO MIXTO';
         } 
-        // 🎨 CLASIFICACIÓN DE LOS NUEVOS MÉTODOS DE PAGO
-        else if(metodoLabel.includes('ZELLE') || metodoLabel.includes('CUENTA VERDE')) {
+        // 🎨 CLASIFICACIÓN DE LOS MÉTODOS DE PAGO
+        else if (metodoLabel.includes('ZELLE') || metodoLabel.includes('CUENTA VERDE')) {
             metodoClass = 'bg-emerald-100 text-emerald-700 border border-emerald-200';
             metodoIcono = '<i class="fa-solid fa-building-columns"></i>';
             metodoLabel = 'ZELLE / VERDE'; 
-        } else if(metodoLabel.includes('PAGO MÓVIL') || metodoLabel.includes('MOVIL')) {
+        } else if (metodoLabel.includes('PAGO MÓVIL') || metodoLabel.includes('MOVIL')) {
             metodoClass = 'bg-blue-100 text-blue-700 border border-blue-200';
             metodoIcono = '<i class="fa-solid fa-mobile-screen"></i>';
-        } else if(metodoLabel.includes('PUNTO')) {
+        } else if (metodoLabel.includes('PUNTO')) {
             metodoClass = 'bg-yellow-100 text-yellow-700 border border-yellow-200';
             metodoIcono = '<i class="fa-regular fa-credit-card"></i>';
-        } else if(metodoLabel.includes('EFECTIVO USD') || metodoLabel.includes('DIVISA') || metodoLabel === 'EFECTIVO') {
+        } else if (metodoLabel.includes('EFECTIVO USD') || metodoLabel.includes('DIVISA') || metodoLabel === 'EFECTIVO') {
             metodoClass = 'bg-green-50 text-green-600 border border-green-200';
             metodoIcono = '<i class="fa-solid fa-sack-dollar"></i>';
             metodoLabel = 'EFECTIVO USD';
-        } else if(metodoLabel.includes('EFECTIVO BS')) {
+        } else if (metodoLabel.includes('EFECTIVO BS')) {
             metodoClass = 'bg-indigo-100 text-indigo-700 border border-indigo-200';
             metodoIcono = '<i class="fa-solid fa-money-bill-wave"></i>';
-        } else if(metodoLabel.includes('CASHEA')) {
+        } else if (metodoLabel.includes('CASHEA')) {
             metodoClass = 'bg-pink-100 text-pink-700 border border-pink-200';
             metodoIcono = '<i class="fa-solid fa-mobile-button"></i>';
-        } else if(metodoLabel.includes('BINANCE')) {
+        } else if (metodoLabel.includes('BINANCE')) {
             metodoClass = 'bg-amber-100 text-amber-700 border border-amber-200';
             metodoIcono = '<i class="fa-brands fa-bitcoin"></i>';
-        } else if(metodoLabel.includes('BIOPAGO')) {
+        } else if (metodoLabel.includes('BIOPAGO')) {
             metodoClass = 'bg-cyan-100 text-cyan-700 border border-cyan-200';
             metodoIcono = '<i class="fa-solid fa-fingerprint"></i>';
-        } else if(metodoLabel.includes('TRANSF')) {
+        } else if (metodoLabel.includes('TRANSF')) {
             metodoClass = 'bg-teal-100 text-teal-700 border border-teal-200';
             metodoIcono = '<i class="fa-solid fa-money-bill-transfer"></i>';
-        } else if(metodoLabel.includes('CXC') || metodoLabel.includes('CREDITO')) {
+        } else if (metodoLabel.includes('CXC') || metodoLabel.includes('CREDITO')) {
             metodoClass = 'bg-red-100 text-red-700 border border-red-200';
             metodoIcono = '<i class="fa-solid fa-hand-holding-dollar"></i>';
         }
@@ -280,13 +280,13 @@ async function verDetalleVenta(id) {
         const data = await res.json();
         Swal.close();
 
-        // 1. Guardamos los datos globalmente y reseteamos la vista a USD
+        // Guardamos los datos recibidos globalmente
         ventaActualDatos = data;
-        monedaVista = 'USD';
+        monedaVista = 'USD'; // Inicia en USD por defecto
 
         const venta = data.venta; 
 
-        // 2. Llenar Cabecera del Modal (Esto no cambia con la moneda)
+        // Rellenar cabecera del modal
         const elId = document.getElementById('detalleIdVenta');
         const elFecha = document.getElementById('detalleFecha');
         const elCliente = document.getElementById('detalleCliente');
@@ -303,21 +303,13 @@ async function verDetalleVenta(id) {
             elTasa.innerText = `Tasa del día: Bs ${tasaHist.toFixed(2)}`;
         }
 
-        const elMetodo = document.getElementById('detalleMetodo');
-        let metodoTexto = venta.metodo_pago;
-        if(metodoTexto.includes('ZELLE')) metodoTexto = 'CUENTA VERDE'; 
-        if(metodoTexto.toUpperCase().includes('PAGO MÓVIL') && venta.referencia) {
-            metodoTexto += ` (REF: ${venta.referencia})`;
-        }
-        if(elMetodo) elMetodo.innerText = metodoTexto;
-        
-        // 3. Resetear el estado visual de los botones
+        // Resetear estilos iniciales de los botones USD / BS
         const btnUSD = document.getElementById('btnVerUSD');
         const btnBS = document.getElementById('btnVerBS');
         if(btnUSD) btnUSD.className = "px-4 py-2 bg-neutral-950 text-white text-[10px] font-black uppercase tracking-widest transition-colors border border-neutral-950";
         if(btnBS) btnBS.className = "px-4 py-2 bg-white text-neutral-900 border border-neutral-300 hover:bg-neutral-100 text-[10px] font-black uppercase tracking-widest transition-colors";
 
-        // 4. Renderizar productos y totales dinámicamente
+        // Renderizar dinámicamente tanto la tabla de productos como las formas de pago
         renderizarDetallesModal();
         
         const modal = document.getElementById('modalDetalleVenta');
@@ -352,20 +344,22 @@ function cambiarMonedaDetalle(moneda) {
 function renderizarDetallesModal() {
     if (!ventaActualDatos) return;
 
-    const { venta, detalles } = ventaActualDatos;
+    const { venta, detalles, pagos } = ventaActualDatos;
     const tasa = parseFloat(venta.tasa_cambio) || 1;
     
-    // Determinar multiplicador y símbolo
-    const multiplicador = monedaVista === 'BS' ? tasa : 1;
-    const simbolo = monedaVista === 'BS' ? 'Bs ' : '';
+    // Configurar multiplicador y prefijo según el botón seleccionado
+    const esBolivares = monedaVista === 'BS';
+    const multiplicador = esBolivares ? tasa : 1;
+    const simbolo = esBolivares ? 'Bs ' : '$';
 
-    // Renderizar lista de productos
+    // ---------------------------------------------------------
+    // A. RENDERIZAR TABLA DE PRODUCTOS
+    // ---------------------------------------------------------
     const tbody = document.getElementById('listaProductosDetalle');
     if(tbody) {
         tbody.innerHTML = detalles.map(d => {
             const subtotal = parseFloat(d.cantidad * d.precio_unitario) * multiplicador;
-            // Usamos formatMoney si es USD, si no mostramos el símbolo de Bs manualmente
-            const textoSubtotal = monedaVista === 'BS' ? `${simbolo}${subtotal.toFixed(2)}` : formatMoney(subtotal);
+            const textoSubtotal = `${simbolo}${subtotal.toFixed(2)}`;
             
             return `
                 <tr class="border-b border-dashed border-slate-200 last:border-0">
@@ -380,19 +374,50 @@ function renderizarDetallesModal() {
         }).join('');
     }
 
-    // Renderizar totales
+    // ---------------------------------------------------------
+    // B. RENDERIZAR TOTALES GENERALES
+    // ---------------------------------------------------------
     const elTotal = document.getElementById('detalleTotal');
     const elTotalBs = document.getElementById('detalleTotalBs');
     
     if(elTotal) {
         const totalConvertido = parseFloat(venta.total) * multiplicador;
-        elTotal.innerText = monedaVista === 'BS' ? `${simbolo}${totalConvertido.toFixed(2)}` : formatMoney(totalConvertido);
+        elTotal.innerText = `${simbolo}${totalConvertido.toFixed(2)}`;
     }
     
-    // Mantenemos el equivalente en Bs como referencia fija al final
     if(elTotalBs) {
-         const totalBs = parseFloat(venta.total) * tasa;
-         elTotalBs.innerText = `Bs ${totalBs.toFixed(2)}`;
+        const totalBs = parseFloat(venta.total) * tasa;
+        elTotalBs.innerText = `Bs ${totalBs.toFixed(2)}`;
+    }
+
+    // ---------------------------------------------------------
+    // C. 🔥 RENDERIZAR FORMAS DE PAGO DINÁMICAS (USD / BS)
+    // ---------------------------------------------------------
+    const elMetodo = document.getElementById('detalleMetodo');
+    if (elMetodo) {
+        if (pagos && pagos.length > 0) {
+            const desgloseMetodos = pagos.map(p => {
+                const met = p.metodo.toUpperCase();
+                const refStr = (p.referencia && p.referencia !== 'S/N') ? ` (REF: ${p.referencia})` : '';
+                
+                let montoCalculado = 0;
+                
+                if (esBolivares) {
+                    // Convertir a Bolívares
+                    montoCalculado = p.moneda === 'USD' ? (parseFloat(p.monto) * tasa) : parseFloat(p.monto);
+                } else {
+                    // Convertir a Dólares
+                    montoCalculado = p.moneda === 'BS' ? (parseFloat(p.monto) / tasa) : parseFloat(p.monto);
+                }
+                
+                return `• ${met}${refStr}: ${simbolo}${montoCalculado.toFixed(2)}`;
+            }).join('<br>');
+
+            elMetodo.innerHTML = `<div class="text-left font-mono text-[10px] leading-relaxed">${desgloseMetodos}</div>`;
+            elMetodo.className = "text-xs font-black uppercase tracking-widest bg-neutral-950 text-white p-3 rounded-none border border-neutral-800";
+        } else {
+            elMetodo.innerText = (venta.metodo_pago || 'SIN PAGO').toUpperCase();
+        }
     }
 }
 

@@ -23,11 +23,33 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
     if (prodRes.rows.length === 0) throw new Error(`El producto ${nombreReferencia} no existe en esta sucursal.`);
     const prod = prodRes.rows[0];
 
+    // ⚡ DEFINICIÓN DE MODO ALMACÉN (SUCURSAL ID 3)
+    const ES_ALMACEN = (tId === 3); 
+
+    // =========================================================================
+    // 🚀 BYPASS DIRECTO PARA ALMACÉN: DESCUENTO DIRECTO DE STOCK_UNIDADES
+    // =========================================================================
+    if (ES_ALMACEN) {
+        const disponibleGeneral = parseFloat(prod.stock_unidades || 0);
+
+        if (disponibleGeneral < (cantidad - 0.05)) {
+            throw new Error(`🚫 QUIEBRE DE STOCK EN ALMACÉN: "${prod.nombre}" no tiene suficiente existencia. Disponible: ${disponibleGeneral.toFixed(2)} (Requerido: ${cantidad.toFixed(2)}).`);
+        }
+
+        // Descuento directo en la columna principal de inventario (stock_unidades)
+        await client.query(`
+            UPDATE productos 
+            SET stock_unidades = GREATEST(stock_unidades - $1, 0) 
+            WHERE id = $2 AND tienda_id = $3
+        `, [cantidad, pId, tId]);
+
+        return prod.nombre;
+    }
+
+    // =========================================================================
+    // 🏬 MODO MOSTRADOR TRADICIONAL (OTRAS SUCURSALES: DESCUENTO CON ESTANTE)
+    // =========================================================================
     const cat = (prod.categoria || '').toUpperCase();
-    
-    // 🔥 SOLUCIÓN CRÍTICA: Como ahora el Excel guarda todo en Gramos puros, 
-    // el Depósito (stock_unidades) y el Estante (stock_estante) hablan el mismo idioma (1:1).
-    // Ya no hay que multiplicar ni dividir por 1000.
     let disponibleDeposito = parseFloat(prod.stock_unidades || 0);
     const totalDisponibleCombinado = parseFloat(prod.stock_estante || 0) + disponibleDeposito;
 
@@ -37,7 +59,6 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
 
     let pendiente = cantidad;
 
-    // Buscamos si hay botellas abiertas en el estante (IGNORANDO TESTERS)
     const botellasRes = await client.query(`
         SELECT id, cantidad, estado FROM botellas_estante 
         WHERE producto_id = $1 AND estado != 'TESTER'
@@ -66,14 +87,12 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
 
     let gramosTomadosEstante = cantidad;
 
-    // Si faltó líquido en el estante, lo tomamos del almacén (Depósito)
     if (pendiente > 0.05) {
         if (!confirmacionAlmacen) {
             const und = ['ALCOHOL', 'ESENCIAS', 'FIJADOR'].includes(cat) ? 'g/ml' : 'uds';
             throw new Error(`ALERTA_ALMACEN|Te hacen falta ${pendiente.toFixed(0)}${und} de "${prod.nombre}" en el mostrador. ¿Deseas descontarlos del inventario general (almacén)?`);
         }
 
-        // 🔥 Descuento directo 1:1 del almacén (Se eliminó la división entre 1000)
         let unidadesADescontarDeposito = pendiente;
 
         await client.query(`UPDATE productos SET stock_unidades = GREATEST(stock_unidades - $1, 0) WHERE id = $2 AND tienda_id = $3`, [unidadesADescontarDeposito, pId, tId]);
@@ -87,7 +106,6 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
         gramosTomadosEstante = cantidad - pendiente;
     }
 
-    // Solo descontamos del estante global lo que REALMENTE sacamos del estante físico
     if (gramosTomadosEstante > 0) {
         await client.query(`UPDATE productos SET stock_estante = GREATEST(stock_estante - $1, 0) WHERE id = $2 AND tienda_id = $3`, [gramosTomadosEstante, pId, tId]);
     }
@@ -1413,10 +1431,10 @@ const descargarCierreExcel = async (req, res) => {
 const crearVenta = async (req, res) => {
     const client = await pool.connect();
     try {
-        const { items, total, cliente_id, pagos, usuario_id, es_externa, descripcion_externa,confirmacion_almacen } = req.body;
+        const { items, total, cliente_id, pagos, usuario_id, es_externa, descripcion_externa, confirmacion_almacen } = req.body;
         const vendedorFinalId = usuario_id ? usuario_id : (req.user ? req.user.id : null);
         
-        // 🔥 CORRECCIÓN CLAVE: Extraemos la tienda de forma DINÁMICA desde el token del usuario logueado
+        // Extraemos la tienda de forma DINÁMICA desde el token del usuario logueado
         const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;
         
         if (!es_externa && (!items || items.length === 0)) {
@@ -1440,7 +1458,7 @@ const crearVenta = async (req, res) => {
             }
         }
 
-        // 🔥 2. PROCESAR DESCUENTOS Y VALIDACIONES DE INVENTARIO INDEPENDIENTE
+        // 2. PROCESAR DESCUENTOS Y VALIDACIONES DE INVENTARIO INDEPENDIENTE
         if (!es_externa) {
             for (const item of items) {
                 const cant = parseFloat(item.cantidad);
@@ -1451,7 +1469,7 @@ const crearVenta = async (req, res) => {
                     if (formulaRes.rows.length === 0) throw new Error(`Fórmula ID ${item.formula_id} no encontrada.`);
                     const f = formulaRes.rows[0];
 
-                    // A. Esencia (Le pasamos idTiendaLocal como parámetro de control)
+                    // A. Esencia
                     const gramosExtra = parseFloat(item.gramos_extra) || 0;
                     const totalEsencia = (parseFloat(f.gramos_esencia) + gramosExtra) * cant;
                     await validarYDescontarEstante(client, cleanItemId, totalEsencia, "Esencia Base", idTiendaLocal, confirmacion_almacen);
@@ -1465,7 +1483,6 @@ const crearVenta = async (req, res) => {
                         const totalAlcohol = alcoholUnitario * cant;
                         
                         if (totalAlcohol > 0) {
-                            // 🔒 CANDADO: Agregamos "AND tienda_id = $2" para no robarle alcohol a otra sucursal
                             const alcoholRes = await client.query(`
                                 SELECT id, nombre FROM productos 
                                 WHERE (nombre ILIKE '%ALCOHOL%' OR categoria = 'Alcohol') 
@@ -1486,7 +1503,6 @@ const crearVenta = async (req, res) => {
                     const totalFijador = (gramosFijadorFormula + gramosFijadorExtra) * cant;
 
                     if (totalFijador > 0) {
-                        // 🔒 CANDADO: Agregamos "AND tienda_id = $2" para amarrar la búsqueda
                         const fijadorRes = await client.query(`
                             SELECT id, nombre FROM productos 
                             WHERE (nombre ILIKE '%FIJADOR%' OR categoria = 'Fijador') 
@@ -1503,7 +1519,6 @@ const crearVenta = async (req, res) => {
                     // D. Envase
                     if (!item.es_recarga) {
                         const volumen = parseInt(f.volumen_total);
-                        // 🔒 CANDADO: Agregamos "AND tienda_id = $4" para aislar el stock de frascos
                         const envaseRes = await client.query(`
                             SELECT id, nombre FROM productos 
                             WHERE (categoria = 'Envases' OR categoria = 'Frascos')
@@ -1527,7 +1542,7 @@ const crearVenta = async (req, res) => {
             }
         }
 
-        // 🔥 3. INSERTAR CABECERA DE VENTA AMARRADA A LA TIENDA DE LA SESIÓN
+        // 3. INSERTAR CABECERA DE VENTA
         const ventaRes = await client.query(
             'INSERT INTO ventas (total, cliente_id, fecha, usuario_id, tienda_id) VALUES ($1, $2, NOW(), $3, $4) RETURNING id', 
             [total, cliente_id || 1, vendedorFinalId, idTiendaLocal]
@@ -1539,7 +1554,7 @@ const crearVenta = async (req, res) => {
         if (!es_externa && items && items.length > 0) {
             const values = [];
             const placeholders = items.map((item, i) => {
-                const offset = i * 10; // 🔥 Cambiado de 9 a 10 para hacer espacio al tamaño
+                const offset = i * 10;
                 values.push(
                     ventaId, 
                     parseInt(item.id, 10), 
@@ -1550,26 +1565,25 @@ const crearVenta = async (req, res) => {
                     item.formula_id || null,
                     item.costo || 0, 
                     item.tarifa || 'DETAL',
-                    item.tamano || 'N/A' // 🔥 ¡AQUÍ ESTÁ LA VARIABLE QUE FALTABA!
+                    item.tamano || 'N/A'
                 );
-                // 🔥 Añadimos el comodín $10 al final
                 return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10})`;
             }).join(', ');
 
             const queryDetalles = `
-    INSERT INTO detalle_ventas 
-     (venta_id, producto_id, cantidad, precio_unitario, subtotal, descripcion, formula_id, costo_unitario_historico, tarifa_aplicada, tamano)
-    VALUES ${placeholders}
-`;
+                INSERT INTO detalle_ventas 
+                (venta_id, producto_id, cantidad, precio_unitario, subtotal, descripcion, formula_id, costo_unitario_historico, tarifa_aplicada, tamano)
+                VALUES ${placeholders}
+            `;
 
-await client.query(queryDetalles, values);
+            await client.query(queryDetalles, values);
             
         } else if (es_externa) {
-    await client.query(`
-        INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_unitario, subtotal, descripcion, tamano)
-        VALUES ($1, NULL, 1, $2, $3, $4, $5)
-    `, [ventaId, total, total, descripcion_externa || 'Venta Externa Registrada', 'N/A']); 
-}
+            await client.query(`
+                INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_unitario, subtotal, descripcion, tamano)
+                VALUES ($1, NULL, 1, $2, $3, $4, $5)
+            `, [ventaId, total, total, descripcion_externa || 'Venta Externa Registrada', 'N/A']); 
+        }
 
         // 5. REGISTRAR PAGOS
         if (pagos && pagos.length > 0) {
@@ -1588,7 +1602,6 @@ await client.query(queryDetalles, values);
     } catch (error) {
         await client.query('ROLLBACK');
         
-        // 🔥 Atrapamos la advertencia del almacén
         if (error.message.startsWith('ALERTA_ALMACEN|')) {
             return res.status(409).json({ 
                 error: 'ALERTA_ALMACEN', 
@@ -1601,8 +1614,7 @@ await client.query(queryDetalles, values);
     } finally {
         client.release();
     }
-
-}
+};
 
 const getReportes = async (req, res) => {
     try {
@@ -2302,8 +2314,7 @@ const getVentas = async (req, res) => {
 const getVentaById = async (req, res) => {
     const { id } = req.params;
     try {
-        // Buscamos la cabecera de la venta
-        // SE AGREGÓ: La línea que busca 'p.referencia'
+        // 1. Cabecera de la venta
         const ventaQuery = `
             SELECT 
                 v.id, 
@@ -2326,6 +2337,7 @@ const getVentaById = async (req, res) => {
             return res.status(404).json({ error: 'Venta no encontrada' });
         }
 
+        // 2. Detalles de los productos
         const detallesQuery = `
             SELECT 
                 d.cantidad, 
@@ -2339,9 +2351,18 @@ const getVentaById = async (req, res) => {
         `;
         const detallesRes = await pool.query(detallesQuery, [id]);
 
+        // 🔥 3. CONSULTA CLAVE: Traer TODOS los pagos de la transacción
+        const pagosQuery = `
+            SELECT metodo, moneda, monto, tasa_cambio, referencia 
+            FROM pagos 
+            WHERE venta_id = $1
+        `;
+        const pagosRes = await pool.query(pagosQuery, [id]);
+
         res.json({
             venta: ventaRes.rows[0],
-            detalles: detallesRes.rows
+            detalles: detallesRes.rows,
+            pagos: pagosRes.rows // <-- Enviamos la lista completa de pagos al frontend
         });
 
     } catch (error) {

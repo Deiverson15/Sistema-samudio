@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const { verifyToken, verifyAdmin, verifyGerente } = require('../middleware/auth');
 
-// 1. IMPORTAMOS TODOS LOS CONTROLADORES (Asegúrate de tenerlos todos)
 const { 
     getProductos, 
     createProducto, 
@@ -17,99 +16,71 @@ const {
     reactivarProducto,
     cambiarSucursalActiva,
     
-    // --- NUEVAS FUNCIONES DE ESTANTE ---
-    getProductosEstante,        // Cargar el estante
-    reponerEstante,            // Traer del almacén (Solicitar Recambio)
-    crearTester,               // Crear tester (y descontar insumos)
-    reponerTester,             // Rellenar tester existente
-    distribuirProducto,        // Mover botella (Apartamento/Organizar)
-    gestionarMovimientoEstante,// Merma o Devolución
-    eliminarBotella,           // Borrar botella (Tester o vacía)
-    sincronizarStock,          // El botón "Reparar Inventario"
+    getProductosEstante,
+    reponerEstante,
+    crearTester,
+    reponerTester,
+    distribuirProducto,
+    gestionarMovimientoEstante,
+    eliminarBotella,
+    sincronizarStock,
     
     exportarExcel,
     getUbicacionSugerida,
     obtenerProductoPorReferencia,
-    moverStockEstante,vaciadoMasivoEstante,getReporteKardex, descargarAuditoriaExcel
+    moverStockEstante,
+    vaciadoMasivoEstante,
+    getReporteKardex, 
+    descargarAuditoriaExcel,
+    obtenerEstancamiento, 
+    exportarEstancamientoExcel,
+    getReporteListaPrecios, 
+    exportarListaPreciosExcel
 } = require('../controllers/productos.controller');
 
-const { obtenerEstancamiento, exportarEstancamientoExcel } = require('../controllers/productos.controller');
-
-const { getReporteListaPrecios, exportarListaPreciosExcel } = require('../controllers/productos.controller');
-
+// ==========================================
+// RUTAS DE REPORTES Y CONSULTAS (SOLO TOKEN)
+// ==========================================
 router.get('/reportes/lista-precios', verifyToken, getReporteListaPrecios);
 router.get('/reportes/lista-precios/excel', verifyToken, exportarListaPreciosExcel);
-
-// ==========================================
-// RUTAS DE PRODUCTOS (INVENTARIO GENERAL)
-// ==========================================
-
-// Leer
-
-
 router.get('/', verifyToken, getProductos);
 router.get('/referencia/:referencia', verifyToken, obtenerProductoPorReferencia);
 router.get('/:id/kardex', verifyToken, getKardex);
 router.get('/:id/lotes', verifyToken, getLotesProducto);
 router.get('/:id/ubicacion-sugerida', verifyToken, getUbicacionSugerida);
-
-// Crear / Editar / Eliminar (Solo Admin/Gerente)
-router.post('/', verifyToken, verifyGerente, createProducto);
-router.put('/:id', verifyToken, verifyGerente, updateProducto);
-router.delete('/:id', verifyToken, verifyAdmin, deleteProducto); // Borrado lógico (Archivar)
-router.delete('/:id/fisico', verifyToken, verifyAdmin, eliminarFisico); // Borrado total
-router.put('/:id/reactivar', verifyToken, verifyAdmin, reactivarProducto);
-
-// Importación y Exportación
-router.post('/importar', verifyToken, verifyGerente, importarMasivo);
-router.get('/reportes/excel', verifyToken, exportarExcel); // ?filtro=todo|inventario|estante
+router.get('/reportes/excel', verifyToken, exportarExcel);
 router.get('/estancamiento', verifyToken, obtenerEstancamiento);
 router.get('/estancamiento/excel', verifyToken, exportarEstancamientoExcel);
-
-
-// ==========================================
-// RUTAS DEL ESTANTE (TIENDA / BOTELLAS)
-// ==========================================
-
-// 1. Cargar datos del estante
 router.get('/estante', verifyToken, getProductosEstante);
+router.get('/reporte-kardex', verifyToken, getReporteKardex);
 
-// 2. Mover del Almacén General -> A "Pendientes" (Caja cerrada)
-router.post('/mover-estante', verifyToken, verifyGerente, moverStockEstante);
+// ==========================================
+// RUTAS DE GESTIÓN (REQUIEREN PERMISO GERENTE)
+// ==========================================
+router.post('/', verifyGerente, createProducto);
+router.put('/:id', verifyGerente, updateProducto);
+router.delete('/:id', verifyGerente, deleteProducto);
+router.delete('/:id/fisico', verifyGerente, eliminarFisico);
+router.put('/:id/reactivar', verifyGerente, reactivarProducto);
 
-// 3. Solicitar Recambio (Botón "Traer del Almacén" directo a una fila)
-router.post('/:id/reponer', verifyToken, reponerEstante); 
+// Importaciones y Cargas
+router.post('/importar', verifyGerente, importarMasivo);
+router.get('/importaciones/historial', verifyGerente, getHistorialImportaciones);
+router.post('/importaciones/:id/revertir', verifyGerente, revertirImportacion);
+router.get('/importaciones/:id/descargar', verifyGerente, descargarAuditoriaExcel);
 
-// 4. Organizar / Mover Botella (De Pendiente a A1, o de A1 a B2, etc.)
+// Movimientos de Estante
+router.post('/mover-estante', verifyGerente, moverStockEstante);
+router.post('/:id/reponer', verifyToken, reponerEstante);
 router.post('/estante/distribuir/:idBotellaOrigen', verifyToken, distribuirProducto);
+router.post('/estante/:idProducto/tester', verifyGerente, crearTester);
+router.put('/estante/:idBotella/reponer', verifyGerente, reponerTester);
+router.post('/estante/:idBotella/gestion', verifyGerente, gestionarMovimientoEstante);
+router.delete('/estante/:id', verifyGerente, eliminarBotella);
 
-// 5. TESTERS Y MUESTRAS
-// Crear Tester nuevo (o Muestra) - Descuenta insumos
-router.post('/estante/:idProducto/tester', verifyToken, verifyGerente, crearTester);
-// Rellenar un Tester existente (usando una botella de "Pendientes")
-router.put('/estante/:idBotella/reponer', verifyToken, verifyGerente, reponerTester);
-
-// 6. GESTIÓN (Merma, Devolución, Ajuste Manual)
-router.post('/estante/:idBotella/gestion', verifyToken, verifyGerente, gestionarMovimientoEstante);
-
-// 7. ELIMINAR BOTELLA (Botón de basura en Tester o botella vacía)
-router.delete('/estante/:id', verifyToken, verifyGerente, eliminarBotella);
-
-// 8. MANTENIMIENTO
-// El botón mágico "Reparar Inventario" (Sincroniza tablas)
+// Mantenimiento de Sucursales
 router.post('/sincronizar-todo', verifyToken, sincronizarStock);
 router.post('/vaciado-masivo', verifyToken, vaciadoMasivoEstante);
-
-router.post('/importar', verifyToken, verifyGerente, importarMasivo);
-
-// NUEVAS RUTAS DE CONTROL DE EXCEL
-router.get('/importaciones/historial', verifyToken, verifyGerente, getHistorialImportaciones);
-router.post('/importaciones/:id/revertir', verifyToken, verifyAdmin, revertirImportacion);
-router.get('/importaciones/:id/descargar', verifyToken, verifyGerente, descargarAuditoriaExcel); // 🔥 LA NUEVA RUTA
-
 router.post('/cambiar-sucursal', verifyToken, cambiarSucursalActiva);
-
-// Agrega esta línea en la sección de rutas de inventario
-router.get('/reporte-kardex', verifyToken, getReporteKardex);
 
 module.exports = router;
