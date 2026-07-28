@@ -1541,7 +1541,8 @@ const crearVenta = async (req, res) => {
         const vendedorFinalId = usuario_id ? usuario_id : (req.user ? req.user.id : null);
         
         // Extraemos la tienda de forma DINÁMICA desde el token del usuario logueado
-        const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;
+        const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;[cite: 12]
+        const ES_ALMACEN = (idTiendaLocal === 1);
         
         if (!es_externa && (!items || items.length === 0)) {
             return res.status(400).json({ error: 'El carrito está vacío.' });

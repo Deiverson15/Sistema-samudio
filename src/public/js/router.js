@@ -77,7 +77,7 @@ idsParaOcultar.forEach(id => {
     if (elemento) elemento.style.display = 'none';
 });
 
-if (idTiendaActiva === 3) {
+if (idTiendaActiva === 1) {
     const menuEstante = document.getElementById('menu-estante');
     if (menuEstante) menuEstante.style.display = 'none';
 }

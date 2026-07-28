@@ -392,29 +392,33 @@ const deleteProducto = async (req, res) => {
 };
 
 const importarMasivo = async (req, res) => {
-    const { productos, nombre_archivo, proveedor } = req.body; 
+    const { productos, nombre_archivo, proveedor, tienda_id } = req.body; 
     const usuarioId = req.user ? req.user.id : null;
     
-    // SUCURSAL ENFORCED: La Urbina (ID: 3)
-    const idTiendaLocal = 3; 
+    // 🌍 UNIVERSAL: Toma la tienda del request o del usuario logueado, con respaldo seguro
+    const idTiendaLocal = tienda_id || (req.user && req.user.tienda_id) || 1; 
 
     const client = await pool.connect();
     
-    let insertadosG = 0; let actualizadosG = 0; let erroresG = 0; let detallesErrorG = [];
+    let insertadosG = 0; let actualizadosG = 0; 
     let inversionGlobal = 0; let proyeccionGlobal = 0;
-    let savepointCounter = 0;
 
     try {
         await client.query('BEGIN');
+
+        // 🚀 CACHÉ EN MEMORIA ADAPTADO A LA TIENDA ACTUAL
+        const resCatalogo = await client.query('SELECT id, codigo, nombre, marca, genero FROM productos WHERE tienda_id = $1', [idTiendaLocal]);
+        const catalogoMemoria = {};
+        resCatalogo.rows.forEach(p => {
+            catalogoMemoria[p.codigo.toString().trim()] = p;
+        });
 
         let hojasAProcesar = [];
         if (Array.isArray(productos)) {
             hojasAProcesar.push({ nombre: 'Hoja_1', datos: productos });
         } else if (typeof productos === 'object' && productos !== null) {
             for (const [nombreHoja, datos] of Object.entries(productos)) {
-                if (Array.isArray(datos) && datos.length > 0) {
-                    hojasAProcesar.push({ nombre: nombreHoja, datos: datos });
-                }
+                if (Array.isArray(datos) && datos.length > 0) hojasAProcesar.push({ nombre: nombreHoja, datos: datos });
             }
         }
 
@@ -427,7 +431,6 @@ const importarMasivo = async (req, res) => {
             let logReversionHoja = [];
             let inversionHoja = 0; let proyeccionHoja = 0; let cantidadesHoja = 0;
 
-            // 🧠 DETECTOR DE ENCABEZADOS
             let headerMap = {};
             let startIndex = 0;
 
@@ -445,9 +448,7 @@ const importarMasivo = async (req, res) => {
                 if (foundHeader) {
                     for (const key in candidateRow) {
                         if (candidateRow[key]) {
-                            const cleanHeader = candidateRow[key].toString().toLowerCase()
-                                                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-                            headerMap[key] = cleanHeader;
+                            headerMap[key] = candidateRow[key].toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
                         }
                     }
                     startIndex = h + 1; 
@@ -457,7 +458,6 @@ const importarMasivo = async (req, res) => {
             
             for (let i = startIndex; i < filas.length; i++) {
                 const row = filas[i];
-                savepointCounter++;
                 
                 const p = {};
                 for (const key in row) {
@@ -468,16 +468,14 @@ const importarMasivo = async (req, res) => {
                 const codigoRaw = p['referencia'] || p['codigo'] || p['ref'] || p['mappin pt'];
                 const cantidadRaw = parseFloat(p['cantidad']);
                 
-                // 🚀 CORRECCIÓN AQUÍ: Quitamos la limitante de los 1000. 
-                // El sistema ignorará la fila de "Totales" (ej. los 1028 de la última hoja) automáticamente porque en esa fila el Código está en blanco.
                 if (!codigoRaw || codigoRaw.toString().trim() === '' || codigoRaw.toString().trim().toUpperCase() === 'REFERENCIA' || codigoRaw.toString().trim().toUpperCase() === 'MAPPIN PT') {
                     continue; 
                 }
 
                 const seccionRaw = p['seccion'];
                 let nombreRaw = p['descripcion'] || p['nombre'] || p['producto'];
-                const marcaRaw = p['marca'];
-                const generoRaw = p['genero'];
+                let marcaRaw = p['marca'];
+                let generoRaw = p['genero'];
                 const presentacionRaw = p['presentacion'] || 'UND';
                 
                 let stockOriginal = isNaN(cantidadRaw) ? 0 : cantidadRaw;
@@ -486,116 +484,89 @@ const importarMasivo = async (req, res) => {
                 let precioRaw = parseFloat(p['precio']);
                 if (isNaN(precioRaw)) precioRaw = 0;
 
-                const spName = `sp_${savepointCounter}`;
-                await client.query(`SAVEPOINT ${spName}`);
+                const codigo = codigoRaw.toString().trim(); 
+                const seccion = seccionRaw ? seccionRaw.toString().trim().toUpperCase() : 'GENERAL';
+                const presentacion = presentacionRaw ? presentacionRaw.toString().trim().toUpperCase() : 'UND';
                 
-                try {
-                    const codigo = codigoRaw.toString().trim(); 
-                    const seccion = seccionRaw ? seccionRaw.toString().trim().toUpperCase() : 'GENERAL';
-                    const presentacion = presentacionRaw ? presentacionRaw.toString().trim().toUpperCase() : 'UND';
+                let marca = marcaRaw ? marcaRaw.toString().trim() : 'Genérico';
+                let genero = generoRaw ? generoRaw.toString().trim().toUpperCase() : 'UNISEX';
+
+                const productoExistente = catalogoMemoria[codigo];
+                let productoId;
+                let esNuevo = false;
+
+                if (productoExistente) {
+                    productoId = productoExistente.id;
+                    if (!nombreRaw && productoExistente.nombre) nombreRaw = productoExistente.nombre;
+                    if ((!generoRaw || genero === 'UNISEX') && productoExistente.genero) genero = productoExistente.genero;
+                    if ((!marcaRaw || marca === 'Genérico') && productoExistente.marca) marca = productoExistente.marca;
+                } else {
+                    esNuevo = true;
+                }
+
+                const nombre = nombreRaw ? nombreRaw.toString().trim() : `Perfume ${codigo}`;
+                let stockAñadido = 0; let categoria = 'General'; let unidad_medida = 'UNIDAD'; let contenido_gramos = 0;
+
+                // 🧠 MOTOR DE CONVERSIONES MATEMÁTICAS
+                if (seccion.includes('PERFUME TERMINADO') || seccion.includes('PERFUMES TERMINADOS')) {
+                    categoria = 'Perfumes Terminados'; unidad_medida = 'UNIDAD'; stockAñadido = Math.round(stockOriginal);
+                    const extraerNumero = codigo.match(/T(\d+)/i) || codigo.match(/\d+$/);
+                    contenido_gramos = extraerNumero ? parseInt(extraerNumero[1] || extraerNumero[0], 10) : 30;
+                }
+                else if (seccion === 'ESENCIA' || presentacion === 'GRAMOS') {
+                    categoria = 'Esencias'; unidad_medida = 'GRAMOS'; stockAñadido = Math.round(stockOriginal * 1000); 
+                } 
+                else if (seccion === 'ALCOHOL' || (seccion === 'MATERIA PRIMA' && nombre.toUpperCase().includes('ALCOHOL'))) {
+                    categoria = 'Alcohol'; unidad_medida = 'ML'; stockAñadido = Math.round(stockOriginal * 1000); 
+                } 
+                else if (seccion === 'FIJADOR' || (seccion === 'MATERIA PRIMA' && nombre.toUpperCase().includes('FIJADOR'))) {
+                    categoria = 'Fijador'; unidad_medida = 'GRAMOS'; stockAñadido = Math.round(stockOriginal * 1000); 
+                } 
+                else if (seccion === 'FRASCO' || presentacion === 'UND') {
+                    categoria = seccion.includes('FRASCO') ? 'Envases' : 'General'; unidad_medida = 'UNIDAD'; stockAñadido = Math.round(stockOriginal);
+                    const extraerNumero = codigo.match(/\d+/) || nombre.match(/\d+/);
+                    if (extraerNumero) contenido_gramos = parseInt(extraerNumero[0], 10);
+                } else {
+                    categoria = 'General'; unidad_medida = 'UNIDAD'; stockAñadido = Math.round(stockOriginal);
+                }
+
+                if (stockOriginal <= 0 && productoExistente) continue;
+
+                const costo = costoRaw; const precio_venta = precioRaw; const stock_minimo = 5;
+
+                if (!esNuevo) {
+                    await client.query(`
+                        UPDATE productos 
+                        SET stock_unidades = stock_unidades + $1, marca = $2, genero = $3, categoria = $4, costo = $5, precio_venta = $6, unidad_medida = $7, activo = true
+                        WHERE id = $8 AND tienda_id = $9
+                    `, [stockAñadido, marca, genero, categoria, costo, precio_venta, unidad_medida, productoId, idTiendaLocal]);
+                    actualizadosG++;
+                } else {
+                    const resInsert = await client.query(`
+                        INSERT INTO productos (codigo, nombre, marca, categoria, stock_unidades, stock_minimo, costo, precio_venta, ubicacion, u_caja, ganancia, descripcion, unidad_medida, activo, contenido_gramos, tamano, stock_estante, peso_unitario_kg, tienda_id, genero) 
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'DEPOSITO', 1, 30, $9, $10, true, $11, $12, 0, 0, $13, $14)
+                        RETURNING id
+                    `, [codigo, nombre, marca, categoria, stockAñadido, stock_minimo, costo, precio_venta, `Hoja Excel: ${nombreHoja}`, unidad_medida, contenido_gramos, contenido_gramos > 0 ? `${contenido_gramos}ml` : 'N/A', idTiendaLocal, genero]);
                     
-                    let marca = marcaRaw ? marcaRaw.toString().trim() : 'Genérico';
-                    let genero = generoRaw ? generoRaw.toString().trim().toUpperCase() : 'UNISEX';
-
-                    const busquedaEsencia = await client.query('SELECT nombre, marca, genero FROM productos WHERE codigo = $1 AND tienda_id = $2 LIMIT 1', [codigo, idTiendaLocal]);
-                    if (busquedaEsencia.rows.length > 0) {
-                        const eb = busquedaEsencia.rows[0];
-                        if (!nombreRaw && eb.nombre) nombreRaw = eb.nombre;
-                        if ((!generoRaw || genero === 'UNISEX') && eb.genero) genero = eb.genero;
-                        if ((!marcaRaw || marca === 'Genérico') && eb.marca) marca = eb.marca;
-                    }
-
-                    const nombre = nombreRaw ? nombreRaw.toString().trim() : `Perfume ${codigo}`;
-
-                    let stockAñadido = 0; let categoria = 'General'; let unidad_medida = 'UNIDAD'; let contenido_gramos = 0;
-
-                    // 🧠 MOTOR DE CONVERSIONES MATEMÁTICAS
-                    if (seccion.includes('PERFUME TERMINADO') || seccion.includes('PERFUMES TERMINADOS')) {
-                        categoria = 'Perfumes Terminados'; 
-                        unidad_medida = 'UNIDAD'; 
-                        stockAñadido = Math.round(stockOriginal);
-                        const extraerNumero = codigo.match(/T(\d+)/i) || codigo.match(/\d+$/);
-                        contenido_gramos = extraerNumero ? parseInt(extraerNumero[1] || extraerNumero[0], 10) : 30;
-                    }
-                    else if (seccion === 'ESENCIA' || presentacion === 'GRAMOS') {
-                        categoria = 'Esencias'; 
-                        unidad_medida = 'GRAMOS'; 
-                        stockAñadido = Math.round(stockOriginal * 1000); // 0.890 pasa a 890g
-                    } 
-                    else if (seccion === 'ALCOHOL' || (seccion === 'MATERIA PRIMA' && nombre.toUpperCase().includes('ALCOHOL'))) {
-                        categoria = 'Alcohol'; 
-                        unidad_medida = 'ML'; 
-                        stockAñadido = Math.round(stockOriginal * 1000); // 200 pasa a 200,000ml
-                    } 
-                    else if (seccion === 'FIJADOR' || (seccion === 'MATERIA PRIMA' && nombre.toUpperCase().includes('FIJADOR'))) {
-                        categoria = 'Fijador'; 
-                        unidad_medida = 'GRAMOS'; 
-                        stockAñadido = Math.round(stockOriginal * 1000); // 215 pasa a 215,000g
-                    } 
-                    else if (seccion === 'FRASCO' || presentacion === 'UND') {
-                        categoria = seccion.includes('FRASCO') ? 'Envases' : 'General'; 
-                        unidad_medida = 'UNIDAD'; 
-                        stockAñadido = Math.round(stockOriginal); // Las unidades (ej: 60,000) pasan directo
-                        const extraerNumero = codigo.match(/\d+/) || nombre.match(/\d+/);
-                        if (extraerNumero) contenido_gramos = parseInt(extraerNumero[0], 10);
-                    } else {
-                        categoria = 'General'; 
-                        unidad_medida = 'UNIDAD'; 
-                        stockAñadido = Math.round(stockOriginal);
-                    }
-
-                    const costo = costoRaw; const precio_venta = precioRaw; const stock_minimo = 5;
-                    let productoId; let esNuevo = false;
-
-                    const checkRes = await client.query('SELECT id FROM productos WHERE codigo = $1 AND tienda_id = $2', [codigo, idTiendaLocal]);
+                    productoId = resInsert.rows[0].id;
+                    insertadosG++;
                     
-                    if (checkRes.rows.length > 0) {
-                        productoId = checkRes.rows[0].id;
-                        if (stockOriginal > 0) {
-                            await client.query(`
-                                UPDATE productos 
-                                SET stock_unidades = stock_unidades + $1, marca = $2, genero = $3, categoria = $4, costo = $5, precio_venta = $6, unidad_medida = $7, activo = true
-                                WHERE id = $8 AND tienda_id = $9
-                            `, [stockAñadido, marca, genero, categoria, costo, precio_venta, unidad_medida, productoId, idTiendaLocal]);
-                            actualizadosG++;
-                            cantidadesHoja += stockOriginal; inversionHoja += (costo * stockOriginal); proyeccionHoja += (precio_venta * stockOriginal);
-                            inversionGlobal += (costo * stockOriginal); proyeccionGlobal += (precio_venta * stockOriginal);
-                        } else {
-                            await client.query(`RELEASE SAVEPOINT ${spName}`);
-                            continue; 
-                        }
-                    } else {
-                        esNuevo = true;
-                        if (stockOriginal > 0) {
-                            cantidadesHoja += stockOriginal; inversionHoja += (costo * stockOriginal); proyeccionHoja += (precio_venta * stockOriginal);
-                            inversionGlobal += (costo * stockOriginal); proyeccionGlobal += (precio_venta * stockOriginal);
-                        }
-                        
-                        const resInsert = await client.query(`
-                            INSERT INTO productos (codigo, nombre, marca, categoria, stock_unidades, stock_minimo, costo, precio_venta, ubicacion, u_caja, ganancia, descripcion, unidad_medida, activo, contenido_gramos, tamano, stock_estante, peso_unitario_kg, tienda_id, genero) 
-                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'DEPOSITO', 1, 30, $9, $10, true, $11, $12, 0, 0, $13, $14)
-                            RETURNING id
-                        `, [codigo, nombre, marca, categoria, stockAñadido, stock_minimo, costo, precio_venta, `Hoja Excel: ${nombreHoja}`, unidad_medida, contenido_gramos, contenido_gramos > 0 ? `${contenido_gramos}ml` : 'N/A', idTiendaLocal, genero]);
-                        
-                        productoId = resInsert.rows[0].id;
-                        insertadosG++;
-                    }
+                    catalogoMemoria[codigo] = { id: productoId, codigo, nombre, marca, genero };
+                }
 
-                    let loteIdCreado = null;
-                    if (stockAñadido > 0) {
-                        const loteAleatorio = `LOTE-EXCEL-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`;
-                        const loteRes = await client.query(`INSERT INTO lotes (producto_id, codigo_lote, cantidad_inicial, cantidad_actual, fecha_vencimiento, costo_unitario, tienda_id) VALUES ($1, $2, $3, $3, NOW() + INTERVAL '3 years', $4, $5) RETURNING id`, [productoId, loteAleatorio, stockAñadido, costo, idTiendaLocal]);
-                        loteIdCreado = loteRes.rows[0].id;
+                if (stockAñadido > 0) {
+                    cantidadesHoja += stockOriginal; inversionHoja += (costo * stockOriginal); proyeccionHoja += (precio_venta * stockOriginal);
+                    inversionGlobal += (costo * stockOriginal); proyeccionGlobal += (precio_venta * stockOriginal);
 
-                        await client.query(`INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, stock_nuevo, motivo, fecha, tienda_id, usuario_id) VALUES ($1, 'ENTRADA', $2, (SELECT stock_unidades FROM productos WHERE id=$1 AND tienda_id=$3), 'Carga Hoja: ${nombreHoja}', NOW(), $3, $4)`, [productoId, stockAñadido, idTiendaLocal, usuarioId]);
-                        
-                        logReversionHoja.push({ producto_id: productoId, es_nuevo: esNuevo, stock_agregado: stockAñadido, lote_id: loteIdCreado });
-                    }
-
-                    await client.query(`RELEASE SAVEPOINT ${spName}`);
-                } catch (err) {
-                    await client.query(`ROLLBACK TO SAVEPOINT ${spName}`);
-                    erroresG++; detallesErrorG.push(`Ref ${codigoRaw} (Hoja: ${nombreHoja}): ${err.message}`);
+                    const loteAleatorio = `LOTE-EXCEL-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`;
+                    
+                    const [loteRes] = await Promise.all([
+                        client.query(`INSERT INTO lotes (producto_id, codigo_lote, cantidad_inicial, cantidad_actual, fecha_vencimiento, costo_unitario, tienda_id) VALUES ($1, $2, $3, $3, NOW() + INTERVAL '3 years', $4, $5) RETURNING id`, [productoId, loteAleatorio, stockAñadido, costo, idTiendaLocal]),
+                        client.query(`INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, stock_nuevo, motivo, fecha, tienda_id, usuario_id) VALUES ($1, 'ENTRADA', $2, (SELECT stock_unidades FROM productos WHERE id=$1 AND tienda_id=$3), $4, NOW(), $3, $5)`, [productoId, stockAñadido, idTiendaLocal, `Carga Hoja: ${nombreHoja}`, usuarioId])
+                    ]);
+                    
+                    let loteIdCreado = loteRes.rows[0].id;
+                    logReversionHoja.push({ producto_id: productoId, es_nuevo: esNuevo, stock_agregado: stockAñadido, lote_id: loteIdCreado });
                 }
             } 
 
@@ -607,27 +578,26 @@ const importarMasivo = async (req, res) => {
                     INSERT INTO importaciones_excel 
                     (usuario_id, nombre_archivo, detalles_json, estado, proveedor, cantidad_articulos, inversion_total, precio_proyectado, rentabilidad_estimada, excel_crudo_json)
                     VALUES ($1, $2, $3, 'APLICADO', $4, $5, $6, $7, $8, $9)
-                `, [
-                    usuarioId, nombreArchivoGuardar, 
-                    JSON.stringify(logReversionHoja), proveedor || 'No Especificado', cantidadesHoja, inversionHoja, 
-                    proyeccionHoja, rentabilidadHoja, JSON.stringify(filas)
-                ]);
+                `, [usuarioId, nombreArchivoGuardar, JSON.stringify(logReversionHoja), proveedor || 'No Especificado', cantidadesHoja, inversionHoja, proyeccionHoja, rentabilidadHoja, JSON.stringify(filas)]);
             }
         } 
 
         if (usuarioId && (insertadosG > 0 || actualizadosG > 0)) {
-            await client.query("INSERT INTO auditoria (usuario_id, accion, detalle, fecha) VALUES ($1, 'IMPORT_MASIVA', $2, NOW())", [usuarioId, `Carga Maestra Múltiple: ${insertadosG} creados, Inv Total: $${inversionGlobal.toFixed(2)}`]);
+            await client.query("INSERT INTO auditoria (usuario_id, accion, detalle, fecha) VALUES ($1, 'IMPORT_MASIVA', $2, NOW())", [usuarioId, `Carga Maestra Múltiple (Tienda ${idTiendaLocal}): ${insertadosG} creados`]);
         }
         
         await client.query('COMMIT');
         res.json({
-            mensaje: `¡Éxito! Inversión detectada: $${inversionGlobal.toFixed(2)}`,
-            resumen: { insertados: insertadosG, actualizados: actualizadosG, errores: erroresG, detalles: detallesErrorG.slice(0, 10) }
+            mensaje: `¡Carga Turbo Exitosa en Tienda ${idTiendaLocal}! Inversión: $${inversionGlobal.toFixed(2)}`,
+            resumen: { insertados: insertadosG, actualizados: actualizadosG }
         });
     } catch (error) {
         await client.query('ROLLBACK');
-        res.status(500).json({ error: error.message });
-    } finally { client.release(); }
+        console.error("Error en carga masiva universal:", error);
+        res.status(500).json({ error: `Error procesando el Excel: ${error.message}. Carga rechazada por seguridad.` });
+    } finally { 
+        client.release(); 
+    }
 };
 
 const descargarAuditoriaExcel = async (req, res) => {
