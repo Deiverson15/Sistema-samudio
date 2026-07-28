@@ -71,19 +71,21 @@ window.abrirModalReporte = async function(element) {
                 <input type="text" id="filterProducto" placeholder="Ej: E176" class="w-full p-3 border border-neutral-300 font-bold text-xs uppercase outline-none focus:border-neutral-900">
             </div>`;
     } 
-    else if (tipo === 'inventario') {
+    else if (tipo === 'inventario' || tipo === 'productos_creados') {
         htmlFiltros += `
             <div>
-                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtro: Categoría</label>
+                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtro: Categoría / Tipo</label>
                 <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900">
                     <option value="todos">Catálogo Completo</option>
-                    <option value="Esencias">Solo Esencias</option>
-                    <option value="Alcohol">Solo Alcohol</option>
-                    <option value="Fijador">Solo Fijador</option>
-                    <option value="Envases">Solo Frascos / Envases</option>
+                    <option value="PT">PT (Perfumes Terminados / Completos)</option>
+                    <option value="INSUMOS">Insumos y Materia Prima</option>
+                    <option value="FRASCOS">Frascos y Envases</option>
+                    <option value="ESENCIA">Solo Esencias</option>
+                    <option value="ALCOHOL">Solo Alcohol</option>
+                    <option value="FIJADOR">Solo Fijador</option>
                 </select>
             </div>`;
-    } 
+    }
     else if (tipo === 'referencias') {
         // 🔥 AGREGADO: Selector dinámico para Ventas por Referencia
         htmlFiltros += `
@@ -181,15 +183,24 @@ window.ejecutarDescarga = async function() {
     const metodoPago = document.getElementById('filterMetodo')?.value || 'todos';
     const vendedor = document.getElementById('filterVendedor')?.value || '';
 
-    // Enrutador base
+    // Enrutador base corregido
     let url = '';
+    
+    // "Info. Inventario" (Movimiento ISLR) debe ir a productos.controller
     if (tipo === 'inventario') {
         url = `/api/productos/reportes/excel?filtro=inventario&start=${start}&end=${end}`;
-    } else if (tipo === 'kardex') {
+    } 
+    // El nuevo reporte "Productos Creados" va a ventas.controller
+    else if (tipo === 'productos_creados') {
+        url = `/api/ventas/exportar/excel?filtro=${tipo}&start=${start}&end=${end}`;
+    } 
+    else if (tipo === 'kardex') {
         url = `/api/productos/reporte-kardex?inicio=${start}&fin=${end}`;
-    } else if (tipo === 'lista-precios') {
+    } 
+    else if (tipo === 'lista-precios') {
         url = `/api/productos/reportes/lista-precios/excel?start=${start}&end=${end}&tienda_id=${tiendaId}&seccion=${encodeURIComponent(categoria)}`;
-    } else {
+    } 
+    else {
         url = `/api/ventas/exportar/excel?filtro=${tipo}&start=${start}&end=${end}`;
     }
 

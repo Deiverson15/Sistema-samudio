@@ -400,277 +400,229 @@ const importarMasivo = async (req, res) => {
 
     const client = await pool.connect();
     
-    let insertados = 0; let actualizados = 0; let errores = 0; let detallesError = [];
-    let logReversion = []; 
-
-    let totalInversion = 0;
-    let totalProyeccion = 0;
-    let totalCantidades = 0;
+    let insertadosG = 0; let actualizadosG = 0; let erroresG = 0; let detallesErrorG = [];
+    let inversionGlobal = 0; let proyeccionGlobal = 0;
+    let savepointCounter = 0;
 
     try {
         await client.query('BEGIN');
 
-        // 🧠 DETECTOR AUTOMÁTICO DE ENCABEZADOS Y MAPEADOR DE COLUMNAS
-        let headerMap = {};
-        let startIndex = 0;
+        let hojasAProcesar = [];
+        if (Array.isArray(productos)) {
+            hojasAProcesar.push({ nombre: 'Hoja_1', datos: productos });
+        } else if (typeof productos === 'object' && productos !== null) {
+            for (const [nombreHoja, datos] of Object.entries(productos)) {
+                if (Array.isArray(datos) && datos.length > 0) {
+                    hojasAProcesar.push({ nombre: nombreHoja, datos: datos });
+                }
+            }
+        }
 
-        // Escanea las primeras 10 filas buscando los títulos reales
-        for (let h = 0; h < Math.min(productos.length, 10); h++) {
-            const candidateRow = productos[h];
-            let foundHeader = false;
+        if (hojasAProcesar.length === 0) throw new Error("El archivo no contenía datos procesables.");
+
+        for (const hoja of hojasAProcesar) {
+            const nombreHoja = hoja.nombre;
+            const filas = hoja.datos;
             
-            for (const key in candidateRow) {
-                const valStr = candidateRow[key] ? candidateRow[key].toString().toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : '';
-                if (valStr === 'referencia' || valStr === 'codigo' || valStr === 'cantidad' || valStr === 'seccion') {
-                    foundHeader = true;
+            let logReversionHoja = [];
+            let inversionHoja = 0; let proyeccionHoja = 0; let cantidadesHoja = 0;
+
+            // 🧠 DETECTOR DE ENCABEZADOS
+            let headerMap = {};
+            let startIndex = 0;
+
+            for (let h = 0; h < Math.min(filas.length, 10); h++) {
+                const candidateRow = filas[h];
+                let foundHeader = false;
+                
+                for (const key in candidateRow) {
+                    const valStr = candidateRow[key] ? candidateRow[key].toString().toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : '';
+                    if (valStr === 'referencia' || valStr === 'codigo' || valStr === 'cantidad' || valStr === 'seccion') {
+                        foundHeader = true; break;
+                    }
+                }
+
+                if (foundHeader) {
+                    for (const key in candidateRow) {
+                        if (candidateRow[key]) {
+                            const cleanHeader = candidateRow[key].toString().toLowerCase()
+                                                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                            headerMap[key] = cleanHeader;
+                        }
+                    }
+                    startIndex = h + 1; 
                     break;
                 }
             }
-
-            if (foundHeader) {
-                // Mapear la llave rara (ej. "__EMPTY_6") al nombre real de la columna ("cantidad")
-                for (const key in candidateRow) {
-                    if (candidateRow[key]) {
-                        const cleanHeader = candidateRow[key].toString().toLowerCase()
-                                                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-                                                .trim();
-                        headerMap[key] = cleanHeader;
-                    }
-                }
-                startIndex = h + 1; // Inicia la lectura real en la siguiente fila
-                break;
-            }
-        }
-        
-        for (let i = startIndex; i < productos.length; i++) {
-            const row = productos[i];
             
-            const p = {};
-            // Forzamos el mapeo usando el headerMap irrompible
-            for (const key in row) {
-                const targetKey = headerMap[key] || key.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-                p[targetKey] = row[key];
-            }
-
-            // 🧲 EXTRACCIÓN PROTEGIDA
-            const codigoRaw = p['referencia'] || p['codigo'] || p['ref'] || p['mappin pt'];
-            
-            // Si no hay código o es la fila de totalización final (ej. 1028), la saltamos
-            if (!codigoRaw || codigoRaw.toString().trim() === '' || codigoRaw.toString().trim().toUpperCase() === 'REFERENCIA') { 
-                continue; 
-            }
-
-            const seccionRaw = p['seccion'];
-            let nombreRaw = p['descripcion'] || p['nombre'] || p['producto'];
-            const marcaRaw = p['marca'];
-            const generoRaw = p['genero'];
-            const presentacionRaw = p['presentacion'] || 'UND';
-            
-            // 🛡️ PARSEO SEGURO DE MONTOS NUMÉRICOS
-            let stockOriginal = parseFloat(p['cantidad']);
-            if (isNaN(stockOriginal)) stockOriginal = 0;
-
-            let costoRaw = parseFloat(p['costo'] || p['costo und']);
-            if (isNaN(costoRaw)) costoRaw = 0;
-
-            let precioRaw = parseFloat(p['precio']);
-            if (isNaN(precioRaw)) precioRaw = 0;
-
-            const spName = `fila_${i}`;
-            await client.query(`SAVEPOINT ${spName}`);
-            
-            try {
-                const codigo = codigoRaw.toString().trim(); 
-                const seccion = seccionRaw ? seccionRaw.toString().trim().toUpperCase() : 'GENERAL';
-                const presentacion = presentacionRaw ? presentacionRaw.toString().trim().toUpperCase() : 'UND';
+            for (let i = startIndex; i < filas.length; i++) {
+                const row = filas[i];
+                savepointCounter++;
                 
-                let marca = marcaRaw ? marcaRaw.toString().trim() : 'Genérico';
-                let genero = generoRaw ? generoRaw.toString().trim().toUpperCase() : 'UNISEX';
-
-                // 🔍 BÚSQUEDA PREVIA EN BD PARA EXTRAER DATOS DE LA ESENCIA BASE
-                const busquedaEsencia = await client.query(
-                    'SELECT nombre, marca, genero FROM productos WHERE codigo = $1 AND tienda_id = $2 LIMIT 1',
-                    [codigo, idTiendaLocal]
-                );
-
-                if (busquedaEsencia.rows.length > 0) {
-                    const eb = busquedaEsencia.rows[0];
-                    if (!nombreRaw && eb.nombre) nombreRaw = eb.nombre;
-                    if ((!generoRaw || genero === 'UNISEX') && eb.genero) genero = eb.genero;
-                    if ((!marcaRaw || marca === 'Genérico') && eb.marca) marca = eb.marca;
+                const p = {};
+                for (const key in row) {
+                    const targetKey = headerMap[key] || key.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                    p[targetKey] = row[key];
                 }
 
-                const nombre = nombreRaw ? nombreRaw.toString().trim() : `Perfume ${codigo}`;
-
-                let stockAñadido = 0;
-                let categoria = 'General';
-                let unidad_medida = 'UNIDAD';
-                let contenido_gramos = 0;
-
-                // 🧠 MOTOR MATEMÁTICO DE CONVERSIONES (Perfumes Terminados / Esencias / Insumos)
-                if (seccion.includes('PERFUME TERMINADO') || seccion.includes('PERFUMES TERMINADOS')) {
-                    categoria = 'Perfumes';
-                    unidad_medida = 'UNIDAD';
-                    stockAñadido = Math.round(stockOriginal);
-
-                    const extraerNumero = codigo.match(/\d+/) || nombre.match(/\d+/);
-                    if (extraerNumero) {
-                        contenido_gramos = parseInt(extraerNumero[0], 10);
-                    }
-                }
-                else if (seccion === 'ESENCIA' || presentacion === 'GRAMOS') {
-                    categoria = 'Esencias';
-                    unidad_medida = 'GRAMOS';
-                    stockAñadido = Math.round(stockOriginal * 1000); 
-                } 
-                else if (seccion === 'ALCOHOL' || (seccion === 'MATERIA PRIMA' && nombre.toUpperCase().includes('ALCOHOL'))) {
-                    categoria = 'Alcohol';
-                    unidad_medida = 'ML';
-                    stockAñadido = Math.round(stockOriginal * 1000); 
-                } 
-                else if (seccion === 'FIJADOR' || (seccion === 'MATERIA PRIMA' && nombre.toUpperCase().includes('FIJADOR'))) {
-                    categoria = 'Fijador';
-                    unidad_medida = 'GRAMOS';
-                    stockAñadido = Math.round(stockOriginal * 1000); 
-                } 
-                else if (seccion === 'FRASCO' || presentacion === 'UND') {
-                    categoria = seccion.includes('FRASCO') ? 'Envases' : 'General';
-                    unidad_medida = 'UNIDAD';
-                    stockAñadido = Math.round(stockOriginal);
-                    
-                    const extraerNumero = codigo.match(/\d+/) || nombre.match(/\d+/);
-                    if (extraerNumero) {
-                        contenido_gramos = parseInt(extraerNumero[0], 10);
-                    }
-                } else {
-                    categoria = 'General';
-                    unidad_medida = 'UNIDAD';
-                    stockAñadido = Math.round(stockOriginal);
-                }
-
-                const costo = costoRaw;
-                const precio_venta = precioRaw;
-                const stock_minimo = 5;
-
-                let productoId;
-                let esNuevo = false;
-
-                // Verificamos si ya existe el registro exacto en esta tienda
-                const checkRes = await client.query('SELECT id FROM productos WHERE codigo = $1 AND tienda_id = $2', [codigo, idTiendaLocal]);
+                const codigoRaw = p['referencia'] || p['codigo'] || p['ref'] || p['mappin pt'];
+                const cantidadRaw = parseFloat(p['cantidad']);
                 
-                if (checkRes.rows.length > 0) {
-                    productoId = checkRes.rows[0].id;
+                // 🚀 CORRECCIÓN AQUÍ: Quitamos la limitante de los 1000. 
+                // El sistema ignorará la fila de "Totales" (ej. los 1028 de la última hoja) automáticamente porque en esa fila el Código está en blanco.
+                if (!codigoRaw || codigoRaw.toString().trim() === '' || codigoRaw.toString().trim().toUpperCase() === 'REFERENCIA' || codigoRaw.toString().trim().toUpperCase() === 'MAPPIN PT') {
+                    continue; 
+                }
+
+                const seccionRaw = p['seccion'];
+                let nombreRaw = p['descripcion'] || p['nombre'] || p['producto'];
+                const marcaRaw = p['marca'];
+                const generoRaw = p['genero'];
+                const presentacionRaw = p['presentacion'] || 'UND';
+                
+                let stockOriginal = isNaN(cantidadRaw) ? 0 : cantidadRaw;
+                let costoRaw = parseFloat(p['costo'] || p['costo und']);
+                if (isNaN(costoRaw)) costoRaw = 0;
+                let precioRaw = parseFloat(p['precio']);
+                if (isNaN(precioRaw)) precioRaw = 0;
+
+                const spName = `sp_${savepointCounter}`;
+                await client.query(`SAVEPOINT ${spName}`);
+                
+                try {
+                    const codigo = codigoRaw.toString().trim(); 
+                    const seccion = seccionRaw ? seccionRaw.toString().trim().toUpperCase() : 'GENERAL';
+                    const presentacion = presentacionRaw ? presentacionRaw.toString().trim().toUpperCase() : 'UND';
                     
-                    // Si trae stock físico para registrar (14, 10, etc.)
-                    if (stockOriginal > 0) {
-                        await client.query(`
-                            UPDATE productos 
-                            SET stock_unidades = stock_unidades + $1,
-                                marca = $2,
-                                genero = $3,
-                                categoria = $4,
-                                costo = $5,
-                                precio_venta = $6,
-                                unidad_medida = $7,
-                                activo = true
-                            WHERE id = $8 AND tienda_id = $9
-                        `, [stockAñadido, marca, genero, categoria, costo, precio_venta, unidad_medida, productoId, idTiendaLocal]);
-                        actualizados++;
-                        
-                        totalCantidades += stockOriginal;
-                        totalInversion += (costo * stockOriginal);
-                        totalProyeccion += (precio_venta * stockOriginal);
+                    let marca = marcaRaw ? marcaRaw.toString().trim() : 'Genérico';
+                    let genero = generoRaw ? generoRaw.toString().trim().toUpperCase() : 'UNISEX';
+
+                    const busquedaEsencia = await client.query('SELECT nombre, marca, genero FROM productos WHERE codigo = $1 AND tienda_id = $2 LIMIT 1', [codigo, idTiendaLocal]);
+                    if (busquedaEsencia.rows.length > 0) {
+                        const eb = busquedaEsencia.rows[0];
+                        if (!nombreRaw && eb.nombre) nombreRaw = eb.nombre;
+                        if ((!generoRaw || genero === 'UNISEX') && eb.genero) genero = eb.genero;
+                        if ((!marcaRaw || marca === 'Genérico') && eb.marca) marca = eb.marca;
+                    }
+
+                    const nombre = nombreRaw ? nombreRaw.toString().trim() : `Perfume ${codigo}`;
+
+                    let stockAñadido = 0; let categoria = 'General'; let unidad_medida = 'UNIDAD'; let contenido_gramos = 0;
+
+                    // 🧠 MOTOR DE CONVERSIONES MATEMÁTICAS
+                    if (seccion.includes('PERFUME TERMINADO') || seccion.includes('PERFUMES TERMINADOS')) {
+                        categoria = 'Perfumes Terminados'; 
+                        unidad_medida = 'UNIDAD'; 
+                        stockAñadido = Math.round(stockOriginal);
+                        const extraerNumero = codigo.match(/T(\d+)/i) || codigo.match(/\d+$/);
+                        contenido_gramos = extraerNumero ? parseInt(extraerNumero[1] || extraerNumero[0], 10) : 30;
+                    }
+                    else if (seccion === 'ESENCIA' || presentacion === 'GRAMOS') {
+                        categoria = 'Esencias'; 
+                        unidad_medida = 'GRAMOS'; 
+                        stockAñadido = Math.round(stockOriginal * 1000); // 0.890 pasa a 890g
+                    } 
+                    else if (seccion === 'ALCOHOL' || (seccion === 'MATERIA PRIMA' && nombre.toUpperCase().includes('ALCOHOL'))) {
+                        categoria = 'Alcohol'; 
+                        unidad_medida = 'ML'; 
+                        stockAñadido = Math.round(stockOriginal * 1000); // 200 pasa a 200,000ml
+                    } 
+                    else if (seccion === 'FIJADOR' || (seccion === 'MATERIA PRIMA' && nombre.toUpperCase().includes('FIJADOR'))) {
+                        categoria = 'Fijador'; 
+                        unidad_medida = 'GRAMOS'; 
+                        stockAñadido = Math.round(stockOriginal * 1000); // 215 pasa a 215,000g
+                    } 
+                    else if (seccion === 'FRASCO' || presentacion === 'UND') {
+                        categoria = seccion.includes('FRASCO') ? 'Envases' : 'General'; 
+                        unidad_medida = 'UNIDAD'; 
+                        stockAñadido = Math.round(stockOriginal); // Las unidades (ej: 60,000) pasan directo
+                        const extraerNumero = codigo.match(/\d+/) || nombre.match(/\d+/);
+                        if (extraerNumero) contenido_gramos = parseInt(extraerNumero[0], 10);
                     } else {
-                        await client.query(`RELEASE SAVEPOINT ${spName}`);
-                        continue; 
+                        categoria = 'General'; 
+                        unidad_medida = 'UNIDAD'; 
+                        stockAñadido = Math.round(stockOriginal);
                     }
-                } else {
-                    esNuevo = true;
+
+                    const costo = costoRaw; const precio_venta = precioRaw; const stock_minimo = 5;
+                    let productoId; let esNuevo = false;
+
+                    const checkRes = await client.query('SELECT id FROM productos WHERE codigo = $1 AND tienda_id = $2', [codigo, idTiendaLocal]);
                     
-                    if (stockOriginal > 0) {
-                        totalCantidades += stockOriginal;
-                        totalInversion += (costo * stockOriginal);
-                        totalProyeccion += (precio_venta * stockOriginal);
+                    if (checkRes.rows.length > 0) {
+                        productoId = checkRes.rows[0].id;
+                        if (stockOriginal > 0) {
+                            await client.query(`
+                                UPDATE productos 
+                                SET stock_unidades = stock_unidades + $1, marca = $2, genero = $3, categoria = $4, costo = $5, precio_venta = $6, unidad_medida = $7, activo = true
+                                WHERE id = $8 AND tienda_id = $9
+                            `, [stockAñadido, marca, genero, categoria, costo, precio_venta, unidad_medida, productoId, idTiendaLocal]);
+                            actualizadosG++;
+                            cantidadesHoja += stockOriginal; inversionHoja += (costo * stockOriginal); proyeccionHoja += (precio_venta * stockOriginal);
+                            inversionGlobal += (costo * stockOriginal); proyeccionGlobal += (precio_venta * stockOriginal);
+                        } else {
+                            await client.query(`RELEASE SAVEPOINT ${spName}`);
+                            continue; 
+                        }
+                    } else {
+                        esNuevo = true;
+                        if (stockOriginal > 0) {
+                            cantidadesHoja += stockOriginal; inversionHoja += (costo * stockOriginal); proyeccionHoja += (precio_venta * stockOriginal);
+                            inversionGlobal += (costo * stockOriginal); proyeccionGlobal += (precio_venta * stockOriginal);
+                        }
+                        
+                        const resInsert = await client.query(`
+                            INSERT INTO productos (codigo, nombre, marca, categoria, stock_unidades, stock_minimo, costo, precio_venta, ubicacion, u_caja, ganancia, descripcion, unidad_medida, activo, contenido_gramos, tamano, stock_estante, peso_unitario_kg, tienda_id, genero) 
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'DEPOSITO', 1, 30, $9, $10, true, $11, $12, 0, 0, $13, $14)
+                            RETURNING id
+                        `, [codigo, nombre, marca, categoria, stockAñadido, stock_minimo, costo, precio_venta, `Hoja Excel: ${nombreHoja}`, unidad_medida, contenido_gramos, contenido_gramos > 0 ? `${contenido_gramos}ml` : 'N/A', idTiendaLocal, genero]);
+                        
+                        productoId = resInsert.rows[0].id;
+                        insertadosG++;
                     }
-                    
-                    const insertQuery = `
-                        INSERT INTO productos 
-                        (codigo, nombre, marca, categoria, stock_unidades, stock_minimo, costo, precio_venta,
-                         ubicacion, u_caja, ganancia, descripcion, unidad_medida, activo, contenido_gramos,
-                         tamano, stock_estante, peso_unitario_kg, tienda_id, genero) 
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'DEPOSITO', 1, 30, $9, $10, true, $11, $12, 0, 0, $13, $14)
-                        RETURNING id`;
+
+                    let loteIdCreado = null;
+                    if (stockAñadido > 0) {
+                        const loteAleatorio = `LOTE-EXCEL-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`;
+                        const loteRes = await client.query(`INSERT INTO lotes (producto_id, codigo_lote, cantidad_inicial, cantidad_actual, fecha_vencimiento, costo_unitario, tienda_id) VALUES ($1, $2, $3, $3, NOW() + INTERVAL '3 years', $4, $5) RETURNING id`, [productoId, loteAleatorio, stockAñadido, costo, idTiendaLocal]);
+                        loteIdCreado = loteRes.rows[0].id;
+
+                        await client.query(`INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, stock_nuevo, motivo, fecha, tienda_id, usuario_id) VALUES ($1, 'ENTRADA', $2, (SELECT stock_unidades FROM productos WHERE id=$1 AND tienda_id=$3), 'Carga Hoja: ${nombreHoja}', NOW(), $3, $4)`, [productoId, stockAñadido, idTiendaLocal, usuarioId]);
                         
-                    const valuesInsert = [
-                        codigo, nombre, marca, categoria, stockAñadido, stock_minimo, costo, precio_venta, 
-                        `Carga Inteligente Excel - Sección: ${seccion}`, unidad_medida, contenido_gramos, 
-                        contenido_gramos > 0 ? `${contenido_gramos}ml` : 'N/A', idTiendaLocal, genero
-                    ];
-                        
-                    const resInsert = await client.query(insertQuery, valuesInsert);
-                    productoId = resInsert.rows[0].id;
-                    insertados++;
+                        logReversionHoja.push({ producto_id: productoId, es_nuevo: esNuevo, stock_agregado: stockAñadido, lote_id: loteIdCreado });
+                    }
+
+                    await client.query(`RELEASE SAVEPOINT ${spName}`);
+                } catch (err) {
+                    await client.query(`ROLLBACK TO SAVEPOINT ${spName}`);
+                    erroresG++; detallesErrorG.push(`Ref ${codigoRaw} (Hoja: ${nombreHoja}): ${err.message}`);
                 }
+            } 
 
-                // Sembramos los lotes de trazabilidad FIFO solo si ingresó stock real
-                let loteIdCreado = null;
-                if (stockAñadido > 0) {
-                    const loteAleatorio = `LOTE-EXCEL-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 100)}`;
-                    const fechaVencimiento = new Date();
-                    fechaVencimiento.setFullYear(fechaVencimiento.getFullYear() + 3); 
-                    
-                    const loteRes = await client.query(`
-                        INSERT INTO lotes 
-                        (producto_id, codigo_lote, cantidad_inicial, cantidad_actual, fecha_vencimiento, costo_unitario, tienda_id) 
-                        VALUES ($1, $2, $3, $3, $4, $5, $6) RETURNING id
-                    `, [productoId, loteAleatorio, stockAñadido, fechaVencimiento, costo, idTiendaLocal]);
-                    
-                    loteIdCreado = loteRes.rows[0].id;
+            if (logReversionHoja.length > 0) {
+                const rentabilidadHoja = proyeccionHoja - inversionHoja;
+                const nombreArchivoGuardar = nombre_archivo ? `${nombre_archivo} - [${nombreHoja}]` : `Carga - [${nombreHoja}]`;
 
-                    await client.query(`
-                        INSERT INTO historial_movimientos 
-                        (producto_id, tipo_movimiento, cantidad, stock_nuevo, motivo, fecha, tienda_id)
-                        VALUES ($1, 'ENTRADA', $2, (SELECT stock_unidades FROM productos WHERE id=$1 AND tienda_id=$3), 'Carga Masiva Nuevo Excel', NOW(), $3)
-                    `, [productoId, stockAñadido, idTiendaLocal]);
-                    
-                    logReversion.push({ producto_id: productoId, es_nuevo: esNuevo, stock_agregado: stockAñadido, lote_id: loteIdCreado });
-                }
-
-                await client.query(`RELEASE SAVEPOINT ${spName}`);
-
-            } catch (err) {
-                await client.query(`ROLLBACK TO SAVEPOINT ${spName}`);
-                errores++;
-                detallesError.push(`Referencia ${codigoRaw || 'Indefinida'}: ${err.message}`);
+                await client.query(`
+                    INSERT INTO importaciones_excel 
+                    (usuario_id, nombre_archivo, detalles_json, estado, proveedor, cantidad_articulos, inversion_total, precio_proyectado, rentabilidad_estimada, excel_crudo_json)
+                    VALUES ($1, $2, $3, 'APLICADO', $4, $5, $6, $7, $8, $9)
+                `, [
+                    usuarioId, nombreArchivoGuardar, 
+                    JSON.stringify(logReversionHoja), proveedor || 'No Especificado', cantidadesHoja, inversionHoja, 
+                    proyeccionHoja, rentabilidadHoja, JSON.stringify(filas)
+                ]);
             }
         } 
 
-        if (logReversion.length > 0) {
-            const rentabilidadCalculada = totalProyeccion - totalInversion;
-            const provFijo = proveedor || 'No Especificado';
-
-            await client.query(`
-                INSERT INTO importaciones_excel 
-                (usuario_id, nombre_archivo, detalles_json, estado, proveedor, cantidad_articulos, inversion_total, precio_proyectado, rentabilidad_estimada, excel_crudo_json)
-                VALUES ($1, $2, $3, 'APLICADO', $4, $5, $6, $7, $8, $9)
-            `, [
-                usuarioId, nombre_archivo || `Carga_Urbina_${new Date().toISOString().slice(0,10)}`, 
-                JSON.stringify(logReversion), provFijo, totalCantidades, totalInversion, 
-                totalProyeccion, rentabilidadCalculada, JSON.stringify(productos)
-            ]);
-        }
-
-        if (usuarioId && (insertados > 0 || actualizados > 0)) {
-            await client.query(
-                "INSERT INTO auditoria (usuario_id, accion, detalle, fecha) VALUES ($1, 'IMPORT_MASIVA', $2, NOW())",
-                [usuarioId, `Carga Maestra: ${insertados} creados, Inv: $${totalInversion.toFixed(2)}`]
-            );
+        if (usuarioId && (insertadosG > 0 || actualizadosG > 0)) {
+            await client.query("INSERT INTO auditoria (usuario_id, accion, detalle, fecha) VALUES ($1, 'IMPORT_MASIVA', $2, NOW())", [usuarioId, `Carga Maestra Múltiple: ${insertadosG} creados, Inv Total: $${inversionGlobal.toFixed(2)}`]);
         }
         
         await client.query('COMMIT');
         res.json({
-            mensaje: `¡Éxito! Inversión detectada: $${totalInversion.toFixed(2)} | Proyección: $${totalProyeccion.toFixed(2)}`,
-            resumen: { insertados, actualizados, errores, detalles: detallesError.slice(0, 10) }
+            mensaje: `¡Éxito! Inversión detectada: $${inversionGlobal.toFixed(2)}`,
+            resumen: { insertados: insertadosG, actualizados: actualizadosG, errores: erroresG, detalles: detallesErrorG.slice(0, 10) }
         });
     } catch (error) {
         await client.query('ROLLBACK');
@@ -1558,19 +1510,37 @@ const exportarExcel = async (req, res) => {
                 row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
             });
 
-            // 4. Lógica de Consulta: Sincronizada con p.costo e idTiendaLocal dinámico
+            // 4. Lógica de Consulta: Añadimos categoría y unidad_medida a la consulta SQL
             let querySQL = `
-                SELECT h.id, h.fecha, p.codigo, p.nombre, p.marca, p.costo, h.tipo_movimiento, h.cantidad
+                SELECT h.id, h.fecha, p.codigo, p.nombre, p.marca, p.costo, h.tipo_movimiento, h.cantidad, p.categoria, p.unidad_medida, p.es_producto_terminado
                 FROM historial_movimientos h
                 JOIN productos p ON h.producto_id = p.id
                 WHERE p.tienda_id = $1
             `;
             let paramsSQL = [idTiendaLocal];
+            let paramIndex = 2;
 
-            // 🔥 CORREGIDO: Aplicamos cast ::date para que las horas del timestamp no rompan el rango
             if (start && end) {
-                querySQL += ` AND h.fecha::date BETWEEN $2 AND $3`;
+                querySQL += ` AND h.fecha::date BETWEEN $${paramIndex} AND $${paramIndex + 1}`;
                 paramsSQL.push(start, end);
+                paramIndex += 2;
+            }
+
+            // 🛡️ Filtro de Categoría (PT, Insumos, Frascos...)
+            const catQuery = req.query.categoria;
+            if (catQuery && catQuery !== 'todos') {
+                const catUpper = catQuery.toUpperCase();
+                if (catUpper === 'PT' || catUpper === 'TERMINADOS' || catUpper === 'COMPLETO') {
+                    querySQL += ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
+                } else if (catUpper === 'INSUMOS' || catUpper === 'MATERIA_PRIMA') {
+                    querySQL += ` AND (p.categoria ILIKE '%esencia%' OR p.categoria ILIKE '%fijador%' OR p.categoria ILIKE '%alcohol%' OR p.categoria ILIKE '%frasco%' OR p.categoria ILIKE '%envase%')`;
+                } else if (catUpper === 'FRASCOS' || catUpper === 'FRASCO') {
+                    querySQL += ` AND (p.categoria ILIKE '%frasco%' OR p.categoria ILIKE '%envase%')`;
+                } else {
+                    querySQL += ` AND p.categoria ILIKE $${paramIndex}`;
+                    paramsSQL.push(`%${catQuery.trim()}%`);
+                    paramIndex++;
+                }
             }
             
             querySQL += ` ORDER BY h.fecha ASC`;
@@ -1590,7 +1560,18 @@ const exportarExcel = async (req, res) => {
                 }
 
                 const costoUnit = parseFloat(m.costo || 0);
-                const cant = parseFloat(m.cantidad || 0);
+                let cant = parseFloat(m.cantidad || 0);
+                
+                // EVALUACIÓN PARA FORMATO 0.000
+                const uni = (m.unidad_medida || '').toUpperCase();
+                const cat = (m.categoria || '').toUpperCase();
+                const isLiquid = uni === 'GRAMOS' || uni === 'ML' || cat.includes('ESENCIA') || cat.includes('FIJADOR') || cat.includes('ALCOHOL');
+
+                // LÓGICA MATEMÁTICA: Si es líquido/gramos, se divide entre 1000
+                if (isLiquid) {
+                    cant = cant / 1000;
+                }
+
                 const montoMovimiento = cant * costoUnit;
 
                 // Existencia Inicial (Antes de procesar la fila actual)
@@ -1603,19 +1584,14 @@ const exportarExcel = async (req, res) => {
                 fila[3] = m.nombre;
                 
                 // 🔥 LÓGICA DE CLASIFICACIÓN INTELIGENTE
-                // Asegúrate de que 'm.categoria' sea la propiedad que contiene la categoría en tu consulta SQL
-                const cat = (m.categoria || '').toUpperCase();
-                
                 if (cat.includes('PERFUME')) {
                     fila[4] = 'VENTAS';
                     fila[5] = 'PERFUMES TERMINADOS';
                 } 
-                // 2. Identificar Materia Prima (Esencia, Fijador, Alcohol, Frascos/Envases)
                 else if (['ESENCIA', 'ALCOHOL', 'FIJADOR', 'FRASCO', 'ENVASE'].some(term => cat.includes(term))) {
                     fila[4] = 'PRODUCCIÓN';
                     fila[5] = 'MATERIA PRIMA';
                 } 
-                // 3. Cualquier otra cosa
                 else {
                     fila[4] = 'GENERAL';
                     fila[5] = 'OTROS';
@@ -1647,7 +1623,27 @@ const exportarExcel = async (req, res) => {
                 fila[16] = saldoProductos[prodCodigo].cant;
                 fila[17] = saldoProductos[prodCodigo].monto;
 
-                sheetInv.addRow(fila);
+                const rowAdded = sheetInv.addRow(fila);
+                
+                // FORMATOS VISUALES PARA EXCEL
+                const fmtStock = isLiquid ? '#,##0.000' : '#,##0';
+                
+                rowAdded.getCell(8).numFmt = '"$"#,##0.00'; // Costo Unitario
+                
+                rowAdded.getCell(9).numFmt = fmtStock;   // Cantidad Inicial
+                rowAdded.getCell(10).numFmt = '"$"#,##0.00';
+                
+                rowAdded.getCell(11).numFmt = fmtStock;  // Cantidad Entrada
+                rowAdded.getCell(12).numFmt = '"$"#,##0.00';
+                
+                rowAdded.getCell(13).numFmt = fmtStock;  // Cantidad Salida
+                rowAdded.getCell(14).numFmt = '"$"#,##0.00';
+                
+                rowAdded.getCell(15).numFmt = fmtStock;  // Cantidad Autoconsumo
+                rowAdded.getCell(16).numFmt = '"$"#,##0.00';
+                
+                rowAdded.getCell(17).numFmt = fmtStock;  // Cantidad Actual
+                rowAdded.getCell(18).numFmt = '"$"#,##0.00';
             });
 
             sheetInv.getColumn('D').width = 35; 

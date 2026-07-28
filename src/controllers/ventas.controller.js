@@ -24,7 +24,7 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
     const prod = prodRes.rows[0];
 
     // ⚡ DEFINICIÓN DE MODO ALMACÉN (SUCURSAL ID 3)
-    const ES_ALMACEN = (tId === 3); 
+    const ES_ALMACEN = (tId === 1); 
 
     // =========================================================================
     // 🚀 BYPASS DIRECTO PARA ALMACÉN: DESCUENTO DIRECTO DE STOCK_UNIDADES
@@ -605,20 +605,54 @@ const exportarReporteGeneral = async (req, res) => {
             rowHeaders.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             rowHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
 
-            let qInv = `SELECT codigo, nombre, categoria, stock_unidades, stock_estante, costo, precio_venta FROM productos WHERE activo = true AND tienda_id = ${idTiendaLocal}`;
-            if (categoria && categoria !== 'todos') qInv += ` AND categoria ILIKE '%${categoria}%'`;
+            // 1. Agregamos unidad_medida a la consulta
+            let qInv = `SELECT codigo, nombre, categoria, unidad_medida, stock_unidades, stock_estante, costo, precio_venta FROM productos WHERE activo = true AND tienda_id = ${idTiendaLocal}`;
+            
+            // 2. Filtro incluyendo PT, INSUMOS, FRASCOS
+            if (categoria && categoria !== 'todos') {
+                const catUpper = categoria.toUpperCase();
+                if (catUpper === 'PT' || catUpper === 'TERMINADOS' || catUpper === 'COMPLETO') {
+                    qInv += ` AND (es_producto_terminado = true OR categoria ILIKE '%terminado%' OR categoria ILIKE '%perfume%')`;
+                } else if (catUpper === 'INSUMOS' || catUpper === 'MATERIA_PRIMA') {
+                    qInv += ` AND (categoria ILIKE '%esencia%' OR categoria ILIKE '%fijador%' OR categoria ILIKE '%alcohol%' OR categoria ILIKE '%frasco%' OR categoria ILIKE '%envase%')`;
+                } else if (catUpper === 'FRASCOS' || catUpper === 'FRASCO') {
+                    qInv += ` AND (categoria ILIKE '%frasco%' OR categoria ILIKE '%envase%')`;
+                } else {
+                    qInv += ` AND categoria ILIKE '%${categoria.trim()}%'`;
+                }
+            }
             qInv += ` ORDER BY categoria ASC, nombre ASC`;
 
             const resInv = await client.query(qInv);
             let granTotalCapital = 0;
 
             resInv.rows.forEach(r => {
-                const stockTotal = parseFloat(r.stock_unidades || 0) + parseFloat(r.stock_estante || 0);
+                let su = parseFloat(r.stock_unidades || 0);
+                let se = parseFloat(r.stock_estante || 0);
+                const uni = (r.unidad_medida || '').toUpperCase();
+                const cat = (r.categoria || '').toUpperCase();
+                
+                // 3. LÓGICA MATEMÁTICA: Si es líquido/gramos, se divide entre 1000
+                const isLiquid = uni === 'GRAMOS' || uni === 'ML' || cat.includes('ESENCIA') || cat.includes('FIJADOR') || cat.includes('ALCOHOL');
+
+                if (isLiquid) {
+                    su = su / 1000;
+                    se = se / 1000;
+                }
+
+                const stockTotal = su + se;
                 const costo = parseFloat(r.costo || 0);
                 const capitalEstancado = stockTotal * costo;
                 granTotalCapital += capitalEstancado;
 
-                sheet.addRow([r.codigo, r.nombre, r.categoria, parseFloat(r.stock_unidades), parseFloat(r.stock_estante), stockTotal, costo, parseFloat(r.precio_venta), capitalEstancado]);
+                // 4. Escribir fila en Excel
+                const fila = sheet.addRow([r.codigo, r.nombre, r.categoria, su, se, stockTotal, costo, parseFloat(r.precio_venta), capitalEstancado]);
+                
+                // 5. Aplicar formato 0.000 (miles/líquidos) o unidades normales
+                const fmtStock = isLiquid ? '#,##0.000' : '#,##0';
+                fila.getCell(4).numFmt = fmtStock;
+                fila.getCell(5).numFmt = fmtStock;
+                fila.getCell(6).numFmt = fmtStock;
             });
 
             sheet.addRow([]);
@@ -630,6 +664,64 @@ const exportarReporteGeneral = async (req, res) => {
             sheet.getColumn(9).numFmt = '"$"#,##0.00';
         }
 
+        if (filtro === 'productos_creados') {
+            const sheet = workbook.addWorksheet('Productos Creados');
+            sheet.addRow(['REPORTE DE PRODUCTOS CREADOS (CATÁLOGO COMPLETO)']);
+            sheet.addRow([`Fecha de Descarga:`, new Date().toLocaleDateString('es-VE'), `Sucursal ID:`, idTiendaLocal]);
+            
+            const labelFiltroMat = categoria && categoria !== 'todos' ? `Filtro Aplicado: ${categoria.toUpperCase()}` : 'Filtro Aplicado: Catálogo Completo';
+            sheet.addRow([labelFiltroMat]);
+            sheet.addRow([]);
+
+            const rowHeaders = sheet.addRow(['CÓDIGO', 'PRODUCTO', 'CATEGORÍA', 'MARCA', 'GÉNERO', 'UND. MEDIDA', 'STOCK ACTUAL', 'COSTO UNIT. ($)', 'P.V.P ($)']);
+            rowHeaders.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            rowHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0284C7' } }; 
+
+            let qProd = `SELECT codigo, nombre, categoria, marca, genero, unidad_medida, stock_unidades, stock_estante, costo, precio_venta FROM productos WHERE activo = true AND tienda_id = ${idTiendaLocal}`;
+            
+            if (categoria && categoria !== 'todos') {
+                const catUpper = categoria.toUpperCase();
+                if (catUpper === 'PT' || catUpper === 'TERMINADOS' || catUpper === 'COMPLETO') {
+                    qProd += ` AND (es_producto_terminado = true OR categoria ILIKE '%terminado%' OR categoria ILIKE '%perfume%')`;
+                } else if (catUpper === 'INSUMOS' || catUpper === 'MATERIA_PRIMA') {
+                    qProd += ` AND (categoria ILIKE '%esencia%' OR categoria ILIKE '%fijador%' OR categoria ILIKE '%alcohol%' OR categoria ILIKE '%frasco%' OR categoria ILIKE '%envase%')`;
+                } else if (catUpper === 'FRASCOS' || catUpper === 'FRASCO') {
+                    qProd += ` AND (categoria ILIKE '%frasco%' OR categoria ILIKE '%envase%')`;
+                } else {
+                    qProd += ` AND categoria ILIKE '%${categoria.trim()}%'`;
+                }
+            }
+            qProd += ` ORDER BY categoria ASC, nombre ASC`;
+
+            const resProd = await client.query(qProd);
+
+            resProd.rows.forEach(r => {
+                let su = parseFloat(r.stock_unidades || 0);
+                let se = parseFloat(r.stock_estante || 0);
+                const uni = (r.unidad_medida || '').toUpperCase();
+                const cat = (r.categoria || '').toUpperCase();
+                
+                const isLiquid = uni === 'GRAMOS' || uni === 'ML' || cat.includes('ESENCIA') || cat.includes('FIJADOR') || cat.includes('ALCOHOL');
+
+                if (isLiquid) {
+                    su = su / 1000;
+                    se = se / 1000;
+                }
+                const stockTotal = su + se;
+
+                const fila = sheet.addRow([r.codigo, r.nombre, r.categoria, r.marca || 'S/M', r.genero || 'UNISEX', r.unidad_medida, stockTotal, parseFloat(r.costo || 0), parseFloat(r.precio_venta || 0)]);
+                
+                const numFmtStock = isLiquid ? '#,##0.000' : '#,##0';
+                fila.getCell(7).numFmt = numFmtStock;
+                fila.getCell(8).numFmt = '"$"#,##0.00';
+                fila.getCell(9).numFmt = '"$"#,##0.00';
+            });
+
+            sheet.getColumn(2).width = 40; 
+            sheet.getColumn(8).width = 15; 
+            sheet.getColumn(9).width = 15;
+        }
+
         // =========================================================
         // REPORTE E NUEVO: CONTROL DE MERMAS Y TESTERS
         // =========================================================
@@ -639,12 +731,12 @@ const exportarReporteGeneral = async (req, res) => {
             sheet.addRow([`Rango Evaluado:`, `${start} al ${end}`]);
             sheet.addRow([]);
             
-            const rowHeaders = sheet.addRow(['FECHA', 'PRODUCTO', 'CANTIDAD (g/uds)', 'COSTO UNIT ($)', 'PÉRDIDA NETA ($)', 'MOTIVO / EVENTO', 'OPERADOR']);
+            const rowHeaders = sheet.addRow(['FECHA', 'PRODUCTO', 'CANTIDAD', 'COSTO UNIT ($)', 'PÉRDIDA NETA ($)', 'MOTIVO / EVENTO', 'OPERADOR']);
             rowHeaders.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             rowHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3342F' } }; 
 
             const queryMermas = `
-                SELECT TO_CHAR(h.fecha, 'DD/MM/YYYY HH12:MI AM') as fecha_fmt, p.nombre as producto, h.cantidad, p.costo, 
+                SELECT TO_CHAR(h.fecha, 'DD/MM/YYYY HH12:MI AM') as fecha_fmt, p.nombre as producto, p.categoria, p.unidad_medida, h.cantidad, p.costo, 
                        (h.cantidad * p.costo) as perdida, h.motivo, u.nombre as usuario
                 FROM historial_movimientos h
                 JOIN productos p ON h.producto_id = p.id
@@ -657,15 +749,29 @@ const exportarReporteGeneral = async (req, res) => {
             
             let totalPerdida = 0;
             resMermas.rows.forEach(r => {
+                let cant = parseFloat(r.cantidad || 0);
+                const uni = (r.unidad_medida || '').toUpperCase();
+                const cat = (r.categoria || '').toUpperCase();
+                const isLiquid = uni === 'GRAMOS' || uni === 'ML' || cat.includes('ESENCIA') || cat.includes('FIJADOR') || cat.includes('ALCOHOL');
+                
+                if (isLiquid) {
+                    cant = cant / 1000;
+                }
+
                 const perdida = parseFloat(r.perdida || 0);
                 totalPerdida += perdida;
-                sheet.addRow([r.fecha_fmt, r.producto, parseFloat(r.cantidad), parseFloat(r.costo), perdida, r.motivo, r.usuario || 'Sistema']);
+                const fila = sheet.addRow([r.fecha_fmt, r.producto, cant, parseFloat(r.costo), perdida, r.motivo, r.usuario || 'Sistema']);
+                
+                fila.getCell(3).numFmt = isLiquid ? '#,##0.000' : '#,##0';
+                fila.getCell(4).numFmt = '"$"#,##0.00'; 
+                fila.getCell(5).numFmt = '"$"#,##0.00';
             });
 
             sheet.addRow([]);
             const rTotalM = sheet.addRow(['', '', '', 'TOTAL PÉRDIDA OPERATIVA:', totalPerdida]);
             rTotalM.font = { bold: true, color: { argb: 'FFE3342F' } };
             sheet.getColumn(2).width = 40; 
+            sheet.getColumn(4).numFmt = '"$"#,##0.00'; 
             sheet.getColumn(5).numFmt = '"$"#,##0.00'; 
             sheet.getColumn(6).width = 40;
         }

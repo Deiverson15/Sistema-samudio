@@ -693,121 +693,41 @@ function procesarArchivoImportacion(file) {
     const reader = new FileReader();
 
     reader.onload = async (e) => {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const jsonSheet = XLSX.utils.sheet_to_json(worksheet, { range: 3, defval: "" });
-
-        if (jsonSheet.length === 0) return Swal.fire('Error', 'El archivo está vacío.', 'error');
-
-        const productosAImportar = jsonSheet.map(row => {
-            const normRow = {};
-            for (const key in row) {
-                const cleanKey = key.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-                normRow[cleanKey] = row[key];
-            }
-
-            const codigo = normRow['codigoarticulo'] || normRow['codigo'] || normRow['codbarras'];
-            const nombre = normRow['descripcion'] || normRow['articulo'] || normRow['nombre'];
-            const referencia = normRow['referencia'] || '';
-            
-            if (!codigo || !nombre) return null;
-
-            // Textos en mayúsculas para las validaciones
-            const codigoStr = codigo.toString().toUpperCase();
-            const refStr = referencia.toString().trim().toUpperCase();
-            const descStr = nombre.toString().toUpperCase(); 
-
-            // Limpieza y cálculo bruto del Stock
-            let stockBruto = normRow['stock'] ?? normRow['cantidad'] ?? 0;
-            let num = 0;
-            if (typeof stockBruto === 'number') {
-                num = stockBruto;
-            } else {
-                let str = stockBruto.toString().trim().replace(/ /g, '').replace(/,/g, '.');
-                num = parseFloat(str);
-            }
-            if (isNaN(num)) num = 0;
-
-            // ==========================================
-            // 🧠 MOTOR LÓGICO DE CLASIFICACIÓN
-            // ==========================================
-            let categoriaFinal = 'General';
-            let multiplier = 1;
-
-            // 1. FIJADOR (Prioridad 1 para que la 'F' no lo confunda con frascos)
-            if (refStr.includes('FIJADOR') || descStr.includes('FIJADOR') || (refStr.startsWith('F') && descStr.includes('FIJADOR'))) {
-                categoriaFinal = 'Fijador';
-                multiplier = 1000;
-            } 
-            // 2. ESENCIAS (Letra E o palabra Esencia)
-            else if (refStr.startsWith('E') || descStr.includes('ESENCIA')) {
-                categoriaFinal = 'Esencias';
-                multiplier = 1000;
-            } 
-            // 3. ALCOHOL 
-            else if (descStr.includes('ALCOHOL') || refStr.includes('ALCOHOL')) {
-                categoriaFinal = 'Alcohol';
-                multiplier = 1000;
-            } 
-            // 4. ENVASES Y FRASCOS (Letra F, o palabras clave en código/descripción)
-            else if (refStr.startsWith('F') || descStr.includes('FRASCO') || descStr.includes('ENVASE') || codigoStr.includes('FRASCO') || codigoStr.includes('ENVASE')) {
-                categoriaFinal = 'Envases';
-                multiplier = 1;
-            }
-
-            // Calculamos el stock final (Unidades o Gramos)
-            const stockReal = Math.round(num * multiplier);
-
-            // ==========================================
-            // 📏 EXTRACCIÓN AUTOMÁTICA DEL TAMAÑO (F30 -> 30)
-            // ==========================================
-            let contenido_gramos = normRow['contenido'] || 0;
-            
-            // Si es envase y no le pusiste contenido manual, lo saca de la referencia
-            if (categoriaFinal === 'Envases' && (!contenido_gramos || contenido_gramos == 0)) {
-                // Busca una 'F' seguida opcionalmente de un guion/espacio y luego números (Ej: F30, F-60, F 100)
-                const match = refStr.match(/F[- ]?(\d+)/);
-                if (match) {
-                    contenido_gramos = parseInt(match[1], 10);
-                }
-            }
-
-            console.log(`✅ [${codigo}] Cat: ${categoriaFinal} | Ref: ${referencia} | Stock: ${num} -> ${stockReal} | Tamaño: ${contenido_gramos}ml/g`);
-
-            return {
-                codigo: codigo.toString().trim(),
-                nombre: nombre.toString().trim(),
-                marca: referencia || 'Genérico',
-                categoria: categoriaFinal,
-                descripcion: descStr,
-                stock: stockReal,
-                stock_minimo: 5,
-                costo: normRow['costo'] || 0,
-                precio_venta: normRow['precio'] || 0,
-                unidad_medida: 'UNIDAD',
-                contenido_gramos: contenido_gramos
-            };
-        }).filter(p => p !== null);
-
-        if (productosAImportar.length === 0) return Swal.fire('Error', 'No se detectaron columnas válidas.', 'error');
-
-        Swal.fire({ title: 'Clasificando inventario inteligente...', didOpen: () => Swal.showLoading() });
-
         try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            // 🧠 EXTRAER TODAS LAS HOJAS DINÁMICAMENTE
+            const todasLasHojas = {};
+            workbook.SheetNames.forEach(nombreHoja => {
+                // Quitamos el 'range' para que el backend detecte los títulos sin importar la fila
+                const jsonSheet = XLSX.utils.sheet_to_json(workbook.Sheets[nombreHoja], { defval: "" });
+                if (jsonSheet.length > 0) {
+                    todasLasHojas[nombreHoja] = jsonSheet;
+                }
+            });
+
+            if (Object.keys(todasLasHojas).length === 0) {
+                return Swal.fire('Error', 'El archivo Excel está vacío o no se pudo leer.', 'error');
+            }
+
+            Swal.fire({ title: 'Clasificando inventario multi-hoja...', didOpen: () => Swal.showLoading() });
+
             const token = localStorage.getItem('token');
             const res = await fetch('/api/productos/importar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify(productosAImportar)
+                body: JSON.stringify({
+                    productos: todasLasHojas, 
+                    nombre_archivo: file.name,
+                    proveedor: "Carga Múltiple (Archivo Rápido)"
+                })
             });
             
             const resultado = await res.json();
             
             if (res.ok) {
-                await Swal.fire('¡Importación Exitosa!', `<b>${resultado.resumen.insertados}</b> creados nuevos.<br><b>${resultado.resumen.actualizados}</b> actualizados.`, 'success');
+                await Swal.fire('¡Importación Exitosa!', `<b>${resultado.resumen.insertados}</b> creados nuevos.<br><b>${resultado.resumen.actualizados}</b> actualizados.<br><br><span class="text-xs">Hojas procesadas: ${Object.keys(todasLasHojas).join(', ')}</span>`, 'success');
                 cargarTabla();
             } else {
                 throw new Error(resultado.error);
@@ -1816,87 +1736,9 @@ window.procesarVaciadoTotalAbajo = async function() {
     });
 
     // 3. PROCESAR Y ENVIAR AL BACKEND
-    btnProcesarExcel.addEventListener('click', async () => {
-        if (!archivoSeleccionado) return;
 
-        Swal.fire({
-            title: 'ANALIZANDO EXCEL',
-            text: 'Procesando filas, calculando inversión y vinculando proveedor...',
-            allowOutsideClick: false,
-            didOpen: () => { Swal.showLoading(); }
-        });
 
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                // Parseamos el Excel usando la librería XLSX
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                const productosJson = XLSX.utils.sheet_to_json(firstSheet, { range: 3 });
-
-                if (productosJson.length === 0) throw new Error("El archivo Excel está vacío.");
-
-                // 🔥 NUEVO: Capturamos el proveedor
-                const inputProv = document.getElementById('inputProveedorExcel');
-                const proveedorFinal = inputProv && inputProv.value.trim() !== '' ? inputProv.value.trim().toUpperCase() : 'No Especificado';
-
-                const token = localStorage.getItem('token');
-                
-                // Enviamos a la ruta en el backend
-                const res = await fetch('/api/productos/importar', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ 
-                        productos: productosJson,
-                        nombre_archivo: archivoSeleccionado.name,
-                        proveedor: proveedorFinal // Enviamos el proveedor
-                    })
-                });
-
-                const respuesta = await res.json();
-
-                if (res.ok) {
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'CARGA COMPLETADA',
-                        text: respuesta.mensaje,
-                        confirmButtonColor: '#0f172a',
-                        confirmButtonText: 'ENTENDIDO',
-                        customClass: { popup: 'rounded-none', confirmButton: 'rounded-none uppercase tracking-widest text-xs' }
-                    });
-                    
-                    // Reseteamos todo visualmente
-                    archivoSeleccionado = null;
-                    excelFileName.innerHTML = 'Arrastra o haz clic para subir (.xlsx)';
-                    btnProcesarExcel.classList.add('hidden');
-                    inputExcelFile.value = '';
-                    if (inputProv) inputProv.value = ''; // Limpiamos proveedor
-                    
-                    // Si tienes el módulo general, recarga el fondo
-                    if(typeof cargarTabla === 'function') cargarTabla();
-
-                } else {
-                    throw new Error(respuesta.error || 'Error desconocido al cargar.');
-                }
-
-            } catch (error) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'ERROR DE FORMATO',
-                    text: error.message,
-                    confirmButtonColor: '#0f172a',
-                    customClass: { popup: 'rounded-none', confirmButton: 'rounded-none uppercase tracking-widest text-xs' }
-                });
-            }
-        };
-        reader.readAsArrayBuffer(archivoSeleccionado);
-    });
-
-    window.inicializarModuloExcel = function () {
+window.inicializarModuloExcel = function () {
     const btnTabCargar = document.getElementById('btnTabCargar');
     const btnTabMovimientos = document.getElementById('btnTabMovimientos');
     const tabCargarExcel = document.getElementById('tabCargarExcel');
@@ -1910,7 +1752,6 @@ window.procesarVaciadoTotalAbajo = async function() {
 
     if (!btnTabCargar) return; // Seguro contra fallos
 
-    // 1. NAVEGACIÓN ENTRE PESTAÑAS (Estilos Corporativos)
     const claseTabActiva = "flex-1 py-4 text-[10px] font-black text-white bg-neutral-950 uppercase tracking-widest transition-colors border-r border-neutral-300";
     const claseTabInactiva = "flex-1 py-4 text-[10px] font-bold text-neutral-500 hover:text-neutral-900 bg-transparent uppercase tracking-widest transition-colors border-r border-neutral-300";
 
@@ -1926,10 +1767,9 @@ window.procesarVaciadoTotalAbajo = async function() {
         btnTabCargar.className = claseTabInactiva;
         tabMovimientosExcel.classList.remove('hidden');
         tabCargarExcel.classList.add('hidden');
-        window.cargarHistorialImportaciones(); // Recargamos datos al entrar
+        window.cargarHistorialImportaciones(); 
     });
 
-    // 2. CAPTURA DEL ARCHIVO EXCEL
     inputExcelFile.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
@@ -1939,13 +1779,12 @@ window.procesarVaciadoTotalAbajo = async function() {
         }
     });
 
-    // 3. PROCESAR EXCEL
     btnProcesarExcel.addEventListener('click', async () => {
         if (!archivoSeleccionado) return;
 
         Swal.fire({
-            title: 'ANALIZANDO EXCEL',
-            text: 'Procesando filas, calculando inversión y vinculando proveedor...',
+            title: 'ANALIZANDO EXCEL MULTI-HOJA',
+            text: 'Extrayendo todas las pestañas y vinculando al backend inteligente...',
             allowOutsideClick: false,
             didOpen: () => { Swal.showLoading(); }
         });
@@ -1955,26 +1794,44 @@ window.procesarVaciadoTotalAbajo = async function() {
             try {
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                const productosJson = XLSX.utils.sheet_to_json(firstSheet, { range: 3 });
+                
+                // 🧠 NUEVO: Recopilar todas las hojas del Excel
+                const todasLasHojas = {};
+                workbook.SheetNames.forEach(nombreHoja => {
+                    const jsonSheet = XLSX.utils.sheet_to_json(workbook.Sheets[nombreHoja], { defval: "" });
+                    if (jsonSheet.length > 0) {
+                        todasLasHojas[nombreHoja] = jsonSheet;
+                    }
+                });
 
-                if (productosJson.length === 0) throw new Error("El archivo Excel está vacío.");
+                if (Object.keys(todasLasHojas).length === 0) throw new Error("El archivo Excel está vacío.");
 
                 const inputProv = document.getElementById('inputProveedorExcel');
                 const proveedorFinal = inputProv && inputProv.value.trim() !== '' ? inputProv.value.trim().toUpperCase() : 'No Especificado';
 
                 const token = localStorage.getItem('token');
                 
+                // Enviamos el objeto con TODAS las hojas al backend
                 const res = await fetch('/api/productos/importar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ productos: productosJson, nombre_archivo: archivoSeleccionado.name, proveedor: proveedorFinal })
+                    body: JSON.stringify({ 
+                        productos: todasLasHojas, 
+                        nombre_archivo: archivoSeleccionado.name, 
+                        proveedor: proveedorFinal 
+                    })
                 });
 
                 const respuesta = await res.json();
 
                 if (res.ok) {
-                    Swal.fire({ icon: 'success', title: 'CARGA COMPLETADA', text: respuesta.mensaje, confirmButtonColor: '#0f172a', customClass: { popup: 'rounded-none', confirmButton: 'rounded-none uppercase tracking-widest text-xs' } });
+                    Swal.fire({ 
+                        icon: 'success', 
+                        title: 'CARGA COMPLETADA', 
+                        html: `${respuesta.mensaje}<br><br><span class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Hojas: ${Object.keys(todasLasHojas).join(', ')}</span>`, 
+                        confirmButtonColor: '#0f172a', 
+                        customClass: { popup: 'rounded-none', confirmButton: 'rounded-none uppercase tracking-widest text-xs' } 
+                    });
                     
                     archivoSeleccionado = null;
                     excelFileName.innerHTML = 'Arrastra o haz clic para subir (.xlsx)';
@@ -1983,6 +1840,7 @@ window.procesarVaciadoTotalAbajo = async function() {
                     if (inputProv) inputProv.value = '';
                     
                     if(typeof cargarTabla === 'function') cargarTabla();
+                    if(typeof window.cargarHistorialImportaciones === 'function') window.cargarHistorialImportaciones();
                 } else {
                     throw new Error(respuesta.error || 'Error desconocido al cargar.');
                 }
