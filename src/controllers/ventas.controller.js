@@ -6,7 +6,7 @@ const ExcelJS = require('exceljs');
 const round = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
 
 
-async function validarYDescontarEstante(client, productoId, cantidadRequerida, nombreReferencia, tiendaId, confirmacionAlmacen = false) {
+async function validarYDescontarEstante(client, productoId, cantidadRequerida, nombreReferencia, tiendaId, confirmacionAlmacen = false, usuarioId = null) {
     const pId = parseInt(productoId, 10);
     const tId = parseInt(tiendaId, 10); 
     const cantidad = parseFloat(cantidadRequerida);
@@ -14,102 +14,127 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
     if (isNaN(pId) || pId <= 0) throw new Error(`🚫 ERROR DE FLUJO: Se intentó procesar "${nombreReferencia}" con un ID corrupto.`);
     if (isNaN(tId) || tId <= 0) throw new Error(`🚫 ERROR DE SEGURIDAD: ID de sucursal inválido.`);
 
+    // Consultar el producto de la tienda con bloqueo de fila (FOR UPDATE)
     const prodRes = await client.query(`
         SELECT id, nombre, categoria, stock_estante, stock_unidades, contenido_gramos 
         FROM productos 
         WHERE id = $1 AND tienda_id = $2 FOR UPDATE
     `, [pId, tId]);
     
-    if (prodRes.rows.length === 0) throw new Error(`El producto ${nombreReferencia} no existe en esta sucursal.`);
+    if (prodRes.rows.length === 0) throw new Error(`El producto ${nombreReferencia} no existe en la tienda ID ${tId}.`);
     const prod = prodRes.rows[0];
 
-    // ⚡ DEFINICIÓN DE MODO ALMACÉN (SUCURSAL ID 3)
     const ES_ALMACEN = (tId === 1); 
 
     // =========================================================================
-    // 🚀 BYPASS DIRECTO PARA ALMACÉN: DESCUENTO DIRECTO DE STOCK_UNIDADES
+    // 🚀 CASO A: ALMACÉN PRINCIPAL (SUCURSAL ID 3) -> DESCUENTO DIRECTO EN UNIDADES
     // =========================================================================
     if (ES_ALMACEN) {
         const disponibleGeneral = parseFloat(prod.stock_unidades || 0);
 
         if (disponibleGeneral < (cantidad - 0.05)) {
-            throw new Error(`🚫 QUIEBRE DE STOCK EN ALMACÉN: "${prod.nombre}" no tiene suficiente existencia. Disponible: ${disponibleGeneral.toFixed(2)} (Requerido: ${cantidad.toFixed(2)}).`);
+            throw new Error(`🚫 QUIEBRE EN ALMACÉN: "${prod.nombre}" no tiene suficiente existencia. Disponible: ${disponibleGeneral.toFixed(2)} (Requerido: ${cantidad.toFixed(2)}).`);
         }
 
-        // Descuento directo en la columna principal de inventario (stock_unidades)
         await client.query(`
             UPDATE productos 
             SET stock_unidades = GREATEST(stock_unidades - $1, 0) 
             WHERE id = $2 AND tienda_id = $3
         `, [cantidad, pId, tId]);
 
+        // Historial de Salida en Almacén
+        await client.query(`
+            INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, stock_nuevo, motivo, fecha, tienda_id, usuario_id)
+            VALUES ($1, 'SALIDA', $2, (SELECT stock_unidades FROM productos WHERE id=$1 AND tienda_id=$3), $4, NOW(), $3, $5)
+        `, [pId, cantidad, tId, `Venta Almacén: ${nombreReferencia}`, usuarioId]);
+
         return prod.nombre;
     }
 
     // =========================================================================
-    // 🏬 MODO MOSTRADOR TRADICIONAL (OTRAS SUCURSALES: DESCUENTO CON ESTANTE)
+    // 🏬 CASO B: MOSTRADOR -> DESCUENTO INTELIGENTE EN CASCADA (ESTANTE + UNIDADES)
     // =========================================================================
-    const cat = (prod.categoria || '').toUpperCase();
-    let disponibleDeposito = parseFloat(prod.stock_unidades || 0);
-    const totalDisponibleCombinado = parseFloat(prod.stock_estante || 0) + disponibleDeposito;
+    const estanteActual = parseFloat(prod.stock_estante || 0);
+    const depositoActual = parseFloat(prod.stock_unidades || 0);
+    const totalDisponible = estanteActual + depositoActual;
 
-    if (totalDisponibleCombinado < (cantidad - 0.05)) {
-        throw new Error(`🚫 QUIEBRE DE STOCK TOTAL: "${prod.nombre}" no cuenta con suficiente mercancía en toda la sucursal. Disponible Total: ${totalDisponibleCombinado.toFixed(2)} (Requerido: ${cantidad.toFixed(2)}).`);
+    if (totalDisponible < (cantidad - 0.05)) {
+        throw new Error(`🚫 SIN STOCK: "${prod.nombre}" no cuenta con suficiente existencia. Total Disponible: ${totalDisponible.toFixed(2)} (Requerido: ${cantidad.toFixed(2)}).`);
     }
 
-    let pendiente = cantidad;
+    let aDescontarEstante = 0;
+    let aDescontarDeposito = 0;
 
-    const botellasRes = await client.query(`
-        SELECT id, cantidad, estado FROM botellas_estante 
-        WHERE producto_id = $1 AND estado != 'TESTER'
-        ORDER BY CASE WHEN estado = 'ABIERTA' THEN 1 ELSE 2 END ASC, cantidad ASC
-        FOR UPDATE
-    `, [pId]);
-
-    const capacidad = parseFloat(prod.contenido_gramos) || 1000;
-
-    for (const b of botellasRes.rows) {
-        if (pendiente <= 0.001) break; 
-
-        const disponibleBotella = parseFloat(b.cantidad);
-        const aRestar = Math.min(pendiente, disponibleBotella);
-        
-        const nuevaCant = Math.round(disponibleBotella - aRestar);
-        const nuevoPorc = Math.min(100, Math.round((nuevaCant / capacidad) * 100));
-
-        if (nuevaCant <= 0.01) {
-            await client.query('DELETE FROM botellas_estante WHERE id = $1', [b.id]);
-        } else {
-            await client.query(`UPDATE botellas_estante SET cantidad = $1, porcentaje_actual = $2, estado = 'ABIERTA' WHERE id = $3`, [nuevaCant, nuevoPorc, b.id]);
-        }
-        pendiente -= aRestar;
+    if (estanteActual >= cantidad) {
+        aDescontarEstante = cantidad;
+    } else {
+        aDescontarEstante = estanteActual;
+        aDescontarDeposito = cantidad - estanteActual;
     }
 
-    let gramosTomadosEstante = cantidad;
-
-    if (pendiente > 0.05) {
-        if (!confirmacionAlmacen) {
-            const und = ['ALCOHOL', 'ESENCIAS', 'FIJADOR'].includes(cat) ? 'g/ml' : 'uds';
-            throw new Error(`ALERTA_ALMACEN|Te hacen falta ${pendiente.toFixed(0)}${und} de "${prod.nombre}" en el mostrador. ¿Deseas descontarlos del inventario general (almacén)?`);
-        }
-
-        let unidadesADescontarDeposito = pendiente;
-
-        await client.query(`UPDATE productos SET stock_unidades = GREATEST(stock_unidades - $1, 0) WHERE id = $2 AND tienda_id = $3`, [unidadesADescontarDeposito, pId, tId]);
-
-        const usuarioId = typeof req !== 'undefined' && req.user ? req.user.id : null;
+    // 1. Aplicar descuento en tabla productos
+    if (aDescontarEstante > 0 && aDescontarDeposito > 0) {
         await client.query(`
-            INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, stock_nuevo, motivo, fecha, tienda_id, usuario_id)
-            VALUES ($1, 'SALIDA', $2, (SELECT stock_unidades FROM productos WHERE id=$1 AND tienda_id=$3), 'Absorbido del Almacén por venta directa', NOW(), $3, $4)
-        `, [pId, unidadesADescontarDeposito, tId, usuarioId]);
-
-        gramosTomadosEstante = cantidad - pendiente;
+            UPDATE productos 
+            SET stock_estante = GREATEST(stock_estante - $1, 0),
+                stock_unidades = GREATEST(stock_unidades - $2, 0)
+            WHERE id = $3 AND tienda_id = $4
+        `, [aDescontarEstante, aDescontarDeposito, pId, tId]);
+    } else if (aDescontarEstante > 0) {
+        await client.query(`
+            UPDATE productos 
+            SET stock_estante = GREATEST(stock_estante - $1, 0)
+            WHERE id = $2 AND tienda_id = $3
+        `, [aDescontarEstante, pId, tId]);
+    } else if (aDescontarDeposito > 0) {
+        await client.query(`
+            UPDATE productos 
+            SET stock_unidades = GREATEST(stock_unidades - $1, 0)
+            WHERE id = $2 AND tienda_id = $3
+        `, [aDescontarDeposito, pId, tId]);
     }
 
-    if (gramosTomadosEstante > 0) {
-        await client.query(`UPDATE productos SET stock_estante = GREATEST(stock_estante - $1, 0) WHERE id = $2 AND tienda_id = $3`, [gramosTomadosEstante, pId, tId]);
+    // 2. Descontar o eliminar botellas de mostrador (si la tabla está implementada)
+    try {
+        let pendienteBotellas = cantidad;
+        const botellasRes = await client.query(`
+            SELECT id, cantidad, estado FROM botellas_estante 
+            WHERE producto_id = $1 AND estado != 'TESTER'
+            ORDER BY CASE WHEN estado = 'ABIERTA' THEN 1 ELSE 2 END ASC, cantidad ASC
+            FOR UPDATE
+        `, [pId]);
+
+        const capacidad = parseFloat(prod.contenido_gramos) || 1000;
+
+        for (const b of botellasRes.rows) {
+            if (pendienteBotellas <= 0.001) break; 
+
+            const dispB = parseFloat(b.cantidad);
+            const aRestarB = Math.min(pendienteBotellas, dispB);
+            const nuevaCantB = Math.round(dispB - aRestarB);
+            const nuevoPorcB = Math.min(100, Math.round((nuevaCantB / capacidad) * 100));
+
+            if (nuevaCantB <= 0.01) {
+                await client.query('DELETE FROM botellas_estante WHERE id = $1', [b.id]);
+            } else {
+                await client.query(`
+                    UPDATE botellas_estante 
+                    SET cantidad = $1, porcentaje_actual = $2, estado = 'ABIERTA' 
+                    WHERE id = $3
+                `, [nuevaCantB, nuevoPorcB, b.id]);
+            }
+            pendienteBotellas -= aRestarB;
+        }
+    } catch (eBotellas) {
+        // Omisión silenciosa si no hay registros en botellas_estante
     }
-    
+
+    // 3. Registrar el movimiento unificado en el historial
+    await client.query(`
+        INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, stock_nuevo, motivo, fecha, tienda_id, usuario_id)
+        VALUES ($1, 'SALIDA', $2, (SELECT (stock_estante + stock_unidades) FROM productos WHERE id=$1 AND tienda_id=$3), $4, NOW(), $3, $5)
+    `, [pId, cantidad, tId, `Consumo Venta: ${nombreReferencia}`, usuarioId]);
+
     return prod.nombre;
 }
 
@@ -1540,9 +1565,8 @@ const crearVenta = async (req, res) => {
         const { items, total, cliente_id, pagos, usuario_id, es_externa, descripcion_externa, confirmacion_almacen } = req.body;
         const vendedorFinalId = usuario_id ? usuario_id : (req.user ? req.user.id : null);
         
-        // Extraemos la tienda de forma DINÁMICA desde el token del usuario logueado
-        const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;[cite: 12]
-        const ES_ALMACEN = (idTiendaLocal === 1);
+        // Identificar la tienda local de la transacción
+        const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;
         
         if (!es_externa && (!items || items.length === 0)) {
             return res.status(400).json({ error: 'El carrito está vacío.' });
@@ -1550,7 +1574,7 @@ const crearVenta = async (req, res) => {
 
         await client.query('BEGIN'); 
 
-        // 1. SEGURIDAD ANTI-FRAUDE
+        // 1. SEGURIDAD ANTI-FRAUDE (Validación de referencias únicas)
         if (pagos && pagos.length > 0) {
             for (const pago of pagos) {
                 const metodo = (pago.metodo || '').toUpperCase();
@@ -1565,24 +1589,46 @@ const crearVenta = async (req, res) => {
             }
         }
 
-        // 2. PROCESAR DESCUENTOS Y VALIDACIONES DE INVENTARIO INDEPENDIENTE
+        // 2. PROCESAR DEDUCCIONES DE INVENTARIO
         if (!es_externa) {
             for (const item of items) {
                 const cant = parseFloat(item.cantidad);
                 const cleanItemId = parseInt(item.id, 10);
 
-                if (item.formula_id) {
+                const prodActualRes = await client.query('SELECT id, codigo, nombre FROM productos WHERE id = $1', [cleanItemId]);
+                if (prodActualRes.rows.length === 0) throw new Error(`Producto ID ${cleanItemId} no existe en el catálogo.`);
+                const prodActual = prodActualRes.rows[0];
+                const codigoProd = (prodActual.codigo || '').trim().toUpperCase();
+
+                const esCodigoPT = codigoProd.includes('-T');
+
+                // Si viene formula_id Y NO está marcado como PT explícito -> Desglosar Insumos
+                if (item.formula_id && !item.es_pt && !esCodigoPT) {
+                    // =========================================================================
+                    // 🧪 PREPARACIÓN POR FÓRMULA: DESCUENTA ESENCIA, ALCOHOL, FIJADOR Y ENVASE
+                    // =========================================================================
                     const formulaRes = await client.query('SELECT * FROM formulas WHERE id = $1', [parseInt(item.formula_id, 10)]);
                     if (formulaRes.rows.length === 0) throw new Error(`Fórmula ID ${item.formula_id} no encontrada.`);
                     const f = formulaRes.rows[0];
+                    const volumen = parseInt(f.volumen_total, 10);
 
-                    // A. Esencia
+                    // A. Esencia Base (Gramos según fórmula * Cantidad de perfumes)
                     const gramosExtra = parseFloat(item.gramos_extra) || 0;
-                    const totalEsencia = (parseFloat(f.gramos_esencia) + gramosExtra) * cant;
-                    await validarYDescontarEstante(client, cleanItemId, totalEsencia, "Esencia Base", idTiendaLocal, confirmacion_almacen);
+                    const gramosEsenciaBase = parseFloat(f.gramos_esencia) || 0;
+                    const totalEsencia = (gramosEsenciaBase + gramosExtra) * cant;
                     
-                    // B. Alcohol
-                    if (f.ml_alcohol > 0) {
+                    await validarYDescontarEstante(
+                        client, 
+                        cleanItemId, 
+                        totalEsencia, 
+                        `Esencia Base (${prodActual.nombre})`, 
+                        idTiendaLocal, 
+                        confirmacion_almacen,
+                        vendedorFinalId
+                    );
+                    
+                    // B. Alcohol (mL según fórmula * Cantidad de perfumes)
+                    if (parseFloat(f.ml_alcohol) > 0) {
                         const alcoholUnitario = item.ml_alcohol_override !== undefined && item.ml_alcohol_override !== null 
                                                 ? parseFloat(item.ml_alcohol_override) 
                                                 : parseFloat(f.ml_alcohol);
@@ -1593,18 +1639,18 @@ const crearVenta = async (req, res) => {
                             const alcoholRes = await client.query(`
                                 SELECT id, nombre FROM productos 
                                 WHERE (nombre ILIKE '%ALCOHOL%' OR categoria = 'Alcohol') 
-                                AND activo = true 
-                                AND stock_estante >= $1 
-                                AND tienda_id = $2
-                                ORDER BY stock_estante DESC LIMIT 1 FOR UPDATE
+                                  AND activo = true 
+                                  AND (stock_estante + stock_unidades) >= $1 
+                                  AND tienda_id = $2
+                                ORDER BY (stock_estante + stock_unidades) DESC LIMIT 1 FOR UPDATE
                             `, [totalAlcohol, idTiendaLocal]); 
                             
-                            if (alcoholRes.rows.length === 0) throw new Error(`🚫 FALTA ALCOHOL: Se requieren ${totalAlcohol.toFixed(2)}ml en los estantes de esta sucursal.`);
-                            await validarYDescontarEstante(client, alcoholRes.rows[0].id, totalAlcohol, "Alcohol", idTiendaLocal, confirmacion_almacen);
+                            if (alcoholRes.rows.length === 0) throw new Error(`🚫 FALTA ALCOHOL: Se requieren ${totalAlcohol.toFixed(2)}ml en esta sucursal.`);
+                            await validarYDescontarEstante(client, alcoholRes.rows[0].id, totalAlcohol, "Alcohol", idTiendaLocal, confirmacion_almacen, vendedorFinalId);
                         }
                     }
 
-                    // C. Fijador
+                    // C. Fijador (Gramos según fórmula * Cantidad de perfumes)
                     const gramosFijadorExtra = parseFloat(item.gramos_fijador_extra) || 0;
                     const gramosFijadorFormula = parseFloat(f.gramos_fijador) || 0;
                     const totalFijador = (gramosFijadorFormula + gramosFijadorExtra) * cant;
@@ -1613,38 +1659,45 @@ const crearVenta = async (req, res) => {
                         const fijadorRes = await client.query(`
                             SELECT id, nombre FROM productos 
                             WHERE (nombre ILIKE '%FIJADOR%' OR categoria = 'Fijador') 
-                            AND activo = true 
-                            AND stock_estante >= $1 
-                            AND tienda_id = $2
-                            ORDER BY stock_estante DESC LIMIT 1 FOR UPDATE
+                              AND activo = true 
+                              AND (stock_estante + stock_unidades) >= $1 
+                              AND tienda_id = $2
+                            ORDER BY (stock_estante + stock_unidades) DESC LIMIT 1 FOR UPDATE
                         `, [totalFijador, idTiendaLocal]); 
                         
-                        if (fijadorRes.rows.length === 0) throw new Error(`🚫 FALTA FIJADOR: Se necesitan ${totalFijador.toFixed(2)}g en los estantes de esta sucursal.`);
-                        await validarYDescontarEstante(client, fijadorRes.rows[0].id, totalFijador, "Fijador", idTiendaLocal, confirmacion_almacen);
+                        if (fijadorRes.rows.length === 0) throw new Error(`🚫 FALTA FIJADOR: Se necesitan ${totalFijador.toFixed(2)}g en esta sucursal.`);
+                        await validarYDescontarEstante(client, fijadorRes.rows[0].id, totalFijador, "Fijador", idTiendaLocal, confirmacion_almacen, vendedorFinalId);
                     }
 
-                    // D. Envase
+                    // D. Envase / Frasco
                     if (!item.es_recarga) {
-                        const volumen = parseInt(f.volumen_total);
                         const envaseRes = await client.query(`
                             SELECT id, nombre FROM productos 
-                            WHERE (categoria = 'Envases' OR categoria = 'Frascos')
-                            AND (nombre ILIKE $1 OR contenido_gramos = $2)
-                            AND activo = true 
-                            AND stock_estante >= $3 
-                            AND tienda_id = $4
-                            ORDER BY stock_estante DESC LIMIT 1 FOR UPDATE
+                            WHERE (categoria = 'Envases' OR categoria = 'Frascos' OR nombre ILIKE '%ENVASE%' OR nombre ILIKE '%FRASCO%')
+                              AND (nombre ILIKE $1 OR contenido_gramos = $2)
+                              AND activo = true 
+                              AND (stock_estante + stock_unidades) >= $3 
+                              AND tienda_id = $4
+                            ORDER BY (stock_estante + stock_unidades) DESC LIMIT 1 FOR UPDATE
                         `, [`%${volumen}%`, volumen, cant, idTiendaLocal]);
 
                         if (envaseRes.rows.length === 0) throw new Error(`🚫 FALTA FRASCO: No hay envases de ${volumen}ml disponibles en esta sucursal.`);
-                        await validarYDescontarEstante(client, envaseRes.rows[0].id, cant, `Frasco ${volumen}ml`, idTiendaLocal, confirmacion_almacen);
-                    } else {
-                        console.log(`♻️ RECARGA DETECTADA: Omitiendo descuento de envase para formato de ${f.volumen_total}ml.`);
+                        await validarYDescontarEstante(client, envaseRes.rows[0].id, cant, `Frasco ${volumen}ml`, idTiendaLocal, confirmacion_almacen, vendedorFinalId);
                     }
 
                 } else {
-                    // --- VENTA DIRECTA / MANUAL ---
-                    await validarYDescontarEstante(client, cleanItemId, cant, item.descripcion || "Producto", idTiendaLocal, confirmacion_almacen);
+                    // =========================================================================
+                    // 📦 VENTA DIRECTA O PERFUME TERMINADO (PT)
+                    // =========================================================================
+                    await validarYDescontarEstante(
+                        client, 
+                        cleanItemId, 
+                        cant, 
+                        item.descripcion || prodActual.nombre, 
+                        idTiendaLocal, 
+                        confirmacion_almacen,
+                        vendedorFinalId
+                    );
                 }
             }
         }
@@ -1708,15 +1761,7 @@ const crearVenta = async (req, res) => {
 
     } catch (error) {
         await client.query('ROLLBACK');
-        
-        if (error.message.startsWith('ALERTA_ALMACEN|')) {
-            return res.status(409).json({ 
-                error: 'ALERTA_ALMACEN', 
-                mensaje: error.message.split('|')[1] 
-            });
-        }
-
-        console.error("Error venta:", error);
+        console.error("Error en procesamiento de venta:", error);
         res.status(400).json({ error: error.message });
     } finally {
         client.release();

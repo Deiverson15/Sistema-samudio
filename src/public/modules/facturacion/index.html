@@ -5,21 +5,21 @@
         <div class="flex flex-col border-b border-neutral-300 bg-neutral-100 z-10">
             
             <div class="flex px-6 pt-4 gap-6 bg-white border-b border-neutral-300">
-                <button onclick="cambiarModo('productos')" id="tabProductos" class="pb-4 border-b-4 border-neutral-950 font-black text-neutral-950 text-[10px] uppercase tracking-widest transition-colors flex items-center gap-3 px-2 select-none cursor-pointer">
-                    <i class="fa-solid fa-box-open text-neutral-500"></i> 
-                    <span>Productos</span>
-                </button>
-                <button onclick="cambiarModo('esencias')" id="tabEsencias" class="pb-4 border-b-4 border-transparent text-neutral-400 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center gap-3 px-2 select-none cursor-pointer hover:text-neutral-950 hover:border-neutral-300">
-                    <i class="fa-solid fa-flask"></i> 
-                    <span>Preparar Medida</span>
-                </button>
+                
                 <button onclick="cambiarModo('recargas')" id="tabRecargas" class="pb-4 border-b-4 border-transparent text-neutral-400 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center gap-3 px-2 select-none cursor-pointer hover:text-neutral-950 hover:border-neutral-300">
                     <i class="fa-solid fa-recycle"></i> 
                     <span>Recargas</span>
                 </button>
-                <button id="btn-modo-insumos" onclick="cambiarModo('insumos')" class="px-6 py-3 rounded-lg font-bold text-xs uppercase tracking-wider transition-all text-slate-500 bg-slate-100 hover:bg-slate-200">
-                    <i class="fa-solid fa-box-open mr-2"></i>Insumos
-                </button>
+
+                <button onclick="cambiarModo('productos')" id="tabProductos" class="pb-4 border-b-4 border-neutral-950 font-black text-neutral-950 text-[10px] uppercase tracking-widest transition-colors flex items-center gap-3 px-2 select-none cursor-pointer">
+        <i class="fa-solid fa-box-open text-neutral-500"></i> 
+        <span>Catálogo General</span>
+    </button>
+    <button onclick="cambiarModo('esencias')" id="tabEsencias" class="pb-4 border-b-4 border-transparent text-neutral-400 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center gap-3 px-2 select-none cursor-pointer hover:text-neutral-950">
+        <i class="fa-solid fa-flask"></i> 
+        <span>Perfumería y Preparados</span>
+    </button>
+                
             </div>
         
             <div class="p-6 flex flex-col md:flex-row gap-4 items-center justify-between bg-white">
