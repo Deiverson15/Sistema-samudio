@@ -9,3 +9,11 @@ prueba
 /prueba
 
 prueba/
+
+node_modules/
+.env
+.env.local
+.env.development
+.env.production
+
+.env.templates
