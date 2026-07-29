@@ -30,7 +30,7 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
     if (prodRes.rows.length === 0) throw new Error(`El producto ${nombreReferencia} no existe en la tienda ID ${tId}.`);
     const prod = prodRes.rows[0];
 
-    const ES_ALMACEN = (tId === 3); 
+    const ES_ALMACEN = (tId === 1); 
 
     // =========================================================================
     // 🚀 CASO A: ALMACÉN PRINCIPAL (SUCURSAL ID 3) -> DESCUENTO DIRECTO EN UNIDADES
