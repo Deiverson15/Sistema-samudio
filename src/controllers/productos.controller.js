@@ -1404,24 +1404,23 @@ const distribuirProducto = async (req, res) => {
 };
 
 const EMPRESA_NOMBRE = 'PERFUMIX C.A.';
-const EMPRESA_RIF = 'J-500deiverosn0-0';
+const EMPRESA_RIF = 'J-50000000-0';
 
 const exportarExcel = async (req, res) => {
-
     console.log("--- [DEBUG] Entrando a exportarExcel de productos.controller ---");
     console.log("Filtro recibido:", req.query.filtro);
 
     try {
         const { filtro, start, end } = req.query; // Extraemos start y end de la URL
         
-        // 🛡️ DETECCIÓN INTELIGENTE DE SUCURSAL (Sincronizado con tu pantalla)
+        // 🛡️ DETECCIÓN INTELIGENTE DE SUCURSAL
         let idTiendaLocal = 1;
         if (req.user && req.user.tienda_id !== undefined && req.user.tienda_id !== null && req.user.tienda_id !== '') {
             idTiendaLocal = parseInt(req.user.tienda_id, 10);
         }
 
         const rolUsuario = req.user && req.user.rol ? req.user.rol.toLowerCase().trim() : '';
-        const esUsuarioMaestro = rolUsuario === 'developer' || rolUsuario === 'dev' || rolUsuario === 'admin' || rolUsuario === 'administrador';
+        const esUsuarioMaestro = ['developer', 'dev', 'admin', 'administrador'].includes(rolUsuario);
 
         if (esUsuarioMaestro) {
             const tiendaDeteccionId = req.query.tienda_id || req.query.tienda || req.query.id_tienda || req.query.idTienda || req.query.sucursal ||
@@ -1446,9 +1445,9 @@ const exportarExcel = async (req, res) => {
         const fechaFinFmt = end ? new Date(end + 'T00:00:00').toLocaleDateString('es-VE') : 'N/A';
         const textoFechas = (start && end) ? `Período: ${fechaInicioFmt} al ${fechaFinFmt}` : `Fecha de Emisión: ${new Date().toLocaleDateString('es-VE')}`;
 
-        // ---------------------------------------------------------
-        // HOJA 1: HISTORIAL DE MOVIMIENTOS (Diseño Ley ISLR + AutoFiltro)
-        // ---------------------------------------------------------
+        // -------------------------------------------------------------------------
+        // HOJA 1: INFO. INVENTARIO CONSOLIDADO (1 FILA POR PRODUCTO - LEY ISLR 177)
+        // -------------------------------------------------------------------------
         if (filtro === 'todo' || filtro === 'inventario') {
             const sheetInv = workbook.addWorksheet('Movimiento de Inventario');
 
@@ -1461,22 +1460,22 @@ const exportarExcel = async (req, res) => {
 
             // 2. Encabezados Agrupados (Fila 6)
             const rowCategorias = sheetInv.addRow([
-                'Oper Nº', 'Fecha', 'Referencia', 'Descripción', 'Departamento', 'Sección', 'Marca', 'Costo Unitario',
+                'Código', 'Referencia', 'Descripción', 'Departamento', 'Sección', 'Marca', 'Costo Unitario',
                 'EXISTENCIA INICIAL', '', 'ENTRADAS', '', 'SALIDAS', '', 'AUTOCONSUMO', '', 'INVENTARIO ACTUAL', ''
             ]);
 
             // Combinar celdas HORIZONTALES (Para Cantidad y Monto)
-            sheetInv.mergeCells('I6:J6'); sheetInv.mergeCells('K6:L6');
-            sheetInv.mergeCells('M6:N6'); sheetInv.mergeCells('O6:P6'); sheetInv.mergeCells('Q6:R6');
+            sheetInv.mergeCells('H6:I6'); sheetInv.mergeCells('J6:K6');
+            sheetInv.mergeCells('L6:M6'); sheetInv.mergeCells('N6:O6'); sheetInv.mergeCells('P6:Q6');
 
             // 3. Encabezados Detallados (Fila 7)
             const rowDetalle = sheetInv.addRow([
-                '', '', '', '', '', '', '', '',
+                '', '', '', '', '', '', '',
                 'Cant', 'Monto', 'Cant', 'Monto', 'Cant', 'Monto', 'Cant', 'Monto', 'Cant', 'Monto'
             ]);
 
             // Combinar celdas VERTICALES
-            const columnasVerticales = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+            const columnasVerticales = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
             columnasVerticales.forEach(col => {
                 sheetInv.mergeCells(`${col}6:${col}7`);
             });
@@ -1488,149 +1487,253 @@ const exportarExcel = async (req, res) => {
                 row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
             });
 
-            // 4. Lógica de Consulta: Añadimos categoría y unidad_medida a la consulta SQL
-            let querySQL = `
-                SELECT h.id, h.fecha, p.codigo, p.nombre, p.marca, p.costo, h.tipo_movimiento, h.cantidad, p.categoria, p.unidad_medida, p.es_producto_terminado
-                FROM historial_movimientos h
-                JOIN productos p ON h.producto_id = p.id
-                WHERE p.tienda_id = $1
+            // 4. Lógica de Consulta Agregada: Consolida las Entradas, Salidas y Mermas por cada producto activo
+            let queryConsolidado = `
+                SELECT 
+                    p.id, 
+                    COALESCE(p.codigo, 'S/C') as codigo, 
+                    p.nombre, 
+                    p.marca, 
+                    p.costo, 
+                    p.categoria, 
+                    p.unidad_medida,
+                    p.es_producto_terminado,
+                    p.stock_unidades,
+                    p.stock_estante,
+                    COALESCE(SUM(CASE WHEN h.tipo_movimiento = 'ENTRADA' THEN h.cantidad ELSE 0 END), 0) as total_entradas,
+                    COALESCE(SUM(CASE WHEN h.tipo_movimiento = 'SALIDA' AND (h.motivo NOT ILIKE '%MERMA%' AND h.motivo NOT ILIKE '%CONSUMO%' AND h.motivo NOT ILIKE '%ROTURA%' AND h.motivo NOT ILIKE '%TESTER%' AND h.motivo NOT ILIKE '%DAÑO%') THEN h.cantidad ELSE 0 END), 0) as total_salidas,
+                    COALESCE(SUM(CASE WHEN h.tipo_movimiento IN ('CONSUMO_INT', 'MERMA', 'TRASLADO', 'AJUSTE_SALIDA') OR (h.tipo_movimiento = 'SALIDA' AND (h.motivo ILIKE '%MERMA%' OR h.motivo ILIKE '%CONSUMO%' OR h.motivo ILIKE '%ROTURA%' OR h.motivo ILIKE '%TESTER%' OR h.motivo ILIKE '%DAÑO%')) THEN h.cantidad ELSE 0 END), 0) as total_autoconsumo
+                FROM productos p
+                LEFT JOIN historial_movimientos h ON h.producto_id = p.id ${start && end ? 'AND h.fecha::date BETWEEN $2 AND $3' : ''}
+                WHERE p.tienda_id = $1 AND p.activo = true
             `;
-            let paramsSQL = [idTiendaLocal];
-            let paramIndex = 2;
 
+            let paramsConsolidado = [idTiendaLocal];
             if (start && end) {
-                querySQL += ` AND h.fecha::date BETWEEN $${paramIndex} AND $${paramIndex + 1}`;
-                paramsSQL.push(start, end);
-                paramIndex += 2;
+                paramsConsolidado.push(start, end);
             }
 
             // 🛡️ Filtro de Categoría (PT, Insumos, Frascos...)
             const catQuery = req.query.categoria;
             if (catQuery && catQuery !== 'todos') {
+                const paramIdx = paramsConsolidado.length + 1;
                 const catUpper = catQuery.toUpperCase();
                 if (catUpper === 'PT' || catUpper === 'TERMINADOS' || catUpper === 'COMPLETO') {
-                    querySQL += ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
+                    queryConsolidado += ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
                 } else if (catUpper === 'INSUMOS' || catUpper === 'MATERIA_PRIMA') {
-                    querySQL += ` AND (p.categoria ILIKE '%esencia%' OR p.categoria ILIKE '%fijador%' OR p.categoria ILIKE '%alcohol%' OR p.categoria ILIKE '%frasco%' OR p.categoria ILIKE '%envase%')`;
+                    queryConsolidado += ` AND (p.categoria ILIKE '%esencia%' OR p.categoria ILIKE '%fijador%' OR p.categoria ILIKE '%alcohol%' OR p.categoria ILIKE '%frasco%' OR p.categoria ILIKE '%envase%')`;
                 } else if (catUpper === 'FRASCOS' || catUpper === 'FRASCO') {
-                    querySQL += ` AND (p.categoria ILIKE '%frasco%' OR p.categoria ILIKE '%envase%')`;
+                    queryConsolidado += ` AND (p.categoria ILIKE '%frasco%' OR p.categoria ILIKE '%envase%')`;
                 } else {
-                    querySQL += ` AND p.categoria ILIKE $${paramIndex}`;
-                    paramsSQL.push(`%${catQuery.trim()}%`);
-                    paramIndex++;
+                    queryConsolidado += ` AND p.categoria ILIKE $${paramIdx}`;
+                    paramsConsolidado.push(`%${catQuery.trim()}%`);
                 }
             }
-            
-            querySQL += ` ORDER BY h.fecha ASC`;
 
-            const resInv = await client.query(querySQL, paramsSQL);
+            queryConsolidado += ` GROUP BY p.id, p.codigo, p.nombre, p.marca, p.costo, p.categoria, p.unidad_medida, p.es_producto_terminado, p.stock_unidades, p.stock_estante ORDER BY p.nombre ASC`;
 
-            // ⚡ Cardex progresivo en memoria por producto
-            const saldoProductos = {};
+            const resConsolidado = await client.query(queryConsolidado, paramsConsolidado);
 
-            // 5. Rellenar con Información real
-            resInv.rows.forEach(m => {
-                let fila = new Array(18).fill(0);
-                
-                const prodCodigo = m.codigo || 'S/N';
-                if (!saldoProductos[prodCodigo]) {
-                    saldoProductos[prodCodigo] = { cant: 0, monto: 0 };
-                }
-
-                const costoUnit = parseFloat(m.costo || 0);
-                let cant = parseFloat(m.cantidad || 0);
-                
-                // EVALUACIÓN PARA FORMATO 0.000
-                const uni = (m.unidad_medida || '').toUpperCase();
-                const cat = (m.categoria || '').toUpperCase();
+            // 5. Rellenar con Información consolidada (1 Fila por Producto)
+            resConsolidado.rows.forEach(p => {
+                const costoUnit = parseFloat(p.costo || 0);
+                const uni = (p.unidad_medida || '').toUpperCase();
+                const cat = (p.categoria || '').toUpperCase();
                 const isLiquid = uni === 'GRAMOS' || uni === 'ML' || cat.includes('ESENCIA') || cat.includes('FIJADOR') || cat.includes('ALCOHOL');
 
-                // LÓGICA MATEMÁTICA: Si es líquido/gramos, se divide entre 1000
-                if (isLiquid) {
-                    cant = cant / 1000;
-                }
-
-                const montoMovimiento = cant * costoUnit;
-
-                // Existencia Inicial (Antes de procesar la fila actual)
-                fila[8] = saldoProductos[prodCodigo].cant;
-                fila[9] = saldoProductos[prodCodigo].monto;
-
-                fila[0] = m.id;
-                fila[1] = new Date(m.fecha).toLocaleDateString();
-                fila[2] = prodCodigo;
-                fila[3] = m.nombre;
+                const divisor = isLiquid ? 1000 : 1;
+                const ent = parseFloat(p.total_entradas) / divisor;
+                const sal = parseFloat(p.total_salidas) / divisor;
+                const auto = parseFloat(p.total_autoconsumo) / divisor;
                 
-                // 🔥 LÓGICA DE CLASIFICACIÓN INTELIGENTE
+                // Stock total actual en sistema
+                const stockActual = (parseFloat(p.stock_unidades) + parseFloat(p.stock_estante)) / divisor;
+                
+                // Reconstrucción matemática de Existencia Inicial
+                const stockInicial = Math.max(0, stockActual - ent + sal + auto);
+
+                let dpto = 'GENERAL', seccion = 'OTROS';
                 if (cat.includes('PERFUME')) {
-                    fila[4] = 'VENTAS';
-                    fila[5] = 'PERFUMES TERMINADOS';
-                } 
-                else if (['ESENCIA', 'ALCOHOL', 'FIJADOR', 'FRASCO', 'ENVASE'].some(term => cat.includes(term))) {
-                    fila[4] = 'PRODUCCIÓN';
-                    fila[5] = 'MATERIA PRIMA';
-                } 
-                else {
-                    fila[4] = 'GENERAL';
-                    fila[5] = 'OTROS';
-                }
-                
-                fila[6] = m.marca || 'N/A';
-                fila[7] = costoUnit;
-                
-                // Procesamos la variación del Kardex según el tipo de movimiento
-                if (m.tipo_movimiento === 'ENTRADA') { 
-                    fila[10] = cant; 
-                    fila[11] = montoMovimiento;
-                    saldoProductos[prodCodigo].cant += cant;
-                }
-                else if (m.tipo_movimiento === 'SALIDA') { 
-                    fila[12] = cant; 
-                    fila[13] = montoMovimiento;
-                    saldoProductos[prodCodigo].cant = Math.max(0, saldoProductos[prodCodigo].cant - cant);
-                }
-                else if (m.tipo_movimiento === 'CONSUMO_INT' || m.tipo_movimiento === 'TRASLADO') { 
-                    fila[14] = cant; 
-                    fila[15] = montoMovimiento;
-                    saldoProductos[prodCodigo].cant = Math.max(0, saldoProductos[prodCodigo].cant - cant);
+                    dpto = 'VENTAS';
+                    seccion = 'PERFUMES TERMINADOS';
+                } else if (['ESENCIA', 'ALCOHOL', 'FIJADOR', 'FRASCO', 'ENVASE'].some(term => cat.includes(term))) {
+                    dpto = 'PRODUCCIÓN';
+                    seccion = 'MATERIA PRIMA';
                 }
 
-                saldoProductos[prodCodigo].monto = saldoProductos[prodCodigo].cant * costoUnit;
+                const fila = sheetInv.addRow([
+                    p.id,
+                    p.codigo,
+                    p.nombre,
+                    dpto,
+                    seccion,
+                    p.marca || 'N/A',
+                    costoUnit,
+                    stockInicial,
+                    stockInicial * costoUnit,
+                    ent,
+                    ent * costoUnit,
+                    sal,
+                    sal * costoUnit,
+                    auto,
+                    auto * costoUnit,
+                    stockActual,
+                    stockActual * costoUnit
+                ]);
 
-                // Inventario Actual Resultante
-                fila[16] = saldoProductos[prodCodigo].cant;
-                fila[17] = saldoProductos[prodCodigo].monto;
-
-                const rowAdded = sheetInv.addRow(fila);
-                
                 // FORMATOS VISUALES PARA EXCEL
                 const fmtStock = isLiquid ? '#,##0.000' : '#,##0';
                 
-                rowAdded.getCell(8).numFmt = '"$"#,##0.00'; // Costo Unitario
+                fila.getCell(7).numFmt = '"$"#,##0.00'; // Costo Unitario
                 
-                rowAdded.getCell(9).numFmt = fmtStock;   // Cantidad Inicial
-                rowAdded.getCell(10).numFmt = '"$"#,##0.00';
+                fila.getCell(8).numFmt = fmtStock;   // Cantidad Inicial
+                fila.getCell(9).numFmt = '"$"#,##0.00';
                 
-                rowAdded.getCell(11).numFmt = fmtStock;  // Cantidad Entrada
-                rowAdded.getCell(12).numFmt = '"$"#,##0.00';
+                fila.getCell(10).numFmt = fmtStock;  // Cantidad Entrada
+                fila.getCell(11).numFmt = '"$"#,##0.00';
                 
-                rowAdded.getCell(13).numFmt = fmtStock;  // Cantidad Salida
-                rowAdded.getCell(14).numFmt = '"$"#,##0.00';
+                fila.getCell(12).numFmt = fmtStock;  // Cantidad Salida
+                fila.getCell(13).numFmt = '"$"#,##0.00';
                 
-                rowAdded.getCell(15).numFmt = fmtStock;  // Cantidad Autoconsumo
-                rowAdded.getCell(16).numFmt = '"$"#,##0.00';
+                fila.getCell(14).numFmt = fmtStock;  // Cantidad Autoconsumo
+                fila.getCell(15).numFmt = '"$"#,##0.00';
                 
-                rowAdded.getCell(17).numFmt = fmtStock;  // Cantidad Actual
-                rowAdded.getCell(18).numFmt = '"$"#,##0.00';
+                fila.getCell(16).numFmt = fmtStock;  // Cantidad Actual
+                fila.getCell(17).numFmt = '"$"#,##0.00';
             });
 
             const ultimaFilaNum = sheetInv.lastRow ? sheetInv.lastRow.number : 7;
             sheetInv.autoFilter = {
                 from: { row: 6, column: 1 },
-                to: { row: ultimaFilaNum, column: 18 }
+                to: { row: ultimaFilaNum, column: 17 }
             };
 
-            sheetInv.getColumn('D').width = 35; 
+            sheetInv.getColumn('C').width = 35; 
+        }
+
+        // -------------------------------------------------------------------------
+        // HOJA ADICIONAL: TRAZABILIDAD DETALLADA / KARDEX MOVIEMIENTO A MOVIMIENTO
+        // -------------------------------------------------------------------------
+        if (filtro === 'todo' || filtro === 'trazabilidad' || filtro === 'kardex') {
+            const sheetTraz = workbook.addWorksheet('Trazabilidad por Referencia');
+
+            sheetTraz.addRow([EMPRESA_NOMBRE]).font = { bold: true, size: 12 };
+            sheetTraz.addRow([`R.I.F.: ${EMPRESA_RIF}`]).font = { bold: true, size: 10 };
+            sheetTraz.addRow([textoFechas]).font = { bold: true, size: 9 };
+            sheetTraz.addRow(['Reporte de Trazabilidad y Cardex Progresivo de Movimientos']).font = { bold: true, size: 11 };
+            sheetTraz.addRow([]);
+
+            const rowCatTraz = sheetTraz.addRow([
+                'Oper Nº', 'Fecha', 'Referencia', 'Descripción', 'Departamento', 'Sección', 'Marca', 'Costo Unitario',
+                'EXISTENCIA INICIAL', '', 'ENTRADAS', '', 'SALIDAS', '', 'AUTOCONSUMO', '', 'INVENTARIO ACTUAL', '', 'MOTIVO / EVENTO'
+            ]);
+
+            sheetTraz.mergeCells('I6:J6'); sheetTraz.mergeCells('K6:L6');
+            sheetTraz.mergeCells('M6:N6'); sheetTraz.mergeCells('O6:P6'); sheetTraz.mergeCells('Q6:R6');
+
+            const rowDetTraz = sheetTraz.addRow([
+                '', '', '', '', '', '', '', '',
+                'Cant', 'Monto', 'Cant', 'Monto', 'Cant', 'Monto', 'Cant', 'Monto', 'Cant', 'Monto', ''
+            ]);
+
+            ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'S'].forEach(col => sheetTraz.mergeCells(`${col}6:${col}7`));
+
+            [rowCatTraz, rowDetTraz].forEach(row => {
+                row.font = { bold: true };
+                row.alignment = { horizontal: 'center', vertical: 'middle' };
+                row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+            });
+
+            let queryTraz = `
+                SELECT h.id, h.fecha, p.codigo, p.nombre, p.marca, p.costo, h.tipo_movimiento, h.cantidad, h.motivo, p.categoria, p.unidad_medida
+                FROM historial_movimientos h
+                JOIN productos p ON h.producto_id = p.id
+                WHERE p.tienda_id = $1
+            `;
+            let paramsTraz = [idTiendaLocal];
+            let pIdxTraz = 2;
+
+            if (start && end) {
+                queryTraz += ` AND h.fecha::date BETWEEN $${pIdxTraz} AND $${pIdxTraz + 1}`;
+                paramsTraz.push(start, end);
+                pIdxTraz += 2;
+            }
+
+            const refFilter = req.query.producto || req.query.referencia;
+            if (refFilter) {
+                queryTraz += ` AND (p.codigo ILIKE $${pIdxTraz} OR p.nombre ILIKE $${pIdxTraz})`;
+                paramsTraz.push(`%${refFilter}%`);
+            }
+
+            queryTraz += ` ORDER BY p.codigo ASC, h.fecha ASC`;
+
+            const resTraz = await client.query(queryTraz, paramsTraz);
+            const saldoProgresivo = {};
+
+            resTraz.rows.forEach(m => {
+                let fila = new Array(19).fill(0);
+                const cod = m.codigo || 'S/N';
+                if (!saldoProgresivo[cod]) saldoProgresivo[cod] = { cant: 0, monto: 0 };
+
+                const costoUnit = parseFloat(m.costo || 0);
+                let cant = parseFloat(m.cantidad || 0);
+                const uni = (m.unidad_medida || '').toUpperCase();
+                const cat = (m.categoria || '').toUpperCase();
+                const isLiquid = uni === 'GRAMOS' || uni === 'ML' || cat.includes('ESENCIA') || cat.includes('FIJADOR') || cat.includes('ALCOHOL');
+
+                if (isLiquid) cant = cant / 1000;
+                const montoMov = cant * costoUnit;
+
+                fila[8] = saldoProgresivo[cod].cant;
+                fila[9] = saldoProgresivo[cod].monto;
+
+                fila[0] = m.id;
+                fila[1] = new Date(m.fecha).toLocaleDateString('es-VE');
+                fila[2] = cod;
+                fila[3] = m.nombre;
+
+                if (cat.includes('PERFUME')) { fila[4] = 'VENTAS'; fila[5] = 'PERFUMES TERMINADOS'; }
+                else if (['ESENCIA', 'ALCOHOL', 'FIJADOR', 'FRASCO', 'ENVASE'].some(t => cat.includes(t))) { fila[4] = 'PRODUCCIÓN'; fila[5] = 'MATERIA PRIMA'; }
+                else { fila[4] = 'GENERAL'; fila[5] = 'OTROS'; }
+
+                fila[6] = m.marca || 'N/A';
+                fila[7] = costoUnit;
+
+                const motivoUpper = (m.motivo || '').toUpperCase();
+                const esMermaOConsumo = motivoUpper.includes('MERMA') || motivoUpper.includes('CONSUMO') || motivoUpper.includes('ROTURA') || motivoUpper.includes('DAÑO') || motivoUpper.includes('TESTER');
+
+                if (m.tipo_movimiento === 'ENTRADA') {
+                    fila[10] = cant; fila[11] = montoMov;
+                    saldoProgresivo[cod].cant += cant;
+                } else if (m.tipo_movimiento === 'SALIDA') {
+                    if (esMermaOConsumo) {
+                        fila[14] = cant; fila[15] = montoMov;
+                    } else {
+                        fila[12] = cant; fila[13] = montoMov;
+                    }
+                    saldoProgresivo[cod].cant = Math.max(0, saldoProgresivo[cod].cant - cant);
+                } else if (['CONSUMO_INT', 'MERMA', 'TRASLADO', 'AJUSTE_SALIDA'].includes(m.tipo_movimiento)) {
+                    fila[14] = cant; fila[15] = montoMov;
+                    saldoProgresivo[cod].cant = Math.max(0, saldoProgresivo[cod].cant - cant);
+                }
+
+                saldoProgresivo[cod].monto = saldoProgresivo[cod].cant * costoUnit;
+                fila[16] = saldoProgresivo[cod].cant;
+                fila[17] = saldoProgresivo[cod].monto;
+                fila[18] = m.motivo || 'N/A';
+
+                const rowAdded = sheetTraz.addRow(fila);
+                const fmtStock = isLiquid ? '#,##0.000' : '#,##0';
+
+                rowAdded.getCell(8).numFmt = '"$"#,##0.00';
+                [9, 11, 13, 15, 17].forEach(c => rowAdded.getCell(c).numFmt = fmtStock);
+                [10, 12, 14, 16, 18].forEach(c => rowAdded.getCell(c).numFmt = '"$"#,##0.00');
+            });
+
+            const ultFilaTraz = sheetTraz.lastRow ? sheetTraz.lastRow.number : 7;
+            sheetTraz.autoFilter = { from: { row: 6, column: 1 }, to: { row: ultFilaTraz, column: 19 } };
+            sheetTraz.getColumn('D').width = 35;
+            sheetTraz.getColumn('S').width = 40;
         }
 
         // ---------------------------------------------------------
@@ -1678,7 +1781,7 @@ const exportarExcel = async (req, res) => {
         }
 
         // ---------------------------------------------------------
-        // HOJA 3: HISTORIAL DE VENTAS (Con Totales Bs y USD + AutoFiltro)
+        // HOJA 3: HISTORIAL DE VENTAS
         // ---------------------------------------------------------
         if (filtro === 'todo' || filtro === 'ventas') {
             const sheetVentas = workbook.addWorksheet('Historial Ventas');
@@ -1747,7 +1850,7 @@ const exportarExcel = async (req, res) => {
         }
 
         // ---------------------------------------------------------
-        // HOJA 4: LOTES (Vencimientos + AutoFiltro)
+        // HOJA 4: LOTES Y VENCIMIENTOS
         // ---------------------------------------------------------
         if (filtro === 'todo' || filtro === 'lotes') {
             const sheetLotes = workbook.addWorksheet('Lotes y Vencimientos');
@@ -1800,7 +1903,7 @@ const exportarExcel = async (req, res) => {
         }
 
         // ---------------------------------------------------------
-        // HOJA 5: MERMAS Y SALIDAS (AutoFiltro)
+        // HOJA 5: MERMAS Y SALIDAS
         // ---------------------------------------------------------
         if (filtro === 'todo' || filtro === 'mermas') {
             const sheetMermas = workbook.addWorksheet('Mermas y Salidas');
@@ -1814,7 +1917,7 @@ const exportarExcel = async (req, res) => {
             const resMermas = await client.query(`
                 SELECT h.fecha, p.nombre, h.cantidad, h.motivo, h.tipo_movimiento
                 FROM historial_movimientos h JOIN productos p ON h.producto_id = p.id
-                WHERE (h.tipo_movimiento = 'SALIDA' OR h.motivo ILIKE '%MERMA%') AND p.tienda_id = $1
+                WHERE (h.tipo_movimiento IN ('MERMA', 'CONSUMO_INT') OR h.motivo ILIKE '%MERMA%' OR h.motivo ILIKE '%ROTURA%') AND p.tienda_id = $1
                 ORDER BY h.fecha DESC
             `, [idTiendaLocal]);
 

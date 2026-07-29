@@ -11,7 +11,7 @@ const getTasaDolar = async (req, res) => {
     } 
 };
 
-// 2. CREAR AJUSTE DE INVENTARIO (Blindado por Sucursal)
+// CREAR AJUSTE DE INVENTARIO (Blindado por Sucursal y Clasificación Contable)
 const crearAjuste = async (req, res) => {     
     // Recibimos la nueva variable 'ubicacion' (DEPOSITO o ESTANTE) y 'foto_evidencia'
     const { producto_id, tipo, cantidad, motivo, lote_id, codigo_manual, ubicacion, foto_evidencia } = req.body;          
@@ -30,7 +30,10 @@ const crearAjuste = async (req, res) => {
         await client.query('BEGIN');         
         
         // 🔒 Seleccionamos el producto confirmando que pertenezca a la sucursal activa
-        const prodRes = await client.query('SELECT nombre, stock_unidades, stock_estante, unidad_medida, contenido_gramos, costo FROM productos WHERE id = $1 AND tienda_id = $2 FOR UPDATE', [producto_id, tiendaId]);         
+        const prodRes = await client.query(
+            'SELECT nombre, categoria, stock_unidades, stock_estante, unidad_medida, contenido_gramos, costo FROM productos WHERE id = $1 AND tienda_id = $2 FOR UPDATE', 
+            [producto_id, tiendaId]
+        );         
         if (prodRes.rows.length === 0) throw new Error("Producto no existe o no pertenece a su sucursal.");                  
         
         const producto = prodRes.rows[0];         
@@ -110,7 +113,8 @@ const crearAjuste = async (req, res) => {
         // =========================================================
         } else if (ubicacion === 'ESTANTE') {
             // Valoración para mostrador: Si son esencias/materia prima calculamos el costo por gramo/ml real
-            const esMateriaPrima = ['ALCOHOL', 'ESENCIAS', 'FIJADOR'].includes((producto.categoria || '').toUpperCase()) || capacidad > 1;
+            const catUpper = (producto.categoria || '').toUpperCase();
+            const esMateriaPrima = ['ALCOHOL', 'ESENCIAS', 'FIJADOR', 'MATERIA PRIMA'].some(c => catUpper.includes(c)) || capacidad > 1;
             const costoPorGramoUnidad = esMateriaPrima ? (costoUnitarioHistorico / capacidad) : costoUnitarioHistorico;
             costoImpactado = cant * costoPorGramoUnidad;
 
@@ -157,29 +161,41 @@ const crearAjuste = async (req, res) => {
             // Actualizar inventario de estante
             await client.query('UPDATE productos SET stock_estante = $1 WHERE id = $2 AND tienda_id = $3', [nuevoStockEstante, producto_id, tiendaId]);         
         }
+
+        // =========================================================
+        // DIVERSIFICACIÓN CONTABLE: SEPARACIÓN DE MERMA Y CONSUMO
+        // =========================================================
+        const motivoUpper = (motivo || '').toUpperCase();
+        let tipoMovimiento = `AJUSTE_${tipo}`;
+
+        if (tipo === 'SALIDA') {
+            const esMerma = motivoUpper.includes('MERMA') || motivoUpper.includes('ROTURA') || motivoUpper.includes('DAÑO') || motivoUpper.includes('VENCIMIENTO') || motivoUpper.includes('DERRAME');
+            tipoMovimiento = esMerma ? 'MERMA' : 'CONSUMO_INT';
+        }
         
         const valorFinancieroTexto = `${tipo === 'SALIDA' ? '-' : '+'}$${costoImpactado.toFixed(2)} USD`;
         const fotoTextoLog = foto_evidencia ? ` | Evidencia: ${foto_evidencia}` : '';
 
         // 🔒 Historial de Movimientos Unificado
         await client.query(             
-            `INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, tienda_id, fecha)             
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,             
+            `INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, stock_anterior, stock_nuevo, motivo, fecha, tienda_id, usuario_id)             
+            VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)`,             
             [
                 producto_id, 
-                `AJUSTE_${tipo}`, 
+                tipoMovimiento, 
                 cant, 
                 ubicacion === 'DEPOSITO' ? producto.stock_unidades : producto.stock_estante, 
                 ubicacion === 'DEPOSITO' ? nuevoStockGlobal : nuevoStockEstante, 
                 `AJUSTE ${ubicacion} (${motivo}). Impacto Financiero: ${valorFinancieroTexto}${detalleLote}${fotoTextoLog}`, 
-                tiendaId
+                tiendaId,
+                usuarioId
             ]
         );         
         
         // 🔒 Auditoría General Corporativa con Valoración Financiera
         await client.query(             
             "INSERT INTO auditoria (usuario_id, accion, detalle, fecha) VALUES ($1, 'AJUSTE', $2, NOW())",              
-            [usuarioId, `Tienda ${tiendaId} - Ajuste de ${tipo} en ${ubicacion} para ${producto.nombre}. Cantidad: ${cant}${unidad}. Costo Impactado: ${valorFinancieroTexto}.${fotoTextoLog}`]         
+            [usuarioId, `Tienda ${tiendaId} - Ajuste de ${tipo} (${tipoMovimiento}) en ${ubicacion} para ${producto.nombre}. Cantidad: ${cant}${unidad}. Costo Impactado: ${valorFinancieroTexto}.${fotoTextoLog}`]         
         );         
         
         await client.query('COMMIT');         

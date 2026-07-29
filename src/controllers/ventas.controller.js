@@ -769,27 +769,53 @@ const exportarReporteGeneral = async (req, res) => {
         }
 
         // =========================================================
-        // REPORTE E: CONTROL DE MERMAS Y TESTERS (CON AUTOFILTRO)
+        // REPORTE E: CONTROL DE MERMAS Y TESTERS (OPTIMIZADO)
         // =========================================================
         if (filtro === 'mermas') {
             const sheet = workbook.addWorksheet('Mermas y Consumos');
             agregarMembreteCorporativo(sheet, 'Control de Mermas y Pérdidas Físicas');
-
+        
             const rowHeaders = sheet.addRow(['FECHA', 'PRODUCTO', 'CANTIDAD', 'COSTO UNIT ($)', 'PÉRDIDA NETA ($)', 'MOTIVO / EVENTO', 'OPERADOR']);
             rowHeaders.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             rowHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3342F' } }; 
             const filaEncabezadoNum = rowHeaders.number;
-
+        
+            // 💡 CORRECCIÓN DE BÚSQUEDA:
+            // Captura tipo_movimiento IN ('MERMA', 'CONSUMO_INT') Y TAMBIÉN búsquedas por texto en el campo motivo
             const queryMermas = `
-                SELECT TO_CHAR(h.fecha, 'DD/MM/YYYY HH12:MI AM') as fecha_fmt, p.nombre as producto, p.categoria, p.unidad_medida, h.cantidad, p.costo, 
-                       (h.cantidad * p.costo) as perdida, h.motivo, u.nombre as usuario
+                SELECT TO_CHAR(h.fecha, 'DD/MM/YYYY HH12:MI AM') as fecha_fmt, 
+                       p.nombre as producto, 
+                       p.categoria, 
+                       p.unidad_medida, 
+                       h.cantidad, 
+                       p.costo, 
+                       (h.cantidad * (
+                           CASE 
+                               WHEN p.categoria ILIKE '%esencia%' OR p.categoria ILIKE '%alcohol%' OR p.categoria ILIKE '%fijador%' OR p.unidad_medida = 'GRAMOS' OR p.unidad_medida = 'ML' 
+                               THEN p.costo / 1000.0 
+                               ELSE p.costo 
+                           END
+                       )) as perdida, 
+                       h.motivo, 
+                       u.nombre as usuario
                 FROM historial_movimientos h
                 JOIN productos p ON h.producto_id = p.id
                 LEFT JOIN usuarios u ON h.usuario_id = u.id
-                WHERE h.fecha::date BETWEEN $1 AND $2 AND h.tienda_id = ${idTiendaLocal}
-                AND (h.motivo ILIKE '%MERMA%' OR h.motivo ILIKE '%TESTER%' OR h.motivo ILIKE '%DERRAME%' OR h.motivo ILIKE '%DAÑO%' OR h.motivo ILIKE '%CONSUMO%')
+                WHERE h.fecha::date BETWEEN $1 AND $2 
+                  AND h.tienda_id = ${idTiendaLocal}
+                  AND (
+                      h.tipo_movimiento IN ('MERMA', 'CONSUMO_INT') 
+                      OR h.motivo ILIKE '%MERMA%' 
+                      OR h.motivo ILIKE '%TESTER%' 
+                      OR h.motivo ILIKE '%DERRAME%' 
+                      OR h.motivo ILIKE '%DAÑO%' 
+                      OR h.motivo ILIKE '%ROTURA%'
+                      OR h.motivo ILIKE '%CONSUMO%'
+                      OR h.motivo ILIKE '%AJUSTE%'
+                  )
                 ORDER BY h.fecha DESC
             `;
+            
             const resMermas = await client.query(queryMermas, [start, end]);
             
             let totalPerdida = 0;
@@ -802,7 +828,7 @@ const exportarReporteGeneral = async (req, res) => {
                 if (isLiquid) {
                     cant = cant / 1000;
                 }
-
+            
                 const perdida = parseFloat(r.perdida || 0);
                 totalPerdida += perdida;
                 const fila = sheet.addRow([r.fecha_fmt, r.producto, cant, parseFloat(r.costo), perdida, r.motivo, r.usuario || 'Sistema']);
@@ -811,13 +837,13 @@ const exportarReporteGeneral = async (req, res) => {
                 fila.getCell(4).numFmt = '"$"#,##0.00'; 
                 fila.getCell(5).numFmt = '"$"#,##0.00';
             });
-
+        
             const ultimaFilaDatos = sheet.lastRow ? sheet.lastRow.number : filaEncabezadoNum;
             sheet.autoFilter = {
                 from: { row: filaEncabezadoNum, column: 1 },
                 to: { row: ultimaFilaDatos, column: 7 }
             };
-
+        
             sheet.addRow([]);
             const rTotalM = sheet.addRow(['', '', '', 'TOTAL PÉRDIDA OPERATIVA:', totalPerdida]);
             rTotalM.font = { bold: true, color: { argb: 'FFE3342F' } };

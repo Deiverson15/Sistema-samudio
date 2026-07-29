@@ -396,77 +396,64 @@ async function procesarAjuste() {
     
     const fileInput = document.getElementById('fotoEvidencia');
     let nombreFoto = "";
-    if(fileInput && fileInput.files.length > 0) {
-        nombreFoto = fileInput.files[0].name; // Guardamos el nombre del archivo de la foto
+    if (fileInput && fileInput.files.length > 0) {
+        nombreFoto = fileInput.files[0].name;
     }
 
     const data = {
         producto_id: document.getElementById('producto_id').value,
         tipo: tipoActivo,
-        ubicacion: ubicacionActiva, // 📦 ENVIAMOS LA UBICACIÓN SELECCIONADA
+        ubicacion: ubicacionActiva,
         cantidad: document.getElementById('cantidad').value,
         motivo: document.getElementById('motivo').value,
-        lote_id: document.getElementById('loteSeleccion').value,         
-        codigo_manual: document.getElementById('codigoLoteManual').value,
-        foto_evidencia: nombreFoto // Evidencia fotográfica
+        lote_id: document.getElementById('loteSeleccion')?.value || null,         
+        codigo_manual: document.getElementById('codigoLoteManual')?.value || null,
+        foto_evidencia: nombreFoto
     };
 
-    if(!data.producto_id) return Swal.fire('Atención', "Por favor selecciona un producto.", 'warning');
-    if(!data.cantidad || data.cantidad <= 0) return Swal.fire('Atención', "Ingresa una cantidad válida mayor a cero.", 'warning');
-
-    const colorBtn = data.tipo === 'SALIDA' ? '#0a0a0a' : '#16a34a'; 
-    const textoOrigen = data.ubicacion === 'DEPOSITO' ? (data.lote_id ? 'Lote de Bodega Específico' : 'Automático (FIFO Almacén)') : 'Mostrador (Barrido de Botellas en Piso)';
+    if (!data.producto_id) return Swal.fire('Atención', "Por favor selecciona un producto.", 'warning');
+    if (!data.cantidad || data.cantidad <= 0) return Swal.fire('Atención', "Ingresa una cantidad válida mayor a cero.", 'warning');
 
     const result = await Swal.fire({
         title: `Confirmar Ajuste Manual`,
         html: `
-            <div class="text-left text-xs bg-neutral-50 p-4 border border-neutral-300 rounded-none font-mono uppercase">
+            <div class="text-left text-xs bg-neutral-50 p-4 border border-neutral-300 font-mono uppercase">
                 <p class="mb-1"><b>Producto:</b> ${document.getElementById('nombreProductoDisplay').value}</p>
                 <p class="mb-1"><b>Área Afectada:</b> <span class="text-neutral-950 font-black">${data.ubicacion}</span></p>
-                <p class="mb-1"><b>Magnitud:</b> <span class="text-sm font-black text-red-600">${data.cantidad}</span></p>
-                <p class="text-[10px] text-neutral-400 mt-2 border-t pt-2"><b>Flujo:</b> ${textoOrigen}</p>
-                ${nombreFoto ? `<p class="text-[9px] text-purple-600 mt-1"><b>📷 Con evidencia:</b> ${nombreFoto}</p>` : ''}
+                <p class="mb-1"><b>Tipo:</b> <span class="font-black">${data.tipo}</span></p>
+                <p class="mb-1"><b>Cantidad:</b> <span class="text-sm font-black text-red-600">${data.cantidad}</span></p>
+                <p class="mb-1"><b>Motivo:</b> ${data.motivo}</p>
             </div>
         `,
         icon: 'question',
         showCancelButton: true,
-        confirmButtonColor: colorBtn,
-        confirmButtonText: '⚡ EJECUTAR OPERACIÓN',
-        cancelButtonText: 'CANCELAR',
-        customClass: { popup: 'rounded-none border border-neutral-400', confirmButton: 'rounded-none text-[10px] tracking-widest', cancelButton: 'rounded-none text-[10px] tracking-widest' }
+        confirmButtonColor: data.tipo === 'SALIDA' ? '#0a0a0a' : '#16a34a',
+        confirmButtonText: 'EJECUTAR AJUSTE',
+        cancelButtonText: 'CANCELAR'
     });
 
-    if(result.isConfirmed) {
-        Swal.fire({ title: 'Alterando registros físicos...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+    if (result.isConfirmed) {
+        Swal.fire({ title: 'Procesando...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
         const res = await AjusteService.create(data);
         
-        if(res.error) {
-            Swal.fire('OPERACIÓN RECHAZADA', res.error, 'error');
+        if (res.error) {
+            Swal.fire('ERROR', res.error, 'error');
         } else {
             await Swal.fire({
                 icon: 'success',
-                title: 'AJUSTE CONSOLIDADO',
-                html: `Inventario actualizado en ${data.ubicacion}.<br><b>Valoración Financiera:</b> <span class="text-emerald-600 font-bold">${res.impacto}</span>`,
-                confirmButtonColor: '#0a0a0a',
-                customClass: { popup: 'rounded-none' }
+                title: 'AJUSTE PROCESADO',
+                html: `Movimiento registrado exitosamente.<br><b>Impacto:</b> ${res.impacto}`,
+                confirmButtonColor: '#0a0a0a'
             });
             
-            // Reset completo del formulario
             document.getElementById('formAjuste').reset();
             document.getElementById('producto_id').value = '';
             document.getElementById('nombreProductoDisplay').value = '';
-            document.getElementById('panelLotes').classList.add('hidden');
             document.getElementById('stockBadge').classList.add('hidden');
-            
-            // Forzar por defecto que regrese a Depósito y Salida visualmente
-            document.getElementById('radioDepo').checked = true;
-            
-            cargarProductosCache();
-            actualizarUIporTipo();
+            window.actualizarUIporTipo();
         }
     }
 }
-
 // =====================================================================
 // AUTOMATIZACIÓN DE TASA BCV - INYECCIÓN INDESTRUCTIBLE POR SCRIPT
 // =====================================================================
