@@ -421,6 +421,7 @@ window.prepararEdicion = (id) => {
     document.getElementById('codigo').value = prod.codigo;
     document.getElementById('nombre').value = prod.nombre;
     document.getElementById('marca').value = prod.marca;
+    document.getElementById('genero').value = prod.genero ? prod.genero.toUpperCase() : 'UNISEX';
     
     document.getElementById('costo').value = prod.costo || '';
     document.getElementById('precio_venta').value = prod.precio_venta || '';
@@ -462,6 +463,7 @@ window.prepararEdicion = (id) => {
 // --- GUARDAR PRODUCTO ---
 // Archivo: inventario/src/public/modules/inventario/script.js
 
+// --- GUARDAR PRODUCTO CORREGIDO ---
 async function guardarProducto() {
     const btn = document.getElementById('btnGuardar');
     btn.disabled = true;
@@ -471,42 +473,48 @@ async function guardarProducto() {
     const cat = document.getElementById('categoria').value;
     let contenidoFinal = 1;
     
-    if(cat === 'Frasco' || cat === 'Frascos' || cat === 'Envases') {
+    if (cat === 'Frasco' || cat === 'Frascos' || cat === 'Envases') {
         const selector = document.getElementById('tamanio_selector');
-        contenidoFinal = selector ? selector.value : 30;
+        contenidoFinal = selector ? parseFloat(selector.value) : 30;
     }
 
+    const valStockVisual = parseFloat(document.getElementById('input_cantidad_visual').value || 0);
+    const valStockCalculado = parseFloat(document.getElementById('stock_real_calculado').value || 0);
+    const stockFinal = valStockCalculado > 0 ? valStockCalculado : valStockVisual;
+
     const data = {
-        codigo: document.getElementById('codigo').value,
-        nombre: document.getElementById('nombre').value,
-        marca: document.getElementById('marca').value,
+        codigo: document.getElementById('codigo').value.trim(),
+        nombre: document.getElementById('nombre').value.trim(),
+        marca: document.getElementById('marca').value.trim(),
         categoria: cat,
-        genero: document.getElementById('genero').value, // 🔥 ENVIAMOS EL NUEVO CAMPO
+        genero: document.getElementById('genero').value, // Envia 'UNISEX', 'DAMA', 'CABALLERO'
         unidad_medida: document.getElementById('unidad_medida').value,
-        stock: document.getElementById('stock_real_calculado').value,
-        contenido_gramos: contenidoFinal, 
-        stock_minimo: document.getElementById('stock_minimo').value,
-        costo: document.getElementById('costo').value,
-        precio_venta: document.getElementById('precio_venta').value
+        stock: stockFinal,
+        stock_minimo: parseFloat(document.getElementById('stock_minimo').value) || 0,
+        costo: parseFloat(document.getElementById('costo').value) || 0,
+        precio_venta: parseFloat(document.getElementById('precio_venta').value) || 0,
+        contenido_gramos: contenidoFinal,
+        ubicacion: document.getElementById('ubicacion').value.trim(),
+        descripcion: document.getElementById('notas').value.trim()
     };
 
     const idEdicion = document.getElementById('producto_id_edicion').value;
 
     try {
         let res = idEdicion ? await ProductoService.update(idEdicion, data) : await ProductoService.create(data);
-        if(res.error) throw new Error(res.error);
+        if (res.error) throw new Error(res.error);
         
-        Swal.fire({ icon: 'success', title: '¡Guardado!', timer: 1000, showConfirmButton: false });
+        Swal.fire({ icon: 'success', title: '¡Guardado correctamente!', timer: 1200, showConfirmButton: false });
         cerrarModal();
-        cargarTabla();
+        await cargarTabla(); // Recarga la tabla en la página actual
     } catch (e) {
-        Swal.fire('Error', e.message, 'error');
+        Swal.fire('Error al guardar', e.message, 'error');
     } finally {
         btn.disabled = false;
     }
 }
 
-// Archivo: inventario/src/public/modules/inventario/script.js
+
 
 window.agregarStockRapido = async (id) => {
     const prod = productosGlobales.find(p => p.id === id);

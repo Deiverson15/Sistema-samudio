@@ -180,27 +180,36 @@ function renderFinanzasChart(data) {
             labels: data.map(d => d.dia),
             datasets: [
                 {
-                    label: 'Utilidad Neta',
+                    label: 'Utilidad Neta ($)',
                     data: data.map(d => d.utilidad),
                     type: 'line',
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    borderColor: '#10b981',             // Verde Emerald
+                    backgroundColor: 'rgba(16, 185, 129, 0.12)',
                     borderWidth: 3,
-                    pointBackgroundColor: '#fff',
+                    pointBackgroundColor: '#ffffff',
                     pointBorderColor: '#10b981',
+                    pointBorderWidth: 2,
                     pointRadius: 4, 
                     pointHoverRadius: 6,
-                    tension: 0.3, // Curvatura suave de la línea
+                    tension: 0.3,                       // Curva suavizada
                     fill: true,
-                    order: 0
+                    order: 0                            // Queda sobre las barras
                 },
                 {
-                    label: 'Ventas Totales',
+                    label: 'Ventas Totales ($)',
                     data: data.map(d => d.ingreso),
-                    backgroundColor: '#3b82f6',
+                    backgroundColor: '#3b82f6',         // Azul Royal
                     borderRadius: 4,
-                    barPercentage: 0.6,
+                    barPercentage: 0.5,
                     order: 1
+                },
+                {
+                    label: 'Costo Total ($)',
+                    data: data.map(d => d.costo),
+                    backgroundColor: '#ef4444',         // Rojo Coral / Advertencia
+                    borderRadius: 4,
+                    barPercentage: 0.5,
+                    order: 2
                 }
             ]
         },
@@ -209,16 +218,40 @@ function renderFinanzasChart(data) {
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { position: 'top', align: 'end', labels: { usePointStyle: true, boxWidth: 8 } },
+                legend: { 
+                    position: 'top', 
+                    align: 'end', 
+                    labels: { 
+                        usePointStyle: true, 
+                        boxWidth: 8,
+                        font: { family: 'Inter', size: 11, weight: 'bold' }
+                    } 
+                },
                 tooltip: {
-                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                    padding: 10,
-                    callbacks: { label: (ctx) => `${ctx.dataset.label}: $${parseFloat(ctx.raw).toFixed(2)}` }
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    titleFont: { size: 12, weight: 'bold' },
+                    bodyFont: { size: 11 },
+                    padding: 12,
+                    borderColor: '#334155',
+                    borderWidth: 1,
+                    callbacks: { 
+                        label: (ctx) => ` ${ctx.dataset.label}: $${parseFloat(ctx.raw || 0).toFixed(2)}` 
+                    }
                 }
             },
             scales: {
-                y: { beginAtZero: true, ticks: { callback: (v) => '$' + v } },
-                x: { grid: { display: false } }
+                y: { 
+                    beginAtZero: true, 
+                    grid: { color: '#f1f5f9' },
+                    ticks: { 
+                        callback: (v) => '$' + v,
+                        font: { size: 10, weight: '600' }
+                    } 
+                },
+                x: { 
+                    grid: { display: false },
+                    ticks: { font: { size: 10, weight: '600' } }
+                }
             }
         }
     });
@@ -585,9 +618,6 @@ let chartDistribucion = null;
 let datosDistribucionActual = { top: [], cat: [] };
 let vistaDistribucionActual = 'top'; // Controla si vemos 'top' o 'categorías'
 
-// =====================================================================
-// 1. RENDERIZADO DE GRÁFICA PRINCIPAL (Desempeño Financiero)
-// =====================================================================
 window.renderizarGraficaFinanzas = function(datos) {
     if (chartFinanzas) {
         chartFinanzas.destroy();
@@ -600,26 +630,43 @@ window.renderizarGraficaFinanzas = function(datos) {
             labels: datos.map(item => item.dia),
             datasets: [
                 {
-                    label: 'Ingreso Bruto ($)',
-                    data: datos.map(item => item.ingreso),
-                    backgroundColor: '#0a0a0a', // Negro puro corporativo
-                    borderWidth: 0,
-                    borderRadius: 2
+                    label: 'Utilidad Neta ($)',
+                    data: datos.map(item => item.utilidad || (item.ingreso - item.costo)),
+                    type: 'line',
+                    borderColor: '#10b981', // Verde
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    borderWidth: 3,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#10b981',
+                    pointRadius: 4,
+                    tension: 0.3,
+                    fill: true,
+                    order: 0
                 },
                 {
-                    label: 'Costo / Inversión ($)',
+                    label: 'Ventas Totales ($)',
+                    data: datos.map(item => item.ingreso),
+                    backgroundColor: '#0a0a0a', // Negro corporativo / Azul
+                    borderRadius: 3,
+                    barPercentage: 0.5,
+                    order: 1
+                },
+                {
+                    label: 'Costo Total ($)',
                     data: datos.map(item => item.costo),
-                    backgroundColor: '#d4d4d4', // Gris neutro claro
-                    borderWidth: 0,
-                    borderRadius: 2
+                    backgroundColor: '#ef4444', // Rojo
+                    borderRadius: 3,
+                    barPercentage: 0.5,
+                    order: 2
                 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
             scales: {
-                y: { beginAtZero: true, grid: { color: '#f5f5f5' } },
+                y: { beginAtZero: true, grid: { color: '#f5f5f5' }, ticks: { callback: v => '$' + v } },
                 x: { grid: { display: false } }
             },
             plugins: {

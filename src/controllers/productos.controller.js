@@ -212,33 +212,56 @@ const cambiarSucursalActiva = async (req, res) => {
 
 const createProducto = async (req, res) => {
     const { 
-        codigo, nombre, marca, categoria, stock, stock_minimo, costo, precio_venta, 
+        codigo, nombre, marca, categoria, genero, stock, stock_minimo, costo, precio_venta, 
         ubicacion, u_caja, ganancia, descripcion, unidad_medida, contenido_gramos 
     } = req.body;
     
     const usuarioId = req.user ? req.user.id : null; 
     const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;
 
+    const cantInitial = parseFloat(stock) || 0;
+    const costoUnit = parseFloat(costo) || 0;
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        // 🔥 Agregamos tienda_id ($16) al insert
+        // 1. Insertar el Producto Base
         const insertProdText = `
             INSERT INTO productos 
-             (codigo, nombre, marca, categoria, stock_unidades, stock_minimo, costo, precio_venta, ubicacion, u_caja, ganancia, descripcion, unidad_medida, activo, contenido_gramos, tamano, stock_estante, tienda_id) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, true, $14, $15, 0, $16) 
+             (codigo, nombre, marca, categoria, genero, stock_unidades, stock_minimo, costo, precio_venta, ubicacion, u_caja, ganancia, descripcion, unidad_medida, activo, contenido_gramos, tamano, stock_estante, tienda_id) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, true, $15, $16, 0, $17) 
              RETURNING *`;
              
         const prodValues = [
-            codigo, nombre, marca, categoria, stock || 0, stock_minimo || 0, costo, precio_venta, 
-            ubicacion, u_caja || 1, ganancia, descripcion, unidad_medida || 'UNIDAD',
+            codigo, nombre, marca, categoria, genero || 'UNISEX', cantInitial, parseFloat(stock_minimo) || 0, costoUnit, parseFloat(precio_venta) || 0, 
+            ubicacion || 'DEPOSITO', u_caja || 1, ganancia || 30, descripcion || '', unidad_medida || 'UNIDAD',
             contenido_gramos || 0, contenido_gramos ? `${contenido_gramos}ml` : 'N/A', idTiendaLocal
         ];
 
         const resProd = await client.query(insertProdText, prodValues);
         const nuevoProd = resProd.rows[0];
 
+        // 2. 🔥 SI SE INGRESÓ STOCK INICIAL, CREAR LOTE Y REGISTRAR EN HISTORIAL
+        if (cantInitial > 0) {
+            const codigoLoteInicial = `INI-${nuevoProd.id}-${Date.now().toString().slice(-4)}`;
+
+            // A. Crear el Lote de Stock Inicial
+            await client.query(`
+                INSERT INTO lotes 
+                (producto_id, codigo_lote, cantidad_inicial, cantidad_actual, fecha_vencimiento, costo_unitario, tienda_id) 
+                VALUES ($1, $2, $3, $3, NOW() + INTERVAL '2 years', $4, $5)
+            `, [nuevoProd.id, codigoLoteInicial, cantInitial, costoUnit, idTiendaLocal]);
+
+            // B. Registrar en Historial de Movimientos para Kardex y Reportes
+            await client.query(`
+                INSERT INTO historial_movimientos 
+                (producto_id, tipo_movimiento, cantidad, stock_nuevo, motivo, fecha, tienda_id, usuario_id) 
+                VALUES ($1, 'ENTRADA', $2, $2, 'Carga de Stock Inicial al Crear Producto', NOW(), $3, $4)
+            `, [nuevoProd.id, cantInitial, idTiendaLocal, usuarioId]);
+        }
+
+        // 3. Alertas y Auditoría
         if (parseFloat(nuevoProd.stock_unidades) <= parseFloat(nuevoProd.stock_minimo)) {
             await crearNotificacionInterna(
                 `INVENTARIO: Nuevo producto ${nuevoProd.nombre} creado con stock crítico (${nuevoProd.stock_unidades}).`,
@@ -251,7 +274,7 @@ const createProducto = async (req, res) => {
         if (usuarioId) {
             await client.query(
                 "INSERT INTO auditoria (usuario_id, accion, detalle, fecha) VALUES ($1, 'CREAR_PROD', $2, NOW())",
-                [usuarioId, `Tienda ${idTiendaLocal}: Creó el producto: ${nuevoProd.nombre} (${codigo})`]
+                [usuarioId, `Tienda ${idTiendaLocal}: Creó el producto ${nuevoProd.nombre} (${codigo}) con stock inicial: ${cantInitial}`]
             );
         }
 
@@ -259,8 +282,11 @@ const createProducto = async (req, res) => {
         res.json(nuevoProd);
     } catch (error) {
         await client.query('ROLLBACK');
+        console.error("Error en createProducto:", error);
         res.status(500).json({ error: error.message });
-    } finally { client.release(); }
+    } finally { 
+        client.release(); 
+    }
 };
 
 const reactivarProducto = async (req, res) => {
@@ -305,20 +331,15 @@ const eliminarFisico = async (req, res) => {
 
 const updateProducto = async (req, res) => {
     const { id } = req.params;
-    const { codigo, nombre, marca, categoria, stock, stock_minimo, costo, precio_venta, ubicacion, tamano, u_caja, peso } = req.body;      
+    const { codigo, nombre, marca, categoria, genero, stock, stock_minimo, costo, precio_venta, ubicacion, tamano, u_caja, peso } = req.body;      
     const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         
-        // 🔒 Verificamos que el producto exista EN ESTA SUCURSAL
         const oldRes = await client.query('SELECT stock_unidades FROM productos WHERE id = $1 AND tienda_id = $2', [id, idTiendaLocal]);
         if (oldRes.rows.length === 0) throw new Error('Producto no encontrado en el catálogo de esta sucursal');
-        
-        const oldStock = parseFloat(oldRes.rows[0].stock_unidades || 0);
-        const newStock = parseFloat(stock);
-        const diff = isNaN(newStock) ? 0 : newStock - oldStock;
 
         const result = await client.query(`
             UPDATE productos SET 
@@ -326,46 +347,25 @@ const updateProducto = async (req, res) => {
                 nombre = COALESCE($2, nombre),
                 marca = COALESCE($3, marca),
                 categoria = COALESCE($4, categoria),
-                stock_unidades = COALESCE($5, stock_unidades),
-                stock_minimo = COALESCE($6, stock_minimo),
-                costo = COALESCE($7, costo),
-                precio_venta = COALESCE($8, precio_venta),
-                ubicacion = COALESCE($9, ubicacion),
-                tamano = COALESCE($10, tamano),
-                u_caja = COALESCE($11, u_caja),
-                peso_unitario_kg = COALESCE($12, peso_unitario_kg)
-            WHERE id = $13 AND tienda_id = $14
+                genero = COALESCE($5, genero),
+                stock_unidades = COALESCE($6, stock_unidades),
+                stock_minimo = COALESCE($7, stock_minimo),
+                costo = COALESCE($8, costo),
+                precio_venta = COALESCE($9, precio_venta),
+                ubicacion = COALESCE($10, ubicacion),
+                tamano = COALESCE($11, tamano),
+                u_caja = COALESCE($12, u_caja),
+                peso_unitario_kg = COALESCE($13, peso_unitario_kg)
+            WHERE id = $14 AND tienda_id = $15
             RETURNING *`,
             [
-                codigo, nombre, marca, categoria, 
-                isNaN(newStock) ? null : newStock,
+                codigo, nombre, marca, categoria, genero,
+                isNaN(parseFloat(stock)) ? null : parseFloat(stock),
                 stock_minimo, costo, precio_venta, ubicacion, tamano, u_caja, peso, id, idTiendaLocal
             ]
         );
         
         const prod = result.rows[0];
-
-        if (diff > 0) {
-            const esFrasco = ['Frasco', 'Envases', 'Frascos', 'Envase'].includes(prod.categoria) || prod.nombre.toUpperCase().includes('FRASCO');
-            if (esFrasco) {
-                await client.query(
-                    "INSERT INTO lotes (producto_id, codigo_lote, cantidad_inicial, cantidad_actual, fecha_vencimiento, costo_unitario, tienda_id) VALUES ($1, $2, $3, $3, NOW() + interval '5 years', $4, $5)",
-                    [id, `AUTO-${Date.now()}`, diff, prod.costo || 0, idTiendaLocal]
-                );
-            } else {
-                const existeLote = await client.query("SELECT id FROM lotes WHERE producto_id = $1 AND tienda_id = $2 AND cantidad_actual > 0 LIMIT 1", [id, idTiendaLocal]);
-                
-                if (existeLote.rows.length > 0) {
-                    await client.query("UPDATE lotes SET cantidad_actual = cantidad_actual + $1 WHERE id = $2", [diff, existeLote.rows[0].id]);
-                } else {
-                    await client.query(
-                        "INSERT INTO lotes (producto_id, codigo_lote, cantidad_inicial, cantidad_actual, fecha_vencimiento, costo_unitario, tienda_id) VALUES ($1, $2, $3, $3, NOW() + interval '1 year', $4, $5)",
-                        [id, 'STOCK-RAPIDO', diff, prod.costo || 0, idTiendaLocal]
-                    );
-                }
-            }
-        }
-
         await client.query('COMMIT');
         res.json(prod);
     } catch (error) {
@@ -1403,6 +1403,9 @@ const distribuirProducto = async (req, res) => {
     } finally { client.release(); }
 };
 
+const EMPRESA_NOMBRE = 'PERFUMIX C.A.';
+const EMPRESA_RIF = 'J-500deiverosn0-0';
+
 const exportarExcel = async (req, res) => {
 
     console.log("--- [DEBUG] Entrando a exportarExcel de productos.controller ---");
@@ -1435,20 +1438,25 @@ const exportarExcel = async (req, res) => {
         
         // Creamos el Libro de Excel
         const workbook = new ExcelJS.Workbook();
-        workbook.creator = 'Sistema Inventario';
+        workbook.creator = EMPRESA_NOMBRE;
         workbook.created = new Date();
 
+        // Formateo visual del rango de fechas recibido
+        const fechaInicioFmt = start ? new Date(start + 'T00:00:00').toLocaleDateString('es-VE') : 'N/A';
+        const fechaFinFmt = end ? new Date(end + 'T00:00:00').toLocaleDateString('es-VE') : 'N/A';
+        const textoFechas = (start && end) ? `Período: ${fechaInicioFmt} al ${fechaFinFmt}` : `Fecha de Emisión: ${new Date().toLocaleDateString('es-VE')}`;
+
         // ---------------------------------------------------------
-        // HOJA 1: HISTORIAL DE MOVIMIENTOS (Diseño Ley ISLR)
+        // HOJA 1: HISTORIAL DE MOVIMIENTOS (Diseño Ley ISLR + AutoFiltro)
         // ---------------------------------------------------------
         if (filtro === 'todo' || filtro === 'inventario') {
             const sheetInv = workbook.addWorksheet('Movimiento de Inventario');
 
             // 1. Filas de Encabezado Fijo
-            sheetInv.addRow(['Nombre de La Empresa']);
-            sheetInv.addRow(['R.I.F.: J-XXXXXXXXX']);
-            sheetInv.addRow([]);
-            sheetInv.addRow(['Libro de Movimiento de inventarios (Art. 177 Ley de ISLR)']);
+            sheetInv.addRow([EMPRESA_NOMBRE]).font = { bold: true, size: 12 };
+            sheetInv.addRow([`R.I.F.: ${EMPRESA_RIF}`]).font = { bold: true, size: 10 };
+            sheetInv.addRow([textoFechas]).font = { bold: true, size: 9 };
+            sheetInv.addRow(['Libro de Movimiento de Inventarios (Art. 177 Ley de ISLR)']).font = { bold: true, size: 11 };
             sheetInv.addRow([]);
 
             // 2. Encabezados Agrupados (Fila 6)
@@ -1616,14 +1624,27 @@ const exportarExcel = async (req, res) => {
                 rowAdded.getCell(18).numFmt = '"$"#,##0.00';
             });
 
+            const ultimaFilaNum = sheetInv.lastRow ? sheetInv.lastRow.number : 7;
+            sheetInv.autoFilter = {
+                from: { row: 6, column: 1 },
+                to: { row: ultimaFilaNum, column: 18 }
+            };
+
             sheetInv.getColumn('D').width = 35; 
         }
 
         // ---------------------------------------------------------
-        // HOJA 2: ESTANTE (Tienda / Botellas Abiertas)
+        // HOJA 2: ESTANTE (Tienda / Botellas Abiertas + AutoFiltro)
         // ---------------------------------------------------------
         if (filtro === 'todo' || filtro === 'estante') {
             const sheetEst = workbook.addWorksheet('Estante (Tienda)');
+            
+            sheetEst.addRow([EMPRESA_NOMBRE]).font = { bold: true, size: 12 };
+            sheetEst.addRow([`R.I.F.: ${EMPRESA_RIF}`]).font = { bold: true, size: 10 };
+            sheetEst.addRow(['INVENTARIO DE ESTANTE (MOSTRADOR)']).font = { bold: true, size: 11 };
+            sheetEst.addRow([textoFechas]).font = { bold: true, size: 9 };
+            sheetEst.addRow([]);
+
             const resEst = await client.query(`
                 SELECT b.ubicacion, b.fila, p.nombre, b.cantidad, p.unidad_medida, b.porcentaje_actual
                 FROM botellas_estante b JOIN productos p ON b.producto_id = p.id
@@ -1631,30 +1652,43 @@ const exportarExcel = async (req, res) => {
                 ORDER BY b.ubicacion, b.fila
             `, [idTiendaLocal]);
 
-            sheetEst.columns = [
-                { header: 'UBICACIÓN', key: 'ubi', width: 10 },
-                { header: 'FILA', key: 'fila', width: 8 },
-                { header: 'PRODUCTO', key: 'prod', width: 30 },
-                { header: 'CANTIDAD REAL', key: 'cant', width: 15 },
-                { header: 'UNIDAD', key: 'uni', width: 10 },
-                { header: '% VISUAL', key: 'pct', width: 10 },
-            ];
+            const headersEst = sheetEst.addRow(['UBICACIÓN', 'FILA', 'PRODUCTO', 'CANTIDAD REAL', 'UNIDAD', '% VISUAL']);
+            headersEst.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            headersEst.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+            const filaEncabezadoEst = headersEst.number;
 
             resEst.rows.forEach(b => {
-                sheetEst.addRow({
-                    ubi: b.ubicacion, fila: b.fila, prod: b.nombre,
-                    cant: parseFloat(b.cantidad), uni: b.unidad_medida, pct: `${b.porcentaje_actual}%`
-                });
+                sheetEst.addRow([
+                    b.ubicacion, b.fila, b.nombre, parseFloat(b.cantidad), b.unidad_medida, `${b.porcentaje_actual}%`
+                ]);
             });
-            sheetEst.getRow(1).font = { bold: true };
+
+            const ultimaFilaEst = sheetEst.lastRow ? sheetEst.lastRow.number : filaEncabezadoEst;
+            sheetEst.autoFilter = {
+                from: { row: filaEncabezadoEst, column: 1 },
+                to: { row: ultimaFilaEst, column: 6 }
+            };
+
+            sheetEst.getColumn(1).width = 12;
+            sheetEst.getColumn(2).width = 8;
+            sheetEst.getColumn(3).width = 35;
+            sheetEst.getColumn(4).width = 15;
+            sheetEst.getColumn(5).width = 12;
+            sheetEst.getColumn(6).width = 12;
         }
 
         // ---------------------------------------------------------
-        // HOJA 3: HISTORIAL DE VENTAS (Con Totales Bs y USD)
+        // HOJA 3: HISTORIAL DE VENTAS (Con Totales Bs y USD + AutoFiltro)
         // ---------------------------------------------------------
         if (filtro === 'todo' || filtro === 'ventas') {
             const sheetVentas = workbook.addWorksheet('Historial Ventas');
             
+            sheetVentas.addRow([EMPRESA_NOMBRE]).font = { bold: true, size: 12 };
+            sheetVentas.addRow([`R.I.F.: ${EMPRESA_RIF}`]).font = { bold: true, size: 10 };
+            sheetVentas.addRow(['HISTORIAL DE VENTAS CONSOLIDADAS']).font = { bold: true, size: 11 };
+            sheetVentas.addRow([textoFechas]).font = { bold: true, size: 9 };
+            sheetVentas.addRow([]);
+
             const resVentas = await client.query(`
                 SELECT 
                     v.id, v.fecha, c.nombre as cliente, v.total as total_usd,
@@ -1665,13 +1699,10 @@ const exportarExcel = async (req, res) => {
                 ORDER BY v.fecha DESC
             `, [idTiendaLocal]);
 
-            sheetVentas.columns = [
-                { header: 'ID VENTA', key: 'id', width: 10 },
-                { header: 'FECHA', key: 'fecha', width: 20 },
-                { header: 'CLIENTE', key: 'cliente', width: 30 },
-                { header: 'TOTAL (USD)', key: 'usd', width: 15 },
-                { header: 'TOTAL (BS)', key: 'bs', width: 20 },
-            ];
+            const headersVentas = sheetVentas.addRow(['ID VENTA', 'FECHA', 'CLIENTE', 'TOTAL (USD)', 'TOTAL (BS)']);
+            headersVentas.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            headersVentas.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
+            const filaEncabezadoVentas = headersVentas.number;
 
             let sumUSD = 0;
             let sumBS = 0;
@@ -1682,32 +1713,51 @@ const exportarExcel = async (req, res) => {
                 sumUSD += usd;
                 sumBS += bs;
 
-                sheetVentas.addRow({
-                    id: v.id,
-                    fecha: new Date(v.fecha).toLocaleString('es-VE'),
-                    cliente: v.cliente || 'Consumidor Final',
-                    usd: usd,
-                    bs: bs
-                });
+                sheetVentas.addRow([
+                    v.id,
+                    new Date(v.fecha).toLocaleString('es-VE'),
+                    v.cliente || 'Consumidor Final',
+                    usd,
+                    bs
+                ]);
             });
+
+            const ultimaFilaVentas = sheetVentas.lastRow ? sheetVentas.lastRow.number : filaEncabezadoVentas;
+            sheetVentas.autoFilter = {
+                from: { row: filaEncabezadoVentas, column: 1 },
+                to: { row: ultimaFilaVentas, column: 5 }
+            };
 
             sheetVentas.addRow(['', '', '', '', '']); 
             const rowGranTotal = sheetVentas.addRow(['', 'TOTALES GENERALES:', '', sumUSD, sumBS]);
             
             rowGranTotal.font = { bold: true, size: 12 };
             rowGranTotal.getCell(4).numFmt = '"$"#,##0.00';
-            rowGranTotal.getCell(5).numFmt = '"Bs"#,##0.00';
+            rowGranTotal.getCell(5).numFmt = '"Bs "#,##0.00';
             rowGranTotal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
 
-            sheetVentas.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            sheetVentas.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E40AF' } };
+            sheetVentas.getColumn(1).width = 12;
+            sheetVentas.getColumn(2).width = 22;
+            sheetVentas.getColumn(3).width = 35;
+            sheetVentas.getColumn(4).width = 18;
+            sheetVentas.getColumn(5).width = 22;
+
+            sheetVentas.getColumn(4).numFmt = '"$"#,##0.00';
+            sheetVentas.getColumn(5).numFmt = '"Bs "#,##0.00';
         }
 
         // ---------------------------------------------------------
-        // HOJA 4: LOTES (Vencimientos)
+        // HOJA 4: LOTES (Vencimientos + AutoFiltro)
         // ---------------------------------------------------------
         if (filtro === 'todo' || filtro === 'lotes') {
             const sheetLotes = workbook.addWorksheet('Lotes y Vencimientos');
+
+            sheetLotes.addRow([EMPRESA_NOMBRE]).font = { bold: true, size: 12 };
+            sheetLotes.addRow([`R.I.F.: ${EMPRESA_RIF}`]).font = { bold: true, size: 10 };
+            sheetLotes.addRow(['CONTROL DE LOTES Y VENCIMIENTOS']).font = { bold: true, size: 11 };
+            sheetLotes.addRow([textoFechas]).font = { bold: true, size: 9 };
+            sheetLotes.addRow([]);
+
             const resLotes = await client.query(`
                 SELECT l.codigo_lote, p.nombre, l.cantidad_actual, l.fecha_vencimiento
                 FROM lotes l JOIN productos p ON l.producto_id = p.id
@@ -1715,13 +1765,10 @@ const exportarExcel = async (req, res) => {
                 ORDER BY l.fecha_vencimiento ASC
             `, [idTiendaLocal]);
 
-            sheetLotes.columns = [
-                { header: 'LOTE', key: 'lote', width: 15 },
-                { header: 'PRODUCTO', key: 'prod', width: 30 },
-                { header: 'CANTIDAD', key: 'cant', width: 12 },
-                { header: 'VENCE', key: 'vence', width: 15 },
-                { header: 'ESTADO', key: 'estado', width: 12 },
-            ];
+            const headersLotes = sheetLotes.addRow(['LOTE', 'PRODUCTO', 'CANTIDAD', 'VENCE', 'ESTADO']);
+            headersLotes.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            headersLotes.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+            const filaEncabezadoLotes = headersLotes.number;
 
             const hoy = new Date();
             resLotes.rows.forEach(l => {
@@ -1731,22 +1778,39 @@ const exportarExcel = async (req, res) => {
                 if (diasRestantes < 0) estado = 'VENCIDO';
                 else if (diasRestantes < 30) estado = 'POR VENCER';
 
-                const row = sheetLotes.addRow({
-                    lote: l.codigo_lote, prod: l.nombre, cant: parseFloat(l.cantidad_actual),
-                    vence: vence.toLocaleDateString(), estado: estado
-                });
+                const row = sheetLotes.addRow([
+                    l.codigo_lote, l.nombre, parseFloat(l.cantidad_actual), vence.toLocaleDateString('es-VE'), estado
+                ]);
 
                 if (estado === 'VENCIDO') row.getCell(5).font = { color: { argb: 'FFFF0000' }, bold: true };
                 if (estado === 'POR VENCER') row.getCell(5).font = { color: { argb: 'FFF59E0B' }, bold: true };
             });
-            sheetLotes.getRow(1).font = { bold: true };
+
+            const ultimaFilaLotes = sheetLotes.lastRow ? sheetLotes.lastRow.number : filaEncabezadoLotes;
+            sheetLotes.autoFilter = {
+                from: { row: filaEncabezadoLotes, column: 1 },
+                to: { row: ultimaFilaLotes, column: 5 }
+            };
+
+            sheetLotes.getColumn(1).width = 18;
+            sheetLotes.getColumn(2).width = 35;
+            sheetLotes.getColumn(3).width = 14;
+            sheetLotes.getColumn(4).width = 16;
+            sheetLotes.getColumn(5).width = 15;
         }
 
         // ---------------------------------------------------------
-        // HOJA 5: MERMAS Y SALIDAS
+        // HOJA 5: MERMAS Y SALIDAS (AutoFiltro)
         // ---------------------------------------------------------
         if (filtro === 'todo' || filtro === 'mermas') {
             const sheetMermas = workbook.addWorksheet('Mermas y Salidas');
+
+            sheetMermas.addRow([EMPRESA_NOMBRE]).font = { bold: true, size: 12 };
+            sheetMermas.addRow([`R.I.F.: ${EMPRESA_RIF}`]).font = { bold: true, size: 10 };
+            sheetMermas.addRow(['REGISTRO DE MERMAS Y SALIDAS DE INVENTARIO']).font = { bold: true, size: 11 };
+            sheetMermas.addRow([textoFechas]).font = { bold: true, size: 9 };
+            sheetMermas.addRow([]);
+
             const resMermas = await client.query(`
                 SELECT h.fecha, p.nombre, h.cantidad, h.motivo, h.tipo_movimiento
                 FROM historial_movimientos h JOIN productos p ON h.producto_id = p.id
@@ -1754,30 +1818,38 @@ const exportarExcel = async (req, res) => {
                 ORDER BY h.fecha DESC
             `, [idTiendaLocal]);
 
-            sheetMermas.columns = [
-                { header: 'FECHA', key: 'fecha', width: 18 },
-                { header: 'PRODUCTO', key: 'prod', width: 30 },
-                { header: 'CANTIDAD', key: 'cant', width: 12 },
-                { header: 'TIPO', key: 'tipo', width: 12 },
-                { header: 'MOTIVO / OBSERVACIÓN', key: 'motivo', width: 40 },
-            ];
+            const headersMermas = sheetMermas.addRow(['FECHA', 'PRODUCTO', 'CANTIDAD', 'TIPO', 'MOTIVO / OBSERVACIÓN']);
+            headersMermas.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            headersMermas.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3342F' } };
+            const filaEncabezadoMermas = headersMermas.number;
 
             resMermas.rows.forEach(m => {
-                sheetMermas.addRow({
-                    fecha: new Date(m.fecha).toLocaleString(),
-                    prod: m.nombre,
-                    cant: parseFloat(m.cantidad),
-                    tipo: m.tipo_movimiento,
-                    motivo: m.motivo
-                });
+                sheetMermas.addRow([
+                    new Date(m.fecha).toLocaleString('es-VE'),
+                    m.nombre,
+                    parseFloat(m.cantidad),
+                    m.tipo_movimiento,
+                    m.motivo
+                ]);
             });
-            sheetMermas.getRow(1).font = { bold: true };
+
+            const ultimaFilaMermas = sheetMermas.lastRow ? sheetMermas.lastRow.number : filaEncabezadoMermas;
+            sheetMermas.autoFilter = {
+                from: { row: filaEncabezadoMermas, column: 1 },
+                to: { row: ultimaFilaMermas, column: 5 }
+            };
+
+            sheetMermas.getColumn(1).width = 22;
+            sheetMermas.getColumn(2).width = 35;
+            sheetMermas.getColumn(3).width = 14;
+            sheetMermas.getColumn(4).width = 15;
+            sheetMermas.getColumn(5).width = 45;
         }
 
         client.release();
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename=Reporte.xlsx`);
+        res.setHeader('Content-Disposition', `attachment; filename=Reporte_Inventario_${idTiendaLocal}_${new Date().toISOString().slice(0,10)}.xlsx`);
 
         await workbook.xlsx.write(res);
         res.end();

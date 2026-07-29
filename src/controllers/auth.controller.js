@@ -44,7 +44,7 @@ const login = async (req, res) => {
     try {
         if (!JWT_SECRET) return res.status(500).json({ error: 'Error de configuración.' });
         
-        // Buscamos el usuario y su tienda base
+        // 1. Buscamos el usuario y su tienda base asignada
         const response = await pool.query(
             `SELECT u.*, t.nombre as tienda_nombre 
              FROM usuarios u 
@@ -55,6 +55,7 @@ const login = async (req, res) => {
         
         const user = response.rows[0];
 
+        // Validar existencia y clave con bcrypt
         if (!user || !await bcrypt.compare(password, user.password)) {
             await logSeguridad('SEGURIDAD_LOGIN_FAIL', `Credenciales erróneas: ${email}`, user?.id);
             return res.status(400).json({ error: 'Credenciales inválidas' });
@@ -62,34 +63,45 @@ const login = async (req, res) => {
 
         if (!user.activo) return res.status(403).json({ error: 'Usuario inactivo.' });
 
-        const rolUsuario = user.rol ? user.rol.toLowerCase().trim() : '';
-        const esUsuarioMaestro = rolUsuario === 'developer' || 
-                                 rolUsuario === 'dev' || 
-                                 rolUsuario === 'súper administrador' || 
-                                 rolUsuario === 'super administrador' ||
-                                 rolUsuario === 'administrador' ||
-                                 rolUsuario === 'admin';
+        // 2. Normalizar el rol para evitar fallos de mayúsculas/espacios/tildes
+        const rolUsuario = user.rol 
+            ? user.rol.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() 
+            : '';
 
-        // 🔀 ACCIÓN INTERCEPTORA PARA ROLES MAESTROS
+        const esUsuarioMaestro = [
+            'developer', 
+            'dev', 
+            'super administrador', 
+            'superadmin', 
+            'administrador', 
+            'admin'
+        ].includes(rolUsuario);
+
+        // 🔀 INTERCEPTOR DE SELECCIÓN DE TIENDA PARA ROLES MAESTROS
         if (esUsuarioMaestro) {
             
-            // 🔥 ESCENARIO 1 (El salto directo): El frontend mandó el tienda_id en la pantalla de login
-            if (tienda_id) {
-                // Actualizamos la base de datos físicamente al instante
-                await pool.query('UPDATE usuarios SET tienda_id = $1 WHERE id = $2', [tienda_id, user.id]);
-                user.tienda_id = tienda_id; // Sincronizamos en memoria para generar el token
+            // ESCENARIO A: Si en la petición viene tienda_id PERO no es un login inicial (Sino que viene del modal o salto intencional)
+            // Para asegurar que Samudio SIEMPRE vea el modal al loguearse, sólo asignamos directo si el cliente lo pidió expresamente como selección final
+            if (tienda_id && req.body.confirmar_tienda === true) {
                 
-                // Consultamos el nombre real de la tienda para el frontend
+                // Actualizamos la tienda en PostgreSQL
+                await pool.query('UPDATE usuarios SET tienda_id = $1 WHERE id = $2', [tienda_id, user.id]);
+                user.tienda_id = tienda_id;
+                
                 const nomTienda = await pool.query('SELECT nombre FROM tiendas WHERE id = $1', [tienda_id]);
                 user.tienda_nombre = nomTienda.rows.length > 0 ? nomTienda.rows[0].nombre : 'Desconocida';
                 
-                console.log(`[LOGIN MAESTRO] ${user.rol} aterrizó directo en Tienda ID: ${tienda_id}`);
-                // Si entra aquí, ignora el paso de abajo y cae en el "FLUJO NORMAL" para generar su token final.
-            } 
-            // 🛡️ ESCENARIO 2 (Seguridad 2 Pasos): No mandaron tienda, emitimos token provisional
-            else {
-                const tiendasRes = await pool.query('SELECT id, nombre, direccion FROM tiendas WHERE activo = true ORDER BY id ASC');
+                console.log(`[LOGIN MAESTRO] ${user.rol} (${user.email}) seleccionó Tienda ID: ${tienda_id}`);
                 
+                // Pasa al bloque final de generación de Token definitivo
+            } 
+            // ESCENARIO B: Obligar a mostrar el selector de sucursales (Samudio / Admin / Dev)
+            else {
+                const tiendasRes = await pool.query(
+                    'SELECT id, nombre, direccion FROM tiendas WHERE activo = true ORDER BY id ASC'
+                );
+                
+                // Emitimos token provisional
                 const tokenProvisional = jwt.sign(
                     { id: user.id, rol: user.rol, nombre: user.nombre, provisional: true }, 
                     JWT_SECRET,
@@ -113,7 +125,7 @@ const login = async (req, res) => {
             }
         }
 
-        // 🛒 FLUJO NORMAL (Vendedores, Gerentes fijos, o Maestros que pasaron el Escenario 1)
+        // 🛒 FLUJO NORMAL (Vendedores, Gerentes fijos o Maestros con tienda ya seleccionada)
         const token = jwt.sign(
             { id: user.id, rol: user.rol, nombre: user.nombre, tienda_id: user.tienda_id }, 
             JWT_SECRET,
@@ -122,7 +134,7 @@ const login = async (req, res) => {
         
         await pool.query('UPDATE usuarios SET token_sesion = $1 WHERE id = $2', [token, user.id]);
 
-        res.json({
+        return res.json({
             message: 'Bienvenido',
             seleccionar_tienda: false,
             token: token,
@@ -138,7 +150,7 @@ const login = async (req, res) => {
 
     } catch (error) {
         console.error("Error en login:", error);
-        res.status(500).json({ error: 'Error en el servidor' });
+        return res.status(500).json({ error: 'Error en el servidor' });
     }
 };
 

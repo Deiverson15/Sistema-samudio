@@ -235,3 +235,34 @@ async function cargarPagina(modulo) {
             </div>`;
     }
 }
+
+// Habilitar clic en la sede para usuarios Superadmin/Admin
+const usuarioActual = JSON.parse(localStorage.getItem('usuario') || '{}');
+const esAdministrador = ['superadmin', 'admin', 'developer'].includes(usuarioActual.rol?.toLowerCase());
+
+if (esAdministrador) {
+    const etiquetaSede = document.getElementById('nombreSedeActual');
+    if (etiquetaSede) {
+        etiquetaSede.classList.add('cursor-pointer', 'hover:border-white');
+        etiquetaSede.title = "Haz clic para cambiar de sucursal";
+        
+        etiquetaSede.addEventListener('click', async () => {
+            try {
+                const token = localStorage.getItem('token');
+                const res = await fetch('/api/tiendas', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const tiendas = await res.json();
+                
+                // Reutilizamos la función global de login.html si está cargada o abrimos el modal
+                if (typeof abrirSelectorTiendas === 'function') {
+                    abrirSelectorTiendas(tiendas);
+                } else {
+                    location.reload(); // Recarga limpia para refrescar contexto
+                }
+            } catch (e) {
+                console.error("Error abriendo selector de tiendas:", e);
+            }
+        });
+    }
+}

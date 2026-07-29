@@ -347,25 +347,24 @@ function renderizarDetallesModal() {
     const { venta, detalles, pagos } = ventaActualDatos;
     const tasa = parseFloat(venta.tasa_cambio) || 1;
     
-    // Configurar multiplicador y prefijo según el botón seleccionado
     const esBolivares = monedaVista === 'BS';
     const multiplicador = esBolivares ? tasa : 1;
     const simbolo = esBolivares ? 'Bs ' : '$';
 
-    // ---------------------------------------------------------
-    // A. RENDERIZAR TABLA DE PRODUCTOS
-    // ---------------------------------------------------------
     const tbody = document.getElementById('listaProductosDetalle');
-    if(tbody) {
+    if (tbody) {
         tbody.innerHTML = detalles.map(d => {
             const subtotal = parseFloat(d.cantidad * d.precio_unitario) * multiplicador;
             const textoSubtotal = `${simbolo}${subtotal.toFixed(2)}`;
+            
+            // 🔥 Usamos la función de clasificación fiscal para mostrar PERFUME o PT en el modal
+            const nombreFiscal = determinarNombreFiscal(d);
             
             return `
                 <tr class="border-b border-dashed border-slate-200 last:border-0">
                     <td class="py-2 pr-2 align-top font-bold text-gray-700">${d.cantidad}</td>
                     <td class="py-2 px-2 align-top">
-                        <div class="text-slate-800 font-bold leading-tight text-sm">${escapeHtml(d.producto_nombre)}</div>
+                        <div class="text-slate-800 font-bold leading-tight text-sm">${nombreFiscal}</div>
                         ${d.es_preparado ? '<span class="text-[10px] text-purple-600 bg-purple-50 px-1 rounded border border-purple-100">Preparado</span>' : ''}
                     </td>
                     <td class="py-2 pl-2 text-right font-mono text-slate-600 text-sm">${textoSubtotal}</td>
@@ -374,41 +373,21 @@ function renderizarDetallesModal() {
         }).join('');
     }
 
-    // ---------------------------------------------------------
-    // B. RENDERIZAR TOTALES GENERALES
-    // ---------------------------------------------------------
     const elTotal = document.getElementById('detalleTotal');
     const elTotalBs = document.getElementById('detalleTotalBs');
     
-    if(elTotal) {
-        const totalConvertido = parseFloat(venta.total) * multiplicador;
-        elTotal.innerText = `${simbolo}${totalConvertido.toFixed(2)}`;
-    }
-    
-    if(elTotalBs) {
-        const totalBs = parseFloat(venta.total) * tasa;
-        elTotalBs.innerText = `Bs ${totalBs.toFixed(2)}`;
-    }
+    if (elTotal) elTotal.innerText = `${simbolo}${(parseFloat(venta.total) * multiplicador).toFixed(2)}`;
+    if (elTotalBs) elTotalBs.innerText = `Bs ${(parseFloat(venta.total) * tasa).toFixed(2)}`;
 
-    // ---------------------------------------------------------
-    // C. 🔥 RENDERIZAR FORMAS DE PAGO DINÁMICAS (USD / BS)
-    // ---------------------------------------------------------
     const elMetodo = document.getElementById('detalleMetodo');
     if (elMetodo) {
         if (pagos && pagos.length > 0) {
             const desgloseMetodos = pagos.map(p => {
                 const met = p.metodo.toUpperCase();
                 const refStr = (p.referencia && p.referencia !== 'S/N') ? ` (REF: ${p.referencia})` : '';
-                
-                let montoCalculado = 0;
-                
-                if (esBolivares) {
-                    // Convertir a Bolívares
-                    montoCalculado = p.moneda === 'USD' ? (parseFloat(p.monto) * tasa) : parseFloat(p.monto);
-                } else {
-                    // Convertir a Dólares
-                    montoCalculado = p.moneda === 'BS' ? (parseFloat(p.monto) / tasa) : parseFloat(p.monto);
-                }
+                const montoCalculado = esBolivares 
+                    ? (p.moneda === 'USD' ? (parseFloat(p.monto) * tasa) : parseFloat(p.monto))
+                    : (p.moneda === 'BS' ? (parseFloat(p.monto) / tasa) : parseFloat(p.monto));
                 
                 return `• ${met}${refStr}: ${simbolo}${montoCalculado.toFixed(2)}`;
             }).join('<br>');
@@ -597,12 +576,12 @@ window.eliminarVentaPrueba = async (id) => {
 };
 
 // =====================================================================
-// 🔥 PLUS: REIMPRESIÓN DIRECTA DE FACTURA ORIGINAL (SIN ABRIR MODAL)
+// 🔥 REIMPRESIÓN DIRECTA DE FACTURA CON FORMAS DE PAGO ORIGINALES
 // =====================================================================
 window.imprimirFacturaOriginalDirecta = async function(idVenta) {
     Swal.fire({
         title: 'Preparando Impresión',
-        text: 'Consultando base de datos y reconstruyendo desglose fiscal...',
+        text: 'Generando desglose con nombres fiscales ajustados...',
         allowOutsideClick: false,
         didOpen: () => Swal.showLoading()
     });
@@ -619,24 +598,26 @@ window.imprimirFacturaOriginalDirecta = async function(idVenta) {
 
         const venta = data.venta;
         const detalles = data.detalles;
+        const pagos = data.pagos || [];
         const tasa = parseFloat(venta.tasa_cambio) || 1;
 
-        // Formateador de moneda estándar venezolano
         const formatVE = (valor) => new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(valor);
 
-        // 1. Reconstruir las filas del ticket térmico en Bolívares con desglose base
         let totalGlobalBs = 0;
         const itemsHTML = detalles.map(d => {
             const precioFinalBs = parseFloat(d.precio_unitario) * tasa;
             const subtotalFinalBs = precioFinalBs * parseFloat(d.cantidad);
-            const subtotalBaseBs = subtotalFinalBs / 1.16; // Ingeniería inversa para base imponible
+            const subtotalBaseBs = subtotalFinalBs / 1.16;
             
             totalGlobalBs += subtotalFinalBs;
             
+            // 🔥 Aplicación de la misma función helper para la impresión
+            const descripcionFinal = determinarNombreFiscal(d);
+            
             return `
             <tr>
-                <td width="15%" style="vertical-align: top; padding-right: 5px; text-align: center;">${parseFloat(d.cantidad).toFixed(0)}</td>
-                <td width="55%" style="vertical-align: top; padding-right: 5px;">${d.producto_nombre.toUpperCase()}</td>
+                <td width="12%" style="vertical-align: top; text-align: center;">${parseFloat(d.cantidad).toFixed(0)}</td>
+                <td width="58%" style="vertical-align: top; padding-right: 4px;">${descripcionFinal}</td>
                 <td width="30%" class="text-right" style="vertical-align: top;">${formatVE(subtotalBaseBs)}</td>
             </tr>`;
         }).join('');
@@ -644,10 +625,31 @@ window.imprimirFacturaOriginalDirecta = async function(idVenta) {
         const baseImponibleBs = totalGlobalBs / 1.16;
         const ivaBs = totalGlobalBs - baseImponibleBs;
 
-        // 2. Levantar el iframe invisible de impresión de Courier New
+        let formasPagoHTML = '';
+        if (pagos && pagos.length > 0) {
+            formasPagoHTML = pagos.map(p => {
+                const met = p.metodo.toUpperCase();
+                const refStr = (p.referencia && p.referencia !== 'S/N' && p.referencia !== '0000') ? ` (REF: ${p.referencia})` : '';
+                const montoBs = p.moneda === 'USD' ? (parseFloat(p.monto) * tasa) : parseFloat(p.monto);
+                
+                return `
+                <div style="display: flex; justify-content: space-between; font-size: 10px; margin-top: 2px;">
+                    <span>• ${met}${refStr}:</span>
+                    <span>Bs ${formatVE(montoBs)}</span>
+                </div>`;
+            }).join('');
+        } else {
+            const metGeneral = (venta.metodo_pago || 'EFECTIVO').toUpperCase();
+            formasPagoHTML = `
+            <div style="display: flex; justify-content: space-between; font-size: 10px; margin-top: 2px;">
+                <span>• FORMA DE PAGO (${metGeneral}):</span>
+                <span>Bs ${formatVE(totalGlobalBs)}</span>
+            </div>`;
+        }
+
         const ventana = window.open('', 'PRINT', 'height=600,width=400');
         if (!ventana) {
-            return Swal.fire('Pop-ups Bloqueados', 'Por favor permite las ventanas emergentes en tu navegador para poder imprimir los recibos.', 'warning');
+            return Swal.fire('Pop-ups Bloqueados', 'Permite las ventanas emergentes para imprimir la factura.', 'warning');
         }
 
         ventana.document.write(`
@@ -659,7 +661,7 @@ window.imprimirFacturaOriginalDirecta = async function(idVenta) {
                         .text-center { text-align: center; }
                         .text-right { text-align: right; }
                         .font-bold { font-weight: bold; }
-                        .divider-solid { border-bottom: 1px solid #000; margin: 6px 0; }
+                        .divider-solid { border-bottom: 1px solid #000; margin: 5px 0; }
                         table { width: 100%; border-collapse: collapse; margin-top: 5px; }
                         td, th { vertical-align: top; padding: 2px 0; font-size: 10px; }
                         @page { margin: 0; size: auto; }
@@ -667,9 +669,9 @@ window.imprimirFacturaOriginalDirecta = async function(idVenta) {
                 </head>
                 <body onload="window.print(); window.close();">
                     <div class="text-center">
-                        <div class="font-bold" style="font-size: 13px;">INVERSIONES BEAST MODE C.A.</div>
-                        <div>RIF: J-50442123-0</div>
-                        <div style="font-size: 9px; line-height: 1.2;">AV. FRANCISCO DE MIRANDA, CHACAO.<br>CARACAS</div>
+                        <div class="font-bold" style="font-size: 13px;">PERFUMIX C.A.</div>
+                        <div>RIF: J-50000000-0</div>
+                        <div style="font-size: 9px; line-height: 1.2;">CARACAS - VENEZUELA</div>
                     </div>
                     <div class="divider-solid"></div>
                     <div style="display: flex; justify-content: space-between;"><span>FACTURA ORIGINAL</span><span class="font-bold">NRO: ${String(venta.id).padStart(8, '0')}</span></div>
@@ -679,7 +681,7 @@ window.imprimirFacturaOriginalDirecta = async function(idVenta) {
                     <div class="divider-solid"></div>
                     <table>
                         <thead>
-                            <tr><th class="text-center" width="15%">CANT</th><th class="text-left" width="55%">DESCRIPCIÓN</th><th class="text-right" width="30%">TOTAL</th></tr>
+                            <tr><th class="text-center" width="12%">CANT</th><th class="text-left" width="58%">DESCRIPCIÓN</th><th class="text-right" width="30%">TOTAL</th></tr>
                         </thead>
                         <tbody>${itemsHTML}</tbody>
                     </table>
@@ -687,9 +689,14 @@ window.imprimirFacturaOriginalDirecta = async function(idVenta) {
                     <div style="display: flex; justify-content: space-between;"><span>BI G (16%):</span><span>${formatVE(baseImponibleBs)}</span></div>
                     <div style="display: flex; justify-content: space-between;"><span>IVA G (16%):</span><span>${formatVE(ivaBs)}</span></div>
                     <div class="divider-solid"></div>
-                    <div style="display: flex; justify-content: space-between; font-size: 13px;" class="font-bold"><span>TOTAL COMPRA:</span><span>Bs ${formatVE(totalGlobalBs)}</span></div>
-                    <div style="display: flex; justify-content: space-between; font-size: 10px; color: #555;"><span>REF EFECTIVO:</span><span>$${parseFloat(venta.total).toFixed(2)}</span></div>
-                    <div class="divider-solid" style="margin-top: 15px;"></div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;" class="font-bold"><span>TOTAL COMPRA:</span><span>Bs ${formatVE(totalGlobalBs)}</span></div>
+                    <div style="display: flex; justify-content: space-between; font-size: 10px; color: #333;"><span>REF EFECTIVO:</span><span>$${parseFloat(venta.total).toFixed(2)}</span></div>
+                    
+                    <div class="divider-solid"></div>
+                    <div class="font-bold" style="font-size: 10px; margin-bottom: 2px;">FORMA(S) DE PAGO:</div>
+                    ${formasPagoHTML}
+
+                    <div class="divider-solid" style="margin-top: 10px;"></div>
                     <div class="text-center" style="font-size: 9px; font-weight: bold;">*** COPIA FIEL DEL REGISTRO ORIGINAL ***</div>
                 </body>
             </html>
@@ -698,6 +705,59 @@ window.imprimirFacturaOriginalDirecta = async function(idVenta) {
 
     } catch (error) {
         console.error(error);
-        Swal.fire('Error', 'No se pudo procesar la cola de impresión: ' + error.message, 'error');
+        Swal.fire('Error', 'No se pudo procesar la impresión: ' + error.message, 'error');
     }
 };
+
+// =====================================================================
+// 🛡️ HELPER DE CLASIFICACIÓN FISCAL BLINDADO (PERFUME vs PT)
+// =====================================================================
+function determinarNombreFiscal(d) {
+    let nombreLimpio = (d.producto_nombre || d.nombre || '').toUpperCase().trim();
+    
+    // Inspección profunda de todas las posibles claves donde pueda venir el código o categoría
+    const codigoUpper = (d.codigo || d.producto_codigo || d.codigo_producto || d.prod_codigo || '').toUpperCase();
+    const catUpper = (d.categoria || d.producto_categoria || d.categoria_nombre || '').toUpperCase();
+
+    // 1. Limpiar prefijos duplicados/previos del nombre
+    nombreLimpio = nombreLimpio
+        .replace(/^ESENCIA\s+/i, '')
+        .replace(/^PERFUME\s+/i, '')
+        .replace(/^PT\s+/i, '')
+        .trim();
+
+    // 2. Extraer o determinar la medida/presentación
+    let medidaStr = '';
+    
+    // Buscar si el código o el nombre trae el patrón -T30, -T60, T30, 30ML, etc.
+    const matchTamanoCodigo = codigoUpper.match(/-?T(\d+)/) || nombreLimpio.match(/(\d+)\s*ML/);
+    
+    if (matchTamanoCodigo && matchTamanoCodigo[1]) {
+        medidaStr = `${matchTamanoCodigo[1]}ML`;
+    } else if (d.tamano && d.tamano !== 'N/A') {
+        medidaStr = d.tamano.toUpperCase();
+    } else if (d.contenido_gramos && parseFloat(d.contenido_gramos) > 0) {
+        medidaStr = `${d.contenido_gramos}ML`;
+    } else if (d.unidad_medida && d.unidad_medida !== 'UNIDAD') {
+        medidaStr = d.unidad_medida.toUpperCase();
+    }
+
+    // 3. DETECCION MULTI-CRITERIO DE PERFUME TERMINADO (PT)
+    const esPT = 
+        codigoUpper.includes('-T') || 
+        codigoUpper.includes('PT') ||
+        catUpper.includes('TERMINADO') || 
+        catUpper.includes('PREPARADO') ||
+        d.es_preparado === true ||
+        d.es_preparado === 'true' ||
+        d.es_terminado === true ||
+        /(\d+)\s*ML/.test(nombreLimpio) || 
+        /-T\d+/.test(nombreLimpio);
+
+    if (esPT) {
+        return `PT ${nombreLimpio} ${medidaStr}`.trim();
+    } else {
+        // Si es una esencia pura o venta general
+        return `PERFUME ${nombreLimpio} ${medidaStr}`.trim();
+    }
+}

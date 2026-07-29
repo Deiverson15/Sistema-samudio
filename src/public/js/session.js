@@ -49,7 +49,7 @@ export function initSessionManager() {
     if (!localStorage.getItem('token')) return;
 
     // --- NUEVO: Conexión al Socket ---
-    const user = JSON.parse(localStorage.getItem('user'));
+    const user = JSON.parse(localStorage.getItem('usuario'));
     if (user && user.id) {
         // Conectamos pasando el ID del usuario actual
         window.socket = io({

@@ -5,6 +5,12 @@ const ExcelJS = require('exceljs');
 
 const round = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
 
+// =========================================================
+// 🏢 CONFIGURACIÓN EMPRESARIAL GLOBAL
+// =========================================================
+const EMPRESA_NOMBRE = 'PERFUMIX C.A.';
+const EMPRESA_RIF = 'J-50000000-0'; // Reemplaza por tu RIF real
+
 
 async function validarYDescontarEstante(client, productoId, cantidadRequerida, nombreReferencia, tiendaId, confirmacionAlmacen = false, usuarioId = null) {
     const pId = parseInt(productoId, 10);
@@ -24,7 +30,7 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
     if (prodRes.rows.length === 0) throw new Error(`El producto ${nombreReferencia} no existe en la tienda ID ${tId}.`);
     const prod = prodRes.rows[0];
 
-    const ES_ALMACEN = (tId === 1); 
+    const ES_ALMACEN = (tId === 3); 
 
     // =========================================================================
     // 🚀 CASO A: ALMACÉN PRINCIPAL (SUCURSAL ID 3) -> DESCUENTO DIRECTO EN UNIDADES
@@ -184,6 +190,13 @@ const exportarReporteGeneral = async (req, res) => {
     const rolUsuario = req.user && req.user.rol ? req.user.rol.toLowerCase().trim() : '';
     const esUsuarioMaestro = rolUsuario === 'developer' || rolUsuario === 'dev';
     
+    // Formateo visual del rango de fechas recibido para las cabeceras
+    const fechaInicioFmt = start ? new Date(start + 'T00:00:00').toLocaleDateString('es-VE') : 'N/A';
+    const fechaFinFmt = end ? new Date(end + 'T00:00:00').toLocaleDateString('es-VE') : 'N/A';
+    const textoRangoFechas = (start && end) 
+        ? `Período Evaluado: ${fechaInicioFmt} al ${fechaFinFmt}` 
+        : `Fecha de Generación: ${new Date().toLocaleDateString('es-VE')}`;
+
     // 🛡️ Filtro de Sucursal Inteligente (Contexto de tienda o bypass maestro)
     let filtroTiendaGeneral = '';
     if (esUsuarioMaestro && tienda && tienda !== 'todas') {
@@ -202,22 +215,26 @@ const exportarReporteGeneral = async (req, res) => {
     const client = await pool.connect();
     try {
         const workbook = new ExcelJS.Workbook();
-        workbook.creator = 'Mantra Perfumería';
+        workbook.creator = EMPRESA_NOMBRE;
         const headerStyle = { font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } }, alignment: { horizontal: 'center' } };
         const borderStyle = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+
+        // Helper interno para dibujar el membrete corporativo estándar en cualquier hoja
+        const agregarMembreteCorporativo = (sheet, tituloReporte) => {
+            sheet.addRow([EMPRESA_NOMBRE]).font = { bold: true, size: 14 };
+            sheet.addRow([`R.I.F.: ${EMPRESA_RIF}`]).font = { bold: true, size: 10 };
+            sheet.addRow([tituloReporte.toUpperCase()]).font = { bold: true, size: 12 };
+            sheet.addRow([textoRangoFechas]).font = { bold: true, size: 10, color: { argb: 'FF475569' } };
+            sheet.addRow([]);
+        };
 
         // =========================================================
         // REPORTE A: CIERRES DE CAJAS (MULTI-SUCURSAL Y TASA DÓLAR)
         // =========================================================
         if (filtro === 'cierres') {
             const sheet = workbook.addWorksheet('Cierres de Caja');
+            agregarMembreteCorporativo(sheet, 'Reporte de Cierres de Cajas');
 
-            sheet.addRow([]);
-            const rowTitulo = sheet.addRow(['Reporte de Cierres de Cajas']);
-            rowTitulo.font = { bold: true, size: 12 };
-            sheet.addRow([]); 
-
-            // 🔥 SE AGREGARON LAS COLUMNAS "SUCURSAL" Y "TASA DÓLAR (BS/USD)"
             const rowHeaders = sheet.addRow([
                 'Fecha / Hora', 'N° Cierre', 'Cajero', 'Sucursal', 'TASA DÓLAR (BS/USD)', 'MÉTODOS USADOS',
                 'EFECTIVO DIVISAS', 'EFECTIVO BS', 'PUNTO DE VENTA', 'TRANSFERENCIA', 
@@ -225,8 +242,8 @@ const exportarReporteGeneral = async (req, res) => {
                 'TOTAL INGRESO USD', 'TOTAL INGRESO BS.'
             ]);
             rowHeaders.font = { bold: true };
+            const filaEncabezadoNum = rowHeaders.number;
 
-            // 🛡️ Lógica para "Todas las Tiendas" vs "Tienda Específica"
             let filtroTiendaCierre = '';
             if (tienda && tienda !== 'todas') {
                 filtroTiendaCierre = ` AND c.tienda_id = ${parseInt(tienda, 10)}`;
@@ -320,6 +337,12 @@ const exportarReporteGeneral = async (req, res) => {
                 totales.cxc += filaData.cxc; totales.otros += filaData.otros; totales.total_usd += cierreUsd; totales.total_bs += cierreBs;
             });
 
+            const ultimaFilaDatos = sheet.lastRow ? sheet.lastRow.number : filaEncabezadoNum;
+            sheet.autoFilter = {
+                from: { row: filaEncabezadoNum, column: 1 },
+                to: { row: ultimaFilaDatos, column: 19 }
+            };
+
             const rowTotal = sheet.addRow([
                 '', '', '', '', 'TOTALES:', '',
                 totales.divisas, totales.bs, totales.punto, totales.trans, totales.pmovil,
@@ -331,8 +354,8 @@ const exportarReporteGeneral = async (req, res) => {
             sheet.getColumn(1).width = 20; 
             sheet.getColumn(2).width = 12; 
             sheet.getColumn(3).width = 20; 
-            sheet.getColumn(4).width = 22; // Ancho para el nombre de la Sucursal
-            sheet.getColumn(5).width = 22; // Ancho para Tasa Dólar
+            sheet.getColumn(4).width = 22; 
+            sheet.getColumn(5).width = 22; 
             sheet.getColumn(5).numFmt = '"Bs "#,##0.00';
             sheet.getColumn(6).width = 25; 
             
@@ -347,14 +370,10 @@ const exportarReporteGeneral = async (req, res) => {
         // =========================================================
         if (filtro === 'referencias') {
             const sheet = workbook.addWorksheet('Ventas por Referencia');
-
-            sheet.addRow([]);
-            const rowTitulo = sheet.addRow(['Reporte de Venta por Referencia']);
-            rowTitulo.font = { bold: true, size: 12 };
+            agregarMembreteCorporativo(sheet, 'Reporte de Venta por Referencia');
             
-            // Etiqueta del filtro seleccionado
             const labelFiltroMat = categoria && categoria !== 'todos' ? `Filtro Aplicado: ${categoria.toUpperCase()}` : 'Filtro Aplicado: Catálogo Completo';
-            sheet.addRow([labelFiltroMat]);
+            sheet.addRow([labelFiltroMat]).font = { bold: true, size: 9 };
             sheet.addRow([]);
 
             const rowHeaders = sheet.addRow([
@@ -363,8 +382,8 @@ const exportarReporteGeneral = async (req, res) => {
             ]);
             rowHeaders.font = { bold: true };
             rowHeaders.alignment = { horizontal: 'center' };
+            const filaEncabezadoNum = rowHeaders.number;
 
-            // 🛡️ Filtro de Categoría / Materia Prima
             let filtroCategoriaStr = '';
             if (categoria && categoria !== 'todos') {
                 const catUpper = categoria.toUpperCase();
@@ -440,6 +459,12 @@ const exportarReporteGeneral = async (req, res) => {
                 totalAcumuladoUSD += monto;
             });
 
+            const ultimaFilaDatos = sheet.lastRow ? sheet.lastRow.number : filaEncabezadoNum;
+            sheet.autoFilter = {
+                from: { row: filaEncabezadoNum, column: 1 },
+                to: { row: ultimaFilaDatos, column: 7 }
+            };
+
             sheet.addRow([]);
             const rowTotalesRef = sheet.addRow([
                 '', '', '', '', 'TOTALES:', 
@@ -459,6 +484,7 @@ const exportarReporteGeneral = async (req, res) => {
         // =========================================================
         if (filtro === 'tiendas') {
             const sheet = workbook.addWorksheet('Consolidado Tiendas');
+            agregarMembreteCorporativo(sheet, 'Ventas por Tienda (Consolidado)');
 
             const tiendasParam = req.query.tiendas; 
             let arrTiendas = [];
@@ -471,11 +497,6 @@ const exportarReporteGeneral = async (req, res) => {
                 filtroTiendaQuery = ` AND v.tienda_id = ANY($3::int[])`;
             }
 
-            const titleRow = sheet.addRow(['Reporte Corporativo: Ventas por Tienda (Consolidado)']);
-            titleRow.font = { bold: true, size: 16 };
-            sheet.addRow([`Fechas evaluadas: ${start} al ${end}`]);
-            sheet.addRow([]); 
-
             let queryTiendasInfo = 'SELECT id, nombre FROM tiendas';
             let paramsTiendas = [];
             if (arrTiendas.length > 0) {
@@ -485,7 +506,6 @@ const exportarReporteGeneral = async (req, res) => {
             const resTiendas = await client.query(queryTiendasInfo, paramsTiendas);
 
             const report = {};
-            // Tarifas base obligatorias en la vista
             const tarifasBase = ['PVP TIENDA DETAL', 'PVP TIENDA MAYOR 12', 'PVTIENDA MAYOR DE 100', 'PVP PROMOS'];
             const tiendasOrdenadas = resTiendas.rows.sort((a, b) => a.nombre.localeCompare(b.nombre));
 
@@ -504,7 +524,6 @@ const exportarReporteGeneral = async (req, res) => {
                 });
             });
 
-            // Consulta SQL de detalles de venta por tienda
             const resData = await client.query(`
                 SELECT 
                     t.nombre as tienda_nombre,
@@ -529,14 +548,8 @@ const exportarReporteGeneral = async (req, res) => {
                 const rawTarifa = (r.tarifa || 'PVP TIENDA DETAL').toUpperCase().trim();
                 let tarifaReal = rawTarifa;
 
-                // 🧠 NORMALIZACIÓN INTELIGENTE DE TARIFAS Y PROMOS
                 if (rawTarifa.includes('PROMO')) {
-                    // Si trae nombre específico (ej: PROMO 100, PROMO PACK, etc.), preservamos el detalle
-                    if (rawTarifa.length > 5) {
-                        tarifaReal = `PVP ${rawTarifa}`;
-                    } else {
-                        tarifaReal = 'PVP PROMOS';
-                    }
+                    tarifaReal = rawTarifa.length > 5 ? `PVP ${rawTarifa}` : 'PVP PROMOS';
                 } else if (rawTarifa.includes('MAYOR 12') || (rawTarifa.includes('MAYOR') && !rawTarifa.includes('100') && !rawTarifa.includes('GRAN'))) {
                     tarifaReal = 'PVP TIENDA MAYOR 12';
                 } else if (rawTarifa.includes('MAYOR DE 100') || rawTarifa.includes('GRAN MAYOR') || rawTarifa.includes('100')) {
@@ -545,7 +558,6 @@ const exportarReporteGeneral = async (req, res) => {
                     tarifaReal = 'PVP TIENDA DETAL';
                 }
 
-                // Si se detecta una tarifa/promo nueva, se inicializa su estructura dinámicamente
                 if (!report[tName].tarifas[tarifaReal]) {
                     report[tName].tarifas[tarifaReal] = {
                         u30: 0, c30: 0, p30: 0, r30: 0, u60: 0, c60: 0, p60: 0, r60: 0,
@@ -575,7 +587,6 @@ const exportarReporteGeneral = async (req, res) => {
                 cat.ut += cant; cat.ct += costoTot; cat.pt += precio; cat.rt += rentabilidad;
             });
 
-            // Dibujar cada tienda en el libro de Excel
             Object.keys(report).forEach(tName => {
                 const tiendaData = report[tName];
                 sheet.addRow([]);
@@ -618,22 +629,19 @@ const exportarReporteGeneral = async (req, res) => {
         }
 
         // =========================================================
-        // REPORTE D NUEVO: VALORACIÓN DE INVENTARIO Y CAPITAL
+        // REPORTE D: VALORACIÓN DE INVENTARIO Y CAPITAL (CON AUTOFILTRO)
         // =========================================================
         if (filtro === 'inventario') {
             const sheet = workbook.addWorksheet('Valoración de Inventario');
-            sheet.addRow(['VALORACIÓN FINANCIERA DE INVENTARIO']);
-            sheet.addRow([`Fecha de Corte:`, new Date().toLocaleDateString('es-VE'), `Sucursal ID:`, idTiendaLocal]);
-            sheet.addRow([]);
+            agregarMembreteCorporativo(sheet, 'Valoración Financiera de Inventario');
 
             const rowHeaders = sheet.addRow(['CÓDIGO', 'PRODUCTO', 'CATEGORÍA', 'DEPÓSITO', 'ESTANTE', 'STOCK TOTAL', 'COSTO UNIT. ($)', 'P.V.P ($)', 'VALOR ESTANCADO ($)']);
             rowHeaders.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             rowHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+            const filaEncabezadoNum = rowHeaders.number;
 
-            // 1. Agregamos unidad_medida a la consulta
             let qInv = `SELECT codigo, nombre, categoria, unidad_medida, stock_unidades, stock_estante, costo, precio_venta FROM productos WHERE activo = true AND tienda_id = ${idTiendaLocal}`;
             
-            // 2. Filtro incluyendo PT, INSUMOS, FRASCOS
             if (categoria && categoria !== 'todos') {
                 const catUpper = categoria.toUpperCase();
                 if (catUpper === 'PT' || catUpper === 'TERMINADOS' || catUpper === 'COMPLETO') {
@@ -657,7 +665,6 @@ const exportarReporteGeneral = async (req, res) => {
                 const uni = (r.unidad_medida || '').toUpperCase();
                 const cat = (r.categoria || '').toUpperCase();
                 
-                // 3. LÓGICA MATEMÁTICA: Si es líquido/gramos, se divide entre 1000
                 const isLiquid = uni === 'GRAMOS' || uni === 'ML' || cat.includes('ESENCIA') || cat.includes('FIJADOR') || cat.includes('ALCOHOL');
 
                 if (isLiquid) {
@@ -670,15 +677,18 @@ const exportarReporteGeneral = async (req, res) => {
                 const capitalEstancado = stockTotal * costo;
                 granTotalCapital += capitalEstancado;
 
-                // 4. Escribir fila en Excel
                 const fila = sheet.addRow([r.codigo, r.nombre, r.categoria, su, se, stockTotal, costo, parseFloat(r.precio_venta), capitalEstancado]);
-                
-                // 5. Aplicar formato 0.000 (miles/líquidos) o unidades normales
                 const fmtStock = isLiquid ? '#,##0.000' : '#,##0';
                 fila.getCell(4).numFmt = fmtStock;
                 fila.getCell(5).numFmt = fmtStock;
                 fila.getCell(6).numFmt = fmtStock;
             });
+
+            const ultimaFilaDatos = sheet.lastRow ? sheet.lastRow.number : filaEncabezadoNum;
+            sheet.autoFilter = {
+                from: { row: filaEncabezadoNum, column: 1 },
+                to: { row: ultimaFilaDatos, column: 9 }
+            };
 
             sheet.addRow([]);
             const filaTotal = sheet.addRow(['', '', '', '', '', '', '', 'TOTAL CAPITAL INVERTIDO:', granTotalCapital]);
@@ -689,18 +699,22 @@ const exportarReporteGeneral = async (req, res) => {
             sheet.getColumn(9).numFmt = '"$"#,##0.00';
         }
 
+        // =========================================================
+        // REPORTE: PRODUCTOS CREADOS (CON AUTOFILTRO)
+        // =========================================================
         if (filtro === 'productos_creados') {
             const sheet = workbook.addWorksheet('Productos Creados');
-            sheet.addRow(['REPORTE DE PRODUCTOS CREADOS (CATÁLOGO COMPLETO)']);
-            sheet.addRow([`Fecha de Descarga:`, new Date().toLocaleDateString('es-VE'), `Sucursal ID:`, idTiendaLocal]);
+            agregarMembreteCorporativo(sheet, 'Catálogo de Productos Creados');
             
             const labelFiltroMat = categoria && categoria !== 'todos' ? `Filtro Aplicado: ${categoria.toUpperCase()}` : 'Filtro Aplicado: Catálogo Completo';
-            sheet.addRow([labelFiltroMat]);
+            sheet.addRow([labelFiltroMat]).font = { bold: true, size: 9 };
             sheet.addRow([]);
 
             const rowHeaders = sheet.addRow(['CÓDIGO', 'PRODUCTO', 'CATEGORÍA', 'MARCA', 'GÉNERO', 'UND. MEDIDA', 'STOCK ACTUAL', 'COSTO UNIT. ($)', 'P.V.P ($)']);
             rowHeaders.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             rowHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0284C7' } }; 
+            
+            const filaEncabezadoNum = rowHeaders.number;
 
             let qProd = `SELECT codigo, nombre, categoria, marca, genero, unidad_medida, stock_unidades, stock_estante, costo, precio_venta FROM productos WHERE activo = true AND tienda_id = ${idTiendaLocal}`;
             
@@ -742,23 +756,29 @@ const exportarReporteGeneral = async (req, res) => {
                 fila.getCell(9).numFmt = '"$"#,##0.00';
             });
 
+            const ultimaFilaNum = sheet.lastRow ? sheet.lastRow.number : filaEncabezadoNum;
+
+            sheet.autoFilter = {
+                from: { row: filaEncabezadoNum, column: 1 },
+                to: { row: ultimaFilaNum, column: 9 }
+            };
+
             sheet.getColumn(2).width = 40; 
             sheet.getColumn(8).width = 15; 
             sheet.getColumn(9).width = 15;
         }
 
         // =========================================================
-        // REPORTE E NUEVO: CONTROL DE MERMAS Y TESTERS
+        // REPORTE E: CONTROL DE MERMAS Y TESTERS (CON AUTOFILTRO)
         // =========================================================
         if (filtro === 'mermas') {
             const sheet = workbook.addWorksheet('Mermas y Consumos');
-            sheet.addRow(['REPORTE DE MERMAS Y PÉRDIDAS FÍSICAS DE MERCANCÍA']);
-            sheet.addRow([`Rango Evaluado:`, `${start} al ${end}`]);
-            sheet.addRow([]);
-            
+            agregarMembreteCorporativo(sheet, 'Control de Mermas y Pérdidas Físicas');
+
             const rowHeaders = sheet.addRow(['FECHA', 'PRODUCTO', 'CANTIDAD', 'COSTO UNIT ($)', 'PÉRDIDA NETA ($)', 'MOTIVO / EVENTO', 'OPERADOR']);
             rowHeaders.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             rowHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3342F' } }; 
+            const filaEncabezadoNum = rowHeaders.number;
 
             const queryMermas = `
                 SELECT TO_CHAR(h.fecha, 'DD/MM/YYYY HH12:MI AM') as fecha_fmt, p.nombre as producto, p.categoria, p.unidad_medida, h.cantidad, p.costo, 
@@ -792,6 +812,12 @@ const exportarReporteGeneral = async (req, res) => {
                 fila.getCell(5).numFmt = '"$"#,##0.00';
             });
 
+            const ultimaFilaDatos = sheet.lastRow ? sheet.lastRow.number : filaEncabezadoNum;
+            sheet.autoFilter = {
+                from: { row: filaEncabezadoNum, column: 1 },
+                to: { row: ultimaFilaDatos, column: 7 }
+            };
+
             sheet.addRow([]);
             const rTotalM = sheet.addRow(['', '', '', 'TOTAL PÉRDIDA OPERATIVA:', totalPerdida]);
             rTotalM.font = { bold: true, color: { argb: 'FFE3342F' } };
@@ -802,21 +828,21 @@ const exportarReporteGeneral = async (req, res) => {
         }
 
         // =========================================================
-        // ⭐ REPORTE F: AUDITORÍA DE RENTABILIDAD Y MÁRGENES (CON FILTROS MT / PT)
+        // ⭐ REPORTE F: RENTABILIDAD Y MÁRGENES (CON AUTOFILTRO)
         // =========================================================
         if (filtro === 'rentabilidad') {
             const sheet = workbook.addWorksheet('Rentabilidad');
-            sheet.addRow(['ANÁLISIS DE RENTABILIDAD Y MÁRGENES DE UTILIDAD']);
+            agregarMembreteCorporativo(sheet, 'Análisis de Rentabilidad y Márgenes de Utilidad');
             
             const labelFiltroMat = categoria && categoria !== 'todos' ? `Filtro Tipo: ${categoria.toUpperCase()}` : 'Filtro Tipo: Consolidado General';
-            sheet.addRow([`Período: ${start} al ${end}`, '', labelFiltroMat]);
+            sheet.addRow([labelFiltroMat]).font = { bold: true, size: 9 };
             sheet.addRow([]);
             
             const rowHeaders = sheet.addRow(['PRODUCTO', 'CATEGORÍA', 'UNIDADES VENDIDAS', 'INGRESO BRUTO ($)', 'COSTO INSUMOS ($)', 'UTILIDAD NETA ($)', 'MARGEN (%)']);
             rowHeaders.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             rowHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } }; 
+            const filaEncabezadoNum = rowHeaders.number;
 
-            // 🛡️ Filtro de Categoría / Materia Prima (MT vs PT)
             let filtroCategoriaStr = '';
             if (categoria && categoria !== 'todos') {
                 const catUpper = categoria.toUpperCase();
@@ -871,6 +897,12 @@ const exportarReporteGeneral = async (req, res) => {
                 sheet.addRow([r.nombre, r.categoria, parseFloat(r.uds), ingreso, costo, ganancia, margen]);
             });
 
+            const ultimaFilaDatos = sheet.lastRow ? sheet.lastRow.number : filaEncabezadoNum;
+            sheet.autoFilter = {
+                from: { row: filaEncabezadoNum, column: 1 },
+                to: { row: ultimaFilaDatos, column: 7 }
+            };
+
             sheet.addRow([]);
             const margenTotal = tIngreso > 0 ? (tGanancia / tIngreso) : 0;
             const rTotRenta = sheet.addRow(['TOTALES DEL PERÍODO:', '', '', tIngreso, tCosto, tGanancia, margenTotal]);
@@ -884,18 +916,16 @@ const exportarReporteGeneral = async (req, res) => {
         }
 
         // =========================================================
-        // REPORTE G: TRACKING DE HISTORIAL KARDEX POR SUSTRATO
+        // REPORTE G: KARDEX (CON AUTOFILTRO)
         // =========================================================
         if (filtro === 'kardex') {
             const sheet = workbook.addWorksheet('Kardex');
-            sheet.columns = [ 
-                { header: 'FECHA', key: 'fecha', width: 20 }, 
-                { header: 'PRODUCTO', key: 'prod', width: 30 }, 
-                { header: 'TIPO', key: 'tipo', width: 15 }, 
-                { header: 'CANTIDAD', key: 'cant', width: 15 }, 
-                { header: 'MOTIVO', key: 'motivo', width: 40 } 
-            ];
-            sheet.getRow(1).eachCell(cell => Object.assign(cell, headerStyle));
+            agregarMembreteCorporativo(sheet, 'Historial de Movimientos de Kardex');
+
+            const rowHeaders = sheet.addRow(['FECHA', 'PRODUCTO', 'TIPO', 'CANTIDAD', 'MOTIVO']);
+            rowHeaders.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            rowHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+            const filaEncabezadoNum = rowHeaders.number;
             
             let query = `
                 SELECT h.fecha, p.nombre, h.tipo_movimiento, h.cantidad, h.motivo 
@@ -910,12 +940,22 @@ const exportarReporteGeneral = async (req, res) => {
             
             const result = await client.query(query, [start, end]);
             result.rows.forEach(r => { 
-                sheet.addRow({ fecha: r.fecha, prod: r.nombre, tipo: r.tipo_movimiento, cant: r.cantidad, motivo: r.motivo }).eachCell(c => c.border = borderStyle); 
+                sheet.addRow([new Date(r.fecha).toLocaleString('es-VE'), r.nombre, r.tipo_movimiento, parseFloat(r.cantidad), r.motivo]); 
             });
+
+            const ultimaFilaDatos = sheet.lastRow ? sheet.lastRow.number : filaEncabezadoNum;
+            sheet.autoFilter = {
+                from: { row: filaEncabezadoNum, column: 1 },
+                to: { row: ultimaFilaDatos, column: 5 }
+            };
+
+            sheet.getColumn(1).width = 20; 
+            sheet.getColumn(2).width = 30; 
+            sheet.getColumn(5).width = 40;
         }
 
         // =========================================================
-        // REPORTE H: MAESTRO ESTRUCTURAL DE FORMULAS Y COSTOS (NUEVA PLANTILLA)
+        // REPORTE H: MAESTRO ESTRUCTURAL DE FORMULAS Y COSTOS (PLANTILLA)
         // =========================================================
         if (filtro === 'formulas') {
             const sheet = workbook.addWorksheet('Costos Perfumix');
@@ -995,9 +1035,13 @@ const exportarReporteGeneral = async (req, res) => {
 
             // --- RENDERIZADO DEL EXCEL ---
             
-            // Título Principal
+            // Membrete corporativo para la plantilla de costos
+            sheet.addRow([EMPRESA_NOMBRE]).font = { bold: true, size: 14 };
+            sheet.addRow([`R.I.F.: ${EMPRESA_RIF}`]).font = { bold: true, size: 10 };
+            sheet.addRow(['MATRIZ DE COSTOS Y FORMULACIÓN']).font = { bold: true, size: 12 };
+            sheet.addRow([`Fecha de Generación: ${new Date().toLocaleDateString('es-VE')}`]).font = { bold: true, size: 10, color: { argb: 'FF475569' } };
             sheet.addRow([]);
-            sheet.addRow([]);
+
             sheet.addRow(['', 'Formula de Producto Terminado']).font = { bold: true, size: 14 };
 
             // PERFUMES TERMINADOS
@@ -1822,12 +1866,18 @@ const getReportes = async (req, res) => {
         `;
         const historialRes = await pool.query(historialQuery, queryParams);
         
-        const financiero = historialRes.rows.map(row => ({
-            dia: row.dia,
-            ingreso: parseFloat(row.venta_bruta || 0),
-            costo: parseFloat(row.costo_estimado || 0),
-            utilidad: Math.max(0, parseFloat(row.venta_bruta || 0) - parseFloat(row.costo_estimado || 0))
-        }));
+        const financiero = historialRes.rows.map(row => {
+    const ingreso = parseFloat(row.venta_bruta || 0);
+    const costo = parseFloat(row.costo_estimado || 0);
+    const utilidad = Math.max(0, ingreso - costo);
+
+    return {
+        dia: row.dia,
+        ingreso: ingreso,   // Ventas Totales
+        costo: costo,       // Costo Total de Insumos
+        utilidad: utilidad  // Utilidad Neta
+    };
+});
 
         // 2. Categorías Locales
         const categoriasQuery = `
@@ -3041,11 +3091,17 @@ const exportarCierreDeHoyExcel = async (req, res) => {
         const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;
         const client = await pool.connect();
 
-        // 1. Obtener los pagos del día de hoy que no han sido cerrados
+        // Consulta detallada que extrae cliente, montos, tasa, método y la suma de unidades de la venta
         const queryRaw = `
-            SELECT p.metodo, p.moneda, COALESCE(p.monto::numeric, 0) as monto, 
-                   COALESCE(p.tasa_cambio::numeric, 0) as tasa, v.id as venta_id,
-                   c.nombre as cliente_nombre, v.fecha
+            SELECT 
+                p.metodo, 
+                p.moneda, 
+                COALESCE(p.monto::numeric, 0) as monto, 
+                COALESCE(p.tasa_cambio::numeric, 0) as tasa, 
+                v.id as venta_id,
+                c.nombre as cliente_nombre, 
+                v.fecha,
+                COALESCE((SELECT SUM(dv.cantidad) FROM detalle_ventas dv WHERE dv.venta_id = v.id), 0) as cantidad_items
             FROM pagos p 
             JOIN ventas v ON p.venta_id = v.id
             LEFT JOIN clientes c ON v.cliente_id = c.id
@@ -3055,62 +3111,95 @@ const exportarCierreDeHoyExcel = async (req, res) => {
                   jsonb_array_elements_text(cc.detalles_json->'ids_ventas_origen_hoy') as elem
                   WHERE cc.detalles_json->'ids_ventas_origen_hoy' IS NOT NULL AND elem::int = v.id
               )
+            ORDER BY v.fecha DESC
         `;
         const resRaw = await client.query(queryRaw, [idTiendaLocal]);
 
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet('Cierre Previo de Hoy');
 
-        // Diseñar Cabecera de Auditoría
-        sheet.addRow(['PREVISUALIZACIÓN DE CIERRE DE CAJA DIARIO']);
+        // Encabezado del Documento
+        sheet.addRow(['PREVISUALIZACIÓN DE CIERRE DE CAJA DIARIO DETALLADO']).font = { bold: true, size: 14 };
         sheet.addRow([`Fecha de Consulta:`, new Date().toLocaleDateString('es-VE'), `Sucursal ID:`, idTiendaLocal]);
-        sheet.addRow([`Estado:`, 'TEMPORAL - SIN ARCHIVAR']);
+        sheet.addRow([`Estado:`, 'TEMPORAL - SIN ARCHIVAR EN HISTÓRICO']);
         sheet.addRow([]);
 
         for (let i = 1; i <= 3; i++) sheet.getRow(i).font = { bold: true };
 
-        // Cabecera de Tabla
-        const headers = sheet.addRow(['ID VENTA', 'FECHA/HORA', 'CLIENTE', 'MÉTODO DE PAGO', 'MONEDA', 'MONTO ORIGINAL', 'TASA BCV', 'MONTO EN USD']);
+        // Encabezados de la Tabla Detallada
+        const headers = sheet.addRow([
+            'ID VENTA', 'FECHA/HORA', 'CLIENTE', 'MÉTODO DE PAGO', 'CANT. ÍTEMS', 'MONEDA', 'MONTO ORIGINAL', 'TASA BCV / CAMBIO', 'MONTO EN USD', 'MONTO EN BS'
+        ]);
         headers.font = { bold: true, color: { argb: 'FFFFFFFF' } };
         headers.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+        headers.alignment = { horizontal: 'center', vertical: 'middle' };
 
         let totalGeneralUSD = 0;
+        let totalGeneralBs = 0;
+        let totalUnidadesVendidas = 0;
 
         resRaw.rows.forEach(pago => {
             const monto = parseFloat(pago.monto);
             const tasa = parseFloat(pago.tasa);
             const moneda = (pago.moneda || 'USD').toUpperCase();
-            
+            const cantItems = parseFloat(pago.cantidad_items || 0);
+
             let montoUSD = 0;
-            if (moneda === 'BS' || moneda === 'VES') {
+            let montoBS = 0;
+
+            if (moneda === 'BS' || moneda === 'VES' || moneda === 'BSS') {
+                montoBS = monto;
                 montoUSD = tasa > 0 ? (monto / tasa) : 0;
             } else {
                 montoUSD = monto;
+                montoBS = monto * tasa;
             }
+
             totalGeneralUSD += montoUSD;
+            totalGeneralBs += montoBS;
+            totalUnidadesVendidas += cantItems;
 
             sheet.addRow([
                 pago.venta_id,
                 new Date(pago.fecha).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }),
                 pago.cliente_nombre || 'Consumidor Final',
                 pago.metodo,
+                cantItems,
                 moneda,
                 monto,
                 tasa,
-                montoUSD
+                montoUSD,
+                montoBS
             ]);
         });
 
-        // Fila de total
+        // Fila de Separación
         sheet.addRow([]);
-        const rowTotal = sheet.addRow(['', '', '', '', '', '', 'TOTAL PREVISTO (USD):', totalGeneralUSD]);
-        rowTotal.font = { bold: true };
-        rowTotal.getCell(8).numFmt = '"$"#,##0.00';
 
-        // Estilo de columnas
+        // Fila de Totales Consolidados (Dólares y Bolívares)
+        const rowTotal = sheet.addRow([
+            'TOTALES GENERALES:', '', '', '', totalUnidadesVendidas, '', '', '', totalGeneralUSD, totalGeneralBs
+        ]);
+        rowTotal.font = { bold: true, size: 11 };
+        rowTotal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } }; // Fondo verde suave de total
+
+        // Estilos y Formatos de Celda
+        sheet.getColumn(1).width = 12; // ID Venta
+        sheet.getColumn(2).width = 15; // Fecha
         sheet.getColumn(3).width = 30; // Cliente
-        sheet.getColumn(4).width = 20; // Método
-        sheet.getColumn(8).numFmt = '"$"#,##0.00';
+        sheet.getColumn(4).width = 22; // Método
+        sheet.getColumn(5).width = 14; // Cant. Ítems
+        sheet.getColumn(6).width = 10; // Moneda
+        sheet.getColumn(7).width = 18; // Monto Original
+        sheet.getColumn(8).width = 18; // Tasa
+        sheet.getColumn(9).width = 20; // Monto USD
+        sheet.getColumn(10).width = 22; // Monto BS
+
+        // Formatos Numéricos
+        sheet.getColumn(7).numFmt = '#,##0.00';
+        sheet.getColumn(8).numFmt = '"Bs "#,##0.00';
+        sheet.getColumn(9).numFmt = '"$"#,##0.00';
+        sheet.getColumn(10).numFmt = '"Bs "#,##0.00';
 
         client.release();
 

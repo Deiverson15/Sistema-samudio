@@ -37,6 +37,11 @@ const verifyToken = async (req, res, next) => {
             return res.status(401).json({ error: 'Su cuenta ha sido desactivada. Contacte al administrador.' });
         }
 
+        if (decoded.provisional) {
+            req.user = user;
+            return next();
+        }
+
         const configRes = await pool.query("SELECT clave, valor FROM configuracion WHERE clave IN ('sistema_activo', 'mensaje_pago')");
         
         let sistemaActivo = true;

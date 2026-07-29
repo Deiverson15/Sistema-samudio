@@ -3573,3 +3573,110 @@ window.limpiarCarrito = limpiarCarrito;
 window.cerrarModalCliente = function() { document.getElementById('modalCliente').classList.add('hidden'); };
 window.cerrarModalCobro = function() { document.getElementById('modalCobro').classList.add('hidden'); };
 window.finalizarVentaBackend = finalizarVentaBackend;
+
+
+let pctInicialCashea = 40;
+let metodoInicialCasheaSeleccionado = 'Pago Móvil';
+
+window.abrirModalCashea = function() {
+    if (carrito.length === 0) {
+        return Swal.fire('Carrito vacío', 'Agrega productos antes de procesar pago.', 'warning');
+    }
+
+    const modal = document.getElementById('modalCashea');
+    if (modal) modal.classList.remove('hidden');
+
+    seleccionarPorcentajeInicial(40);
+    seleccionarMetodoInicialCashea('Pago Móvil');
+};
+
+window.cerrarModalCashea = function() {
+    const modal = document.getElementById('modalCashea');
+    if (modal) modal.classList.add('hidden');
+};
+
+window.seleccionarPorcentajeInicial = function(pct) {
+    pctInicialCashea = pct;
+
+    document.querySelectorAll('.btn-pct-inicial').forEach(btn => {
+        btn.className = "btn-pct-inicial py-3 border border-neutral-300 bg-white font-black text-xs text-neutral-950 hover:bg-neutral-950 hover:text-white transition-colors";
+    });
+
+    const btnActivo = document.getElementById(`btnInicial${pct}`);
+    if (btnActivo) {
+        btnActivo.className = "btn-pct-inicial py-3 border border-neutral-950 bg-neutral-950 text-white font-black text-xs transition-colors";
+    }
+
+    const totalVentaUSD = carrito.reduce((acc, i) => acc + (i.precio * i.cantidad), 0);
+    const montoInicialUSD = (totalVentaUSD * (pct / 100));
+    const montoFinanciadoUSD = totalVentaUSD - montoInicialUSD;
+    const montoInicialBs = montoInicialUSD * tasaCambio;
+
+    document.getElementById('lblMontoInicialUSD').innerText = `$${montoInicialUSD.toFixed(2)}`;
+    document.getElementById('lblMontoInicialBs').innerText = `Bs ${montoInicialBs.toFixed(2)}`;
+    document.getElementById('lblMontoFinanciadoCashea').innerText = `$${montoFinanciadoUSD.toFixed(2)}`;
+};
+
+window.seleccionarMetodoInicialCashea = function(metodo) {
+    metodoInicialCasheaSeleccionado = metodo;
+
+    document.querySelectorAll('.btn-metodo-inicial').forEach(btn => {
+        btn.classList.remove('bg-neutral-950', 'text-white', 'border-neutral-950');
+        btn.classList.add('bg-white', 'text-neutral-600', 'border-neutral-300');
+    });
+
+    // Resaltar botón seleccionado
+    const botones = document.querySelectorAll('.btn-metodo-inicial');
+    botones.forEach(btn => {
+        if (btn.innerText.toUpperCase().includes(metodo.toUpperCase())) {
+            btn.classList.remove('bg-white', 'text-neutral-600', 'border-neutral-300');
+            btn.classList.add('bg-neutral-950', 'text-white', 'border-neutral-950');
+        }
+    });
+};
+
+window.confirmarPagoCashea = function() {
+    const refInicial = document.getElementById('refInicialCashea').value.trim();
+
+    if (!refInicial) {
+        return Swal.fire('Atención', 'Ingresa la referencia o aprobación de Cashea.', 'warning');
+    }
+
+    const totalVentaUSD = carrito.reduce((acc, i) => acc + (i.precio * i.cantidad), 0);
+    const montoInicialUSD = totalVentaUSD * (pctInicialCashea / 100);
+    const montoFinanciadoUSD = totalVentaUSD - montoInicialUSD;
+
+    // Determinar la moneda
+    const metodosBs = ['Efectivo Bs', 'Pago Móvil', 'P. Móvil', 'Punto', 'Bio Pago', 'Transferencia'];
+    const esBs = metodosBs.includes(metodoInicialCasheaSeleccionado);
+    const montoInicialRegistrar = esBs ? (montoInicialUSD * tasaCambio) : montoInicialUSD;
+
+    // 1. Pago de la Inicial Real
+    pagosRealizados.push({
+        metodo: `${metodoInicialCasheaSeleccionado.toUpperCase()} (INICIAL CASHEA ${pctInicialCashea}%)`,
+        moneda: esBs ? 'BS' : 'USD',
+        monto: parseFloat(montoInicialRegistrar.toFixed(2)),
+        tasa: tasaCambio,
+        referencia: refInicial
+    });
+
+    // 2. Registro del Crédito Cashea (Total 100% de la venta asegurado)
+    pagosRealizados.push({
+        metodo: 'CASHEA (CUOTAS)',
+        moneda: 'USD',
+        monto: parseFloat(montoFinanciadoUSD.toFixed(2)),
+        tasa: tasaCambio,
+        referencia: `CASHEA-${refInicial}`
+    });
+
+    cerrarModalCashea();
+    actualizarResumenCobro();
+
+    Swal.fire({
+        icon: 'success',
+        title: 'Cashea Aplicado',
+        text: `Inicial del ${pctInicialCashea}% registrada con ${metodoInicialCasheaSeleccionado}. Venta completada para facturar.`,
+        timer: 2000,
+        showConfirmButton: false
+    });
+};

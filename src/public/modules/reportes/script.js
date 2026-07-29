@@ -876,28 +876,23 @@ window.ejecutarDescargaTiendas = function() {
     cerrarModalFiltroTiendas();
 }
 
-// Descarga directa del Cierre de Hoy sin archivar (A nivel de Frontend)
 window.descargarCierreDeHoyExcel = async function() {
     const token = localStorage.getItem('token');
-    // Le pasamos el token por la URL para que la descarga directa del navegador lo autorice
-    const url = `/api/ventas/cierre/previsualizar/excel?token=${token}`; 
     
     try {
         Swal.fire({
             title: 'Preparando Cierre del Día...',
-            text: 'Mapeando las formas de pago procesadas hasta el momento.',
+            text: 'Generando desglose de ventas, cantidades y totales en USD y Bs...',
             allowOutsideClick: false,
             didOpen: () => Swal.showLoading()
         });
 
-        // Hacemos el fetch de la nueva ruta del backend
         const res = await fetch('/api/ventas/cierre/previsualizar/excel', { 
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
-        if (!res.ok) throw new Error("No se pudo generar el reporte de hoy. ¿Hay ventas?");
+        if (!res.ok) throw new Error("No se pudo generar el reporte de hoy. ¿Verificaste si hay ventas procesadas hoy?");
 
-        // Convertimos la respuesta en un archivo binario descargable
         const blob = await res.blob();
         const link = document.createElement('a');
         link.href = window.URL.createObjectURL(blob);
@@ -909,4 +904,4 @@ window.descargarCierreDeHoyExcel = async function() {
         console.error(error);
         Swal.fire('Error', error.message, 'error');
     }
-}
+};
