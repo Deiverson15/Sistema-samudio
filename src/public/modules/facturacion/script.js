@@ -2995,10 +2995,8 @@ function imprimirTicketFactura(datos) {
     if (datos.tipoDocumento === 'FACTURA') {
         contenidoCuerpo = `
             <div class="text-center">
-                <div class="font-bold text-lg">INVERSIONES BEAST MODE C.A.</div>
-                <div class="font-bold">RIF: J-50442123-0</div>
+                <div class="font-bold text-lg">PERFUMES C.A.</div>
                 <div class="text-xs" style="margin-top:4px; line-height: 1.2;">
-                    AV. FRANCISCO DE MIRANDA, CHACAO.<br>
                     CARACAS - VENEZUELA
                 </div>
             </div>
@@ -3089,8 +3087,7 @@ function imprimirTicketFactura(datos) {
         contenidoCuerpo = `
             <div class="text-center">
                 <div class="header-nota">NOTA DE ENTREGA</div>
-                <div class="font-bold text-lg mt-2">INVERSIONES BEAST MODE C.A.</div>
-                <div class="text-xs">RIF: J-50442123-0</div>
+                <div class="font-bold text-lg mt-2">PERFUMES C.A.</div>
             </div>
 
             <div class="divider-solid"></div>
