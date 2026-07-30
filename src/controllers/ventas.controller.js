@@ -2622,14 +2622,13 @@ const guardarBorradorCombo = async (req, res) => {
 
 const obtenerBorradoresPorFormula = async (req, res) => {
     try {
-        const { formulaId } = req.params;
         const query = `
-            SELECT id, nombre_identificador, items_json, TO_CHAR(fecha_creacion, 'DD/MM/YYYY HH12:MI AM') as fecha
+            SELECT id, nombre_identificador, formula_id, items_json, 
+                   TO_CHAR(fecha_creacion, 'DD/MM/YYYY HH12:MI AM') as fecha
             FROM pedidos_borradores 
-            WHERE formula_id = $1 
             ORDER BY fecha_creacion DESC
         `;
-        const result = await pool.query(query, [formulaId]);
+        const result = await pool.query(query);
         res.json(result.rows);
     } catch (error) {
         console.error("Error obteniendo borradores:", error);

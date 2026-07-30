@@ -3306,45 +3306,42 @@ window.guardarPedidoBD = async function() {
 };
 
 window.cargarPedidosBD = async function() {
-    if (!promoDataActual || !promoDataActual.idFormula) return;
+    if (!promoDataActual) return;
     
     try {
         const token = localStorage.getItem('token');
-        // 🔒 Estrictez: Solo busca los pedidos compatibles con la fórmula actual
+        // Consultamos todos los borradores disponibles
         const res = await fetch(`/api/ventas/borradores/formula/${promoDataActual.idFormula}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
         const borradores = await res.json();
 
-        if (borradores.length === 0) {
+        if (!borradores || borradores.length === 0) {
             return Swal.fire({
                 icon: 'info',
                 title: 'Bandeja Vacía',
-                text: 'No hay pedidos guardados que correspondan al tamaño de esta promoción.',
+                text: 'No tienes pedidos guardados disponibles.',
                 confirmButtonColor: '#0a0a0a'
             });
         }
 
-        // Crear una lista HTML interactiva con SweetAlert
         let htmlLista = '<div class="space-y-2 mt-4 max-h-60 overflow-y-auto custom-scrollbar text-left">';
         
         borradores.forEach(b => {
-            // Calculamos cuántos perfumes tiene el lote guardado
-            const cantidadTotal = b.items_json.reduce((acc, i) => acc + i.cantidad, 0);
-            
-            // Creamos la fila JSON para inyectarla directo al clic
-            const itemsString = JSON.stringify(b.items_json).replace(/"/g, '&quot;');
+            const items = typeof b.items_json === 'string' ? JSON.parse(b.items_json) : b.items_json;
+            const cantidadTotal = items.reduce((acc, i) => acc + i.cantidad, 0);
+            const itemsString = JSON.stringify(items).replace(/"/g, '&quot;');
 
             htmlLista += `
-                <div class="border border-neutral-300 bg-neutral-50 p-3 hover:bg-neutral-100 transition-colors flex justify-between items-center cursor-pointer" onclick="aplicarPedidoGuardado('${itemsString}', ${b.id})">
+                <div class="border border-neutral-300 bg-neutral-50 p-3 hover:bg-neutral-100 transition-colors flex justify-between items-center cursor-pointer mb-2" onclick="aplicarPedidoGuardado('${itemsString}', ${b.id})">
                     <div>
                         <div class="font-black text-xs text-neutral-950 uppercase tracking-widest">${b.nombre_identificador}</div>
                         <div class="text-[9px] font-bold text-neutral-500 uppercase tracking-widest mt-1">
-                            <i class="fa-solid fa-clock mr-1"></i> ${b.fecha} | <i class="fa-solid fa-flask ml-2 mr-1"></i> ${cantidadTotal} Perfumes
+                            <i class="fa-solid fa-clock mr-1"></i> ${b.fecha} | <i class="fa-solid fa-flask ml-2 mr-1"></i> ${cantidadTotal} Fragancias
                         </div>
                     </div>
-                    <button class="bg-neutral-950 text-white px-3 py-2 text-[10px] font-black uppercase tracking-widest">
+                    <button class="bg-neutral-950 text-white px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-amber-500 hover:text-neutral-950 transition-colors">
                         Cargar
                     </button>
                 </div>
@@ -3353,7 +3350,7 @@ window.cargarPedidosBD = async function() {
         htmlLista += '</div>';
 
         Swal.fire({
-            title: 'Pedidos Compatibles',
+            title: 'Cargar Pedido Guardado',
             html: htmlLista,
             showConfirmButton: false,
             showCloseButton: true,
@@ -3361,45 +3358,64 @@ window.cargarPedidosBD = async function() {
         });
 
     } catch (error) {
-        Swal.fire('Error', 'No se pudieron obtener los pedidos.', 'error');
+        console.error("Error cargando pedidos:", error);
+        Swal.fire('Error', 'No se pudieron obtener los pedidos guardados.', 'error');
     }
 };
 
 window.aplicarPedidoGuardado = async function(itemsString, idBorrador) {
-    const items = JSON.parse(itemsString);
+    const itemsOriginales = JSON.parse(itemsString);
+    const esLibre = promoDataActual && promoDataActual.esEstandarLibre;
     
-    // Verificamos si al cargar el pedido no superamos el límite de la promo actual
-    const nuevaCantidad = items.reduce((acc, i) => acc + i.cantidad, 0);
-    
-    if (nuevaCantidad > promoMaxPerfumes) {
-        return Swal.fire('Incompatible', `Este pedido requiere ${nuevaCantidad} espacios, pero la promo actual solo permite ${promoMaxPerfumes}.`, 'error');
-    }
+    // Calculamos cuántas unidades requiere el lote guardado
+    const requeridos = itemsOriginales.reduce((acc, i) => acc + i.cantidad, 0);
+    const limiteActual = promoMaxPerfumes;
 
-    // Preguntamos si quiere eliminar el borrador tras cargarlo
-    const { isConfirmed } = await Swal.fire({
-        title: 'Pedido Cargado',
-        text: '¿Deseas eliminar este pedido de la base de datos ahora que lo vas a despachar?',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, eliminarlo',
-        cancelButtonText: 'No, mantenerlo guardado',
-        confirmButtonColor: '#dc2626'
-    });
-
-    if (isConfirmed) {
-        const token = localStorage.getItem('token');
-        await fetch(`/api/ventas/borradores/${idBorrador}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
+    // Validación de cupo según la promoción abierta actualmente
+    if (!esLibre && limiteActual > 0 && requeridos > limiteActual) {
+        return Swal.fire({
+            icon: 'warning',
+            title: 'Espacio Insuficiente',
+            text: `El pedido guardado tiene ${requeridos} frascos y la promo actual solo permite ${limiteActual}.`,
+            confirmButtonColor: '#0a0a0a'
         });
     }
 
-    // Sustituimos los datos actuales por los del pedido y actualizamos contadores
-    loteEsenciasPromo = items;
-    promoPerfumesAgregados = nuevaCantidad;
+    const { isConfirmed } = await Swal.fire({
+        title: '¿Cargar Pedido?',
+        text: 'Las esencias guardadas se adaptarán al formato y precio de la promoción actual. ¿Deseas eliminar el borrador de la base de datos?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, cargar y borrar de BD',
+        cancelButtonText: 'Cargar y mantener guardado',
+        confirmButtonColor: '#0a0a0a'
+    });
+
+    if (isConfirmed && idBorrador) {
+        try {
+            const token = localStorage.getItem('token');
+            await fetch(`/api/ventas/borradores/${idBorrador}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+        } catch (e) {
+            console.error("Error borrando borrador:", e);
+        }
+    }
+
+    // Mapeamos las esencias guardadas para que adopten la promoción activa
+    loteEsenciasPromo = itemsOriginales.map(item => ({
+        id: item.id,
+        nombre: item.nombre,
+        cantidad: item.cantidad,
+        gramos_extra: item.gramos_extra || 0,
+        precio_gramo_extra: item.precio_gramo_extra || 0
+    }));
+
+    promoPerfumesAgregados = requeridos;
     
     renderizarListaEsenciasLote();
-    Swal.close(); // Cierra el listado de pedidos
+    Swal.close();
 };
 
 /**
