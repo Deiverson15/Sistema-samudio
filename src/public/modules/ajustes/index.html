@@ -175,13 +175,21 @@
 
                     <!-- MAGNITUD Y JUSTIFICACIÓN -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white p-6 border border-neutral-300">
+                        
+                        
                         <div>
-                            <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-4 border-b border-neutral-200 pb-2">3. Magnitud</label>
-                            <div class="relative">
-                                <input type="number" id="cantidad" step="0.01" class="w-full p-4 border border-neutral-300 bg-neutral-50 rounded-none text-center font-black text-2xl text-neutral-950 outline-none focus:bg-white focus:border-neutral-950 transition-colors" placeholder="0.00" min="0.01">
-                                <span id="labelUnidad" class="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black bg-neutral-200 text-neutral-600 px-3 py-1 uppercase tracking-widest border border-neutral-300">UND</span>
-                            </div>
-                        </div>
+    <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-4 border-b border-neutral-200 pb-2">3. Magnitud</label>
+    <div class="relative flex items-center">
+        <input type="number" id="cantidad" step="0.01" class="w-full p-4 pr-24 border border-neutral-300 bg-neutral-50 rounded-none text-center font-black text-2xl text-neutral-950 outline-none focus:bg-white focus:border-neutral-950 transition-colors" placeholder="0.00" min="0.01">
+        
+        <!-- SELECTOR DINÁMICO DE UNIDADES DE MEDIDA -->
+        <select id="unidadSeleccion" class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-black bg-neutral-200 text-neutral-950 px-2 py-2 uppercase tracking-widest border border-neutral-400 outline-none cursor-pointer rounded-none">
+            <option value="UNIDAD">UNIDAD</option>
+        </select>
+    </div>
+</div>
+
+
                         <div class="md:col-span-2">
                             <label class="block text-[10px] font-black text-neutral-950 uppercase tracking-widest mb-4 border-b border-neutral-200 pb-2">4. Justificación Operativa</label>
                             <div class="relative">

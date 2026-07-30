@@ -35,7 +35,8 @@ const {
     obtenerEstancamiento, 
     exportarEstancamientoExcel,
     getReporteListaPrecios, 
-    exportarListaPreciosExcel
+    exportarListaPreciosExcel,
+    exportarKardexProductoExcel
 } = require('../controllers/productos.controller');
 
 // ==========================================
@@ -53,6 +54,7 @@ router.get('/estancamiento', verifyToken, obtenerEstancamiento);
 router.get('/estancamiento/excel', verifyToken, exportarEstancamientoExcel);
 router.get('/estante', verifyToken, getProductosEstante);
 router.get('/reporte-kardex', verifyToken, getReporteKardex);
+router.get('/exportar-kardex', exportarKardexProductoExcel);
 
 // ==========================================
 // RUTAS DE GESTIÓN (REQUIEREN PERMISO GERENTE)

@@ -3,7 +3,6 @@ import { formatMoney } from '../../js/api.js';
 let datosCierreTemporal = null; // Variable para almacenar los datos antes de guardar
 
 export function init() {
-
     console.log("Módulo Reportes Iniciado");
     window.ejecutarCalculo = ejecutarCalculo;
     window.confirmarYGuardar = confirmarYGuardar;
@@ -20,7 +19,6 @@ export function init() {
     window.descargarExcelSemanal = descargarExcelSemanal;
     window.descargarCierreDeHoyExcel = descargarCierreDeHoyExcel;
 
-    
     window.abrirModalFiltroTiendas = abrirModalFiltroTiendas;
     window.cerrarModalFiltroTiendas = cerrarModalFiltroTiendas;
     window.ejecutarDescargaTiendas = ejecutarDescargaTiendas;
@@ -29,9 +27,11 @@ export function init() {
     cargarHistorial();
 
     const inputF = document.getElementById('inputFechaSemanal');
-    if(inputF) inputF.value = new Date().toISOString().slice(0, 10);
+    if (inputF) inputF.value = new Date().toISOString().slice(0, 10);
 }
 
+// Array global para acumular los productos seleccionados en la lista de trazabilidad
+window.productosTrazabilidadSeleccionados = [];
 
 window.abrirModalReporte = async function(element) {
     const tipo = element.getAttribute('data-tipo');
@@ -42,7 +42,10 @@ window.abrirModalReporte = async function(element) {
     document.getElementById('reportModal').classList.remove('hidden');
     container.innerHTML = '<div class="text-xs font-bold text-neutral-500 py-4"><i class="fa-solid fa-spinner fa-spin"></i> Cargando opciones...</div>';
     
-    // Consultar tiendas en vivo para el SuperAdmin
+    // Resetear lista de selección múltiple
+    window.productosTrazabilidadSeleccionados = [];
+
+    // Consultar tiendas en vivo
     let opcionesTiendas = '<option value="todas">Todas las Sucursales (Solo Rol Dev)</option>';
     try {
         const token = localStorage.getItem('token');
@@ -53,7 +56,6 @@ window.abrirModalReporte = async function(element) {
         }
     } catch(e) { console.warn("Error cargando tiendas", e); }
 
-    // Construir estructura base de filtros (El de tienda siempre sale)
     let htmlFiltros = `
         <div class="bg-neutral-50 p-3 border border-neutral-200 border-l-2 border-l-neutral-900">
             <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Sucursal a Auditar</label>
@@ -63,19 +65,65 @@ window.abrirModalReporte = async function(element) {
         </div>
     `;
 
-    // Filtros específicos según la tarjeta que tocó el usuario
-    if (tipo === 'kardex') {
+    // 🎯 MODAL CLARO Y SIN CONFUSIÓN PARA TRAZABILIDAD Y KARDEX
+    if (tipo === 'trazabilidad' || tipo === 'kardex') {
         htmlFiltros += `
+            <!-- ALCANCE DEL REPORTE -->
             <div>
-                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtro: Producto / Referencia</label>
-                <input type="text" id="filterProducto" placeholder="Ej: E176" class="w-full p-3 border border-neutral-300 font-bold text-xs uppercase outline-none focus:border-neutral-900">
-            </div>`;
+                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Alcance de Trazabilidad</label>
+                <select id="filterModoTrazabilidad" onchange="window.cambiarModoTrazabilidadUI(this.value)" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900 bg-white">
+                    <option value="especifico">🎯 Seleccionar Referencias Específicas (Buscar E001, E002...)</option>
+                    <option value="categoria">📦 Filtrar por Categoría / Insumo General</option>
+                </select>
+            </div>
+
+            <!-- MODO A: BUSCADOR MÚLTIPLE DE REFERENCIAS -->
+            <div id="bloqueBusquedaEspecifica" class="relative space-y-2">
+                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">
+                    Buscador de Referencias
+                </label>
+                <div class="relative">
+                    <input type="text" id="inputBuscarTrazabilidad" 
+                           placeholder="ESCRIBE CÓDIGO (EJ: E001) Y HAZ CLICK..." 
+                           autocomplete="off"
+                           class="w-full p-3 border border-neutral-300 font-bold text-xs uppercase outline-none focus:border-neutral-900 pr-10">
+                    <i class="fa-solid fa-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 text-xs"></i>
+                </div>
+                
+                <input type="hidden" id="filterProducto" value="">
+
+                <div id="resultadosTrazabilidad" 
+                     class="hidden absolute z-50 left-0 right-0 bg-white border border-neutral-300 shadow-xl max-h-48 overflow-y-auto divide-y divide-neutral-100">
+                </div>
+
+                <!-- Lista de Referencias Seleccionadas -->
+                <div id="listaProductosTrazabilidad" class="space-y-1.5 pt-2">
+                    <p class="text-[9px] font-bold text-amber-600 uppercase tracking-widest italic" id="textoSinSeleccion">
+                        * Debes agregar al menos una referencia en la lista.
+                    </p>
+                </div>
+            </div>
+
+            <!-- MODO B: FILTRO POR CATEGORÍA GENERAL -->
+            <div id="bloqueCategoriaGeneral" class="hidden">
+                <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Categoría / Insumo</label>
+                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900 bg-white">
+                    <option value="todos">Todos los Insumos y Productos</option>
+                    <option value="ESENCIA">Solo Esencias</option>
+                    <option value="ALCOHOL">Solo Alcohol</option>
+                    <option value="FIJADOR">Solo Fijador</option>
+                    <option value="FRASCOS">Solo Frascos / Envases</option>
+                    <option value="INSUMOS">Toda la Materia Prima</option>
+                    <option value="PT">Solo Perfumes Terminados (PT)</option>
+                </select>
+            </div>
+        `;
     } 
     else if (tipo === 'inventario' || tipo === 'productos_creados') {
         htmlFiltros += `
             <div>
                 <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtro: Categoría / Tipo</label>
-                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900">
+                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900 bg-white">
                     <option value="todos">Catálogo Completo</option>
                     <option value="PT">PT (Perfumes Terminados / Completos)</option>
                     <option value="INSUMOS">Insumos y Materia Prima</option>
@@ -87,11 +135,10 @@ window.abrirModalReporte = async function(element) {
             </div>`;
     }
     else if (tipo === 'referencias') {
-        // 🔥 AGREGADO: Selector dinámico para Ventas por Referencia
         htmlFiltros += `
             <div>
                 <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtrar por Tipo / Materia Prima</label>
-                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900">
+                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900 bg-white">
                     <option value="todos">Todos los Productos</option>
                     <option value="MATERIA_PRIMA">Materia Prima (Esencia, Fijador, Alcohol, Frasco)</option>
                     <option value="ESENCIA">Solo Esencias</option>
@@ -106,7 +153,7 @@ window.abrirModalReporte = async function(element) {
         htmlFiltros += `
             <div>
                 <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtro: Método de Pago (Histórico)</label>
-                <select id="filterMetodo" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900">
+                <select id="filterMetodo" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900 bg-white">
                     <option value="todos">Consolidado Total (Todos)</option>
                     <option value="EFECTIVO USD">Solo Efectivo USD</option>
                     <option value="EFECTIVO BS">Solo Efectivo Bs</option>
@@ -125,7 +172,7 @@ window.abrirModalReporte = async function(element) {
         htmlFiltros += `
             <div>
                 <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtro: Sección / Categoría</label>
-                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900">
+                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900 bg-white">
                     <option value="todos">Todas las Secciones</option>
                     <option value="ESENCIA">Solo Esencias</option>
                     <option value="TERMINADOS">Solo Perfumes Terminados</option>
@@ -140,7 +187,7 @@ window.abrirModalReporte = async function(element) {
         htmlFiltros += `
             <div>
                 <label class="text-[10px] font-black uppercase text-neutral-500 block mb-1">Filtrar por Tipo / Materia Prima</label>
-                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900">
+                <select id="filterCategoria" class="w-full p-3 border border-neutral-300 font-bold text-xs outline-none uppercase focus:border-neutral-900 bg-white">
                     <option value="todos">Todos los Productos (Consolidado General)</option>
                     <option value="MATERIA_PRIMA">MT - Materia Prima (Esencia, Fijador, Alcohol, Frasco)</option>
                     <option value="ESENCIA">Solo Esencias</option>
@@ -152,7 +199,6 @@ window.abrirModalReporte = async function(element) {
             </div>`;
     }
 
-    // El filtro de cajero sirve para facturación y reportes de desempeño
     if (['cierres', 'referencias'].includes(tipo)) {
         htmlFiltros += `
             <div>
@@ -162,11 +208,121 @@ window.abrirModalReporte = async function(element) {
     }
 
     container.innerHTML = htmlFiltros;
+
+    // 🔥 EVENTO DE BÚSQUEDA EN VIVO
+    if (tipo === 'trazabilidad' || tipo === 'kardex') {
+        const inputBuscar = document.getElementById('inputBuscarTrazabilidad');
+        const boxResultados = document.getElementById('resultadosTrazabilidad');
+
+        inputBuscar.addEventListener('input', async (e) => {
+            const query = e.target.value.trim();
+            if (query.length < 1) {
+                boxResultados.classList.add('hidden');
+                boxResultados.innerHTML = '';
+                return;
+            }
+
+            try {
+                const token = localStorage.getItem('token');
+                const res = await fetch(`/api/productos?search=${encodeURIComponent(query)}&limit=10`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!res.ok) return;
+                const json = await res.json();
+                const productos = json.data || [];
+
+                if (productos.length === 0) {
+                    boxResultados.innerHTML = '<div class="p-3 text-[10px] font-bold text-neutral-400 uppercase text-center">Sin coincidencias</div>';
+                } else {
+                    boxResultados.innerHTML = productos.map(p => `
+                        <div onclick="window.agregarProductoTrazabilidad('${p.codigo || p.id}', '${p.nombre.replace(/'/g, "\\'")}', '${p.codigo || 'S/C'}')" 
+                             class="p-3 hover:bg-neutral-100 cursor-pointer transition-colors flex justify-between items-center text-xs">
+                            <span class="font-black text-neutral-900 uppercase">${p.nombre}</span>
+                            <span class="text-[10px] font-bold bg-neutral-900 text-white px-2 py-0.5 font-mono">${p.codigo || 'S/C'}</span>
+                        </div>
+                    `).join('');
+                }
+                boxResultados.classList.remove('hidden');
+            } catch (err) {
+                console.error("Error buscando productos:", err);
+            }
+        });
+    }
 };
+
+
+window.cambiarModoTrazabilidadUI = function(modo) {
+    const bEspecifico = document.getElementById('bloqueBusquedaEspecifica');
+    const bCategoria = document.getElementById('bloqueCategoriaGeneral');
+    const inputOculto = document.getElementById('filterProducto');
+
+    if (modo === 'especifico') {
+        bEspecifico.classList.remove('hidden');
+        bCategoria.classList.add('hidden');
+        window.actualizarUIRenderTrazabilidad();
+    } else {
+        bEspecifico.classList.add('hidden');
+        bCategoria.classList.remove('hidden');
+        if (inputOculto) inputOculto.value = ''; // Limpiar referencias guardadas
+    }
+};
+
+window.agregarProductoTrazabilidad = function(codigo, nombre, codigoDisplay) {
+    if (window.productosTrazabilidadSeleccionados.some(item => item.codigo === codigo)) {
+        document.getElementById('resultadosTrazabilidad').classList.add('hidden');
+        document.getElementById('inputBuscarTrazabilidad').value = '';
+        return;
+    }
+
+    window.productosTrazabilidadSeleccionados.push({ codigo, nombre, codigoDisplay });
+    window.actualizarUIRenderTrazabilidad();
+    
+    document.getElementById('resultadosTrazabilidad').classList.add('hidden');
+    document.getElementById('inputBuscarTrazabilidad').value = '';
+};
+
+window.removerProductoTrazabilidad = function(codigo) {
+    window.productosTrazabilidadSeleccionados = window.productosTrazabilidadSeleccionados.filter(item => item.codigo !== codigo);
+    window.actualizarUIRenderTrazabilidad();
+};
+
+window.actualizarUIRenderTrazabilidad = function() {
+    const contenedorList = document.getElementById('listaProductosTrazabilidad');
+    const inputOculto = document.getElementById('filterProducto');
+
+    if (!contenedorList || !inputOculto) return;
+
+    if (window.productosTrazabilidadSeleccionados.length === 0) {
+        contenedorList.innerHTML = `
+            <p class="text-[9px] font-bold text-amber-600 uppercase tracking-widest italic" id="textoSinSeleccion">
+                * Debes agregar al menos una referencia en la lista.
+            </p>`;
+        inputOculto.value = '';
+        return;
+    }
+
+    const arrayCodigos = window.productosTrazabilidadSeleccionados.map(item => item.codigo);
+    inputOculto.value = arrayCodigos.join(',');
+
+    contenedorList.innerHTML = window.productosTrazabilidadSeleccionados.map(item => `
+        <div class="flex justify-between items-center bg-neutral-950 text-white p-2.5 border-l-4 border-l-purple-500 text-[10px] font-black uppercase tracking-wider">
+            <div class="flex items-center gap-2">
+                <span class="bg-neutral-800 text-neutral-300 font-mono px-1.5 py-0.5">${item.codigoDisplay}</span>
+                <span>${item.nombre}</span>
+            </div>
+            <button type="button" onclick="window.removerProductoTrazabilidad('${item.codigo}')" class="text-neutral-400 hover:text-red-400 ml-2">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+    `).join('');
+};
+
 
 window.closeModal = function() {
     document.getElementById('reportModal').classList.add('hidden');
 };
+
 window.ejecutarDescarga = async function() {
     const start = document.getElementById('inputStart').value;
     const end = document.getElementById('inputEnd').value;
@@ -176,26 +332,24 @@ window.ejecutarDescarga = async function() {
         return Swal.fire({ icon: 'warning', text: 'Debes seleccionar la fecha de inicio y fin.' });
     }
 
-    // Capturamos los valores de los filtros (con el operador ? por si no existen en pantalla)
     const tiendaId = document.getElementById('filterTienda')?.value || 'todas';
     const categoria = document.getElementById('filterCategoria')?.value || 'todos';
     const producto = document.getElementById('filterProducto')?.value || '';
     const metodoPago = document.getElementById('filterMetodo')?.value || 'todos';
     const vendedor = document.getElementById('filterVendedor')?.value || '';
 
-    // Enrutador base corregido
+    // 🔥 ENRUTADOR RÁPIDO CORREGIDO
     let url = '';
     
-    // "Info. Inventario" (Movimiento ISLR) debe ir a productos.controller
     if (tipo === 'inventario') {
         url = `/api/productos/reportes/excel?filtro=inventario&start=${start}&end=${end}`;
     } 
-    // El nuevo reporte "Productos Creados" va a ventas.controller
+    else if (tipo === 'trazabilidad' || tipo === 'kardex') {
+        // Apunta al endpoint de trazabilidad en productos.controller.js
+        url = `/api/productos/reportes/excel?filtro=trazabilidad&start=${start}&end=${end}`;
+    }
     else if (tipo === 'productos_creados') {
         url = `/api/ventas/exportar/excel?filtro=${tipo}&start=${start}&end=${end}`;
-    } 
-    else if (tipo === 'kardex') {
-        url = `/api/productos/reporte-kardex?inicio=${start}&fin=${end}`;
     } 
     else if (tipo === 'lista-precios') {
         url = `/api/productos/reportes/lista-precios/excel?start=${start}&end=${end}&tienda_id=${tiendaId}&seccion=${encodeURIComponent(categoria)}`;
@@ -204,7 +358,7 @@ window.ejecutarDescarga = async function() {
         url = `/api/ventas/exportar/excel?filtro=${tipo}&start=${start}&end=${end}`;
     }
 
-    // 🚀 INYECCIÓN DE PARÁMETROS EN LA URL
+    // INYECCIÓN DE PARÁMETROS OPCIONALES
     if (tiendaId !== 'todas') url += `&tienda=${tiendaId}`;
     if (categoria !== 'todos') url += `&categoria=${encodeURIComponent(categoria)}`;
     if (producto.trim() !== '') url += `&producto=${encodeURIComponent(producto)}`;
@@ -221,43 +375,64 @@ window.descargarExcel = async function(tipoReporte, url) {
     try {
         Swal.fire({
             title: 'Generando Reporte...',
+            text: 'Procesando datos y construyendo libro Excel...',
             allowOutsideClick: false,
             didOpen: () => Swal.showLoading()
         });
         
-        // Ejecutamos la descarga usando la URL completa
         const res = await fetch(url, { 
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            }
         });
 
-        // Verificamos si el servidor devolvió un error (500, 400, etc.)
         if (!res.ok) {
-            const err = await res.json().catch(() => ({error: 'Error desconocido al generar el archivo'}));
-            throw new Error(err.error);
+            const errJson = await res.json().catch(() => null);
+            const mensajeError = errJson?.error || errJson?.detalle || `Error HTTP ${res.status}: No se pudo generar el archivo.`;
+            throw new Error(mensajeError);
         }
         
-        // Procesamos y descargamos el Excel
         const blob = await res.blob();
-        const link = document.createElement('a');
-        link.href = window.URL.createObjectURL(blob);
         
-        // Nombre de descarga genérico según el reporte
-        link.download = `Reporte_${tipoReporte.toUpperCase()}.xlsx`;
+        if (blob.size === 0) {
+            throw new Error("El archivo generado está vacío (0 bytes).");
+        }
+
+        const urlBlob = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = urlBlob;
+        
+        const fechaHoy = new Date().toISOString().slice(0, 10);
+        link.download = `Reporte_${tipoReporte.toUpperCase()}_${fechaHoy}.xlsx`;
+        
+        document.body.appendChild(link);
         link.click();
         
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(urlBlob);
+        
         Swal.close();
+
+        const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
+        Toast.fire({ icon: 'success', title: 'Excel generado exitosamente' });
+
     } catch (e) {
-        console.error("Error en la descarga:", e);
-        Swal.fire('Error', e.message, 'error');
+        console.error("❌ Error en la descarga de Excel:", e);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error en Reporte',
+            text: e.message || 'No se pudo procesar el archivo Excel.',
+            confirmButtonColor: '#0a0a0a'
+        });
     }
-}
+};
 
 async function ejecutarCalculo() {
     const btn = document.getElementById('btnCalcular');
     const panel = document.getElementById('panelResultadosCierre');
     const emptyState = document.getElementById('emptyStateCierre');
     
-    // Bloquear botón visualmente
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Verificando...';
     
@@ -267,43 +442,30 @@ async function ejecutarCalculo() {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
-        // --- AQUÍ ESTÁ LA SOLUCIÓN DEL ERROR 400 ---
         if (!res.ok) {
-            // Intentamos leer el mensaje JSON que envía el backend (ej: "YA CERRADO")
             const errorData = await res.json().catch(() => ({})); 
-            
-            // Si el backend nos dio una razón específica, lanzamos ese error para mostrarlo
-            if (errorData.mensaje) {
-                throw new Error(errorData.mensaje); 
-            }
-            
+            if (errorData.mensaje) throw new Error(errorData.mensaje); 
             throw new Error("Error al obtener datos del servidor.");
         }
-        // -------------------------------------------
 
         const data = await res.json();
         datosCierreTemporal = data;
 
-        // Recuperar datos con seguridad
         const totalUsd = data.totales?.usd || 0;
         const totalBs = data.totales?.bs || 0;
         const listaMetodos = data.desglose_metodos || [];
 
-        // 1. Renderizar Totales
         document.getElementById('cierreTotalUSD').innerText = formatMoney(totalUsd);
         document.getElementById('cierreTotalBs').innerText = `Bs ${parseFloat(totalBs).toFixed(2)}`;
 
-        // 2. Renderizar Tabla
         renderizarTablaDesglose(listaMetodos);
 
-        // 3. Mostrar Panel
         emptyState.classList.add('hidden');
         panel.classList.remove('hidden');
         panel.classList.add('flex');
         
-        // Mostrar botón de guardar solo si se calculó correctamente
         const btnGuardar = document.getElementById('btnGuardarCierre');
-        if(btnGuardar) {
+        if (btnGuardar) {
             btnGuardar.classList.remove('hidden');
             btnGuardar.classList.add('flex');
         }
@@ -314,14 +476,11 @@ async function ejecutarCalculo() {
     } catch (error) {
         console.warn("Aviso de Cierre:", error.message);
         
-        // Ocultar panel de resultados si hubo error (para no mostrar datos viejos)
         panel.classList.add('hidden');
         emptyState.classList.remove('hidden');
         const btnGuardar = document.getElementById('btnGuardarCierre');
-        if(btnGuardar) btnGuardar.classList.add('hidden');
+        if (btnGuardar) btnGuardar.classList.add('hidden');
 
-        // MOSTRAR LA ALERTA CON EL MENSAJE DEL BACKEND
-        // Si el mensaje incluye "YA FUE REALIZADO", usamos un ícono de advertencia/info
         const esBloqueo = error.message.includes("YA FUE REALIZADO") || error.message.includes("YA CERRADO");
         
         Swal.fire({
@@ -331,7 +490,6 @@ async function ejecutarCalculo() {
             confirmButtonColor: '#3085d6'
         });
 
-        // Restaurar el botón
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-calculator"></i> Calcular Cierre de Hoy';
     }
@@ -343,7 +501,7 @@ async function confirmarYGuardar() {
     try {
         const token = localStorage.getItem('token');
         const payload = {
-            totales: datosCierreTemporal.totales, // Enviamos el objeto de totales directo
+            totales: datosCierreTemporal.totales,
             detalles: {
                 desglose_pagos: datosCierreTemporal.desglose_metodos || []
             },
@@ -373,12 +531,9 @@ function renderizarTablaDesglose(datos) {
     }
 
     tbody.innerHTML = datos.map(d => {
-        // Aseguramos que los números sean números
         const ops = parseInt(d.transacciones || d.cantidad_transacciones || 0);
         const usd = parseFloat(d.total_usd || 0);
         const bs = parseFloat(d.total_bs || d.total_bs_estimado || 0);
-        
-        // Texto inteligente: "1 Transacción" vs "2 Transacciones"
         const textoOps = ops === 1 ? 'Transacción' : 'Transacciones';
 
         return `
@@ -446,31 +601,19 @@ async function cargarHistorial() {
     }
 }
 
-// Descarga individual del historial
 async function descargarCierreHistorico(id) {
     const token = localStorage.getItem('token');
-    // Usamos window.location para forzar la descarga del navegador
-    // Asumiendo que tu ruta backend soporta GET para descargar
     window.location.href = `/api/ventas/cierre/${id}/excel?token=${token}`; 
-    
-    // NOTA: Si tu backend requiere Header Authorization en lugar de query param token,
-    // tendrías que usar el metodo fetch + blob similar a descargarExcel()
 }
 
 window.ejecutarCierreManualTemporal = async function() {
-    // 1. Convertimos el Set a Array para poder enviarlo
     const idsSeleccionados = Array.from(window.facturasSeleccionadas);
     
-    // 🔥 DEBUG: Mira la consola (F12) al hacer clic. ¿Qué sale aquí?
-    console.log("IDs que voy a enviar al servidor:", idsSeleccionados);
-
-    // 2. Validación de seguridad
     if (idsSeleccionados.length === 0) {
         Swal.fire('Error', 'Debes seleccionar al menos una factura para el cierre.', 'error');
-        return; // Detenemos aquí, no intentamos llamar al servidor
+        return; 
     }
 
-    // 3. Confirmación
     const confirm = await Swal.fire({
         title: '¿Confirmar cierre?',
         text: `Vas a cerrar ${idsSeleccionados.length} facturas. Esta acción no se puede deshacer.`,
@@ -481,7 +624,6 @@ window.ejecutarCierreManualTemporal = async function() {
 
     if (!confirm.isConfirmed) return;
 
-    // 4. Envío al Servidor
     try {
         const token = localStorage.getItem('token');
         const respuesta = await fetch('/api/ventas/cierres/forzar-historico', {
@@ -492,7 +634,7 @@ window.ejecutarCierreManualTemporal = async function() {
             },
             body: JSON.stringify({ 
                 fecha_manual: document.getElementById('inputFechaHistorica').value, 
-                ids_ventas: idsSeleccionados // ✅ El backend espera esto
+                ids_ventas: idsSeleccionados
             })
         });
 
@@ -500,9 +642,7 @@ window.ejecutarCierreManualTemporal = async function() {
 
         if (respuesta.ok) {
             Swal.fire('¡Éxito!', 'Cierre forzado correctamente', 'success');
-            // Aquí puedes cerrar la modal o recargar la página
         } else {
-            // Si el servidor responde 400, aquí capturamos el mensaje real del servidor
             throw new Error(data.error || 'Error al procesar el cierre');
         }
     } catch (error) {
@@ -511,7 +651,6 @@ window.ejecutarCierreManualTemporal = async function() {
     }
 };
 
-// Variables globales de la modal
 window.facturasSeleccionadas = new Set(); 
 window.facturasDisponibles = [];
 let fechaActualSeleccionada = '';
@@ -532,14 +671,12 @@ window.abrirModalFacturas = async function() {
         const data = await res.json();
         Swal.close();
 
-        // Guardamos las facturas (si el día está en cero, el array vendrá vacío [])
         window.facturasDisponibles = data.historial_pagos || [];
         window.facturasSeleccionadas.clear();
         document.getElementById('checkAll').checked = false;
 
         const tbody = document.getElementById('tablaFacturasBody');
         
-        // ✨ COMPORTAMIENTO ABIERTO: Si no hay ventas, mostramos un diseño limpio de auditoría en cero
         if (window.facturasDisponibles.length === 0) {
             tbody.innerHTML = `
                 <tr>
@@ -550,7 +687,6 @@ window.abrirModalFacturas = async function() {
                 </tr>
             `;
         } else {
-            // Pintar filas con la moneda real
             tbody.innerHTML = window.facturasDisponibles.map(f => {
                 const moneda = (f.moneda || 'USD').toUpperCase();
                 const esBs = moneda === 'BS' || moneda === 'BSS' || moneda === 'VES';
@@ -579,13 +715,11 @@ window.abrirModalFacturas = async function() {
     }
 };
 
-// 2. Pintar la tabla
 function pintarTablaFacturas() {
     const tbody = document.getElementById('tablaFacturasBody');
     tbody.innerHTML = '';
 
     facturasDisponibles.forEach(fac => {
-        // Conversión rápida para mostrar en la tabla (dependiendo de la moneda original)
         const moneda = (fac.moneda || 'USD').toUpperCase();
         let textoMonto = moneda === 'BS' || moneda === 'VES' 
             ? `Bs ${parseFloat(fac.monto).toFixed(2)}` 
@@ -612,15 +746,13 @@ function pintarTablaFacturas() {
     });
 }
 
-// 3. Lógica de Checkboxes
 window.toggleFacturaSeleccionada = function(id) {
     const idNum = parseInt(id);
     if (window.facturasSeleccionadas.has(idNum)) window.facturasSeleccionadas.delete(idNum);
     else window.facturasSeleccionadas.add(idNum);
     
-    // Sincronizar checkbox visual
     const chk = document.getElementById(`chk_${idNum}`);
-    if(chk) chk.checked = window.facturasSeleccionadas.has(idNum);
+    if (chk) chk.checked = window.facturasSeleccionadas.has(idNum);
     
     calcularTotalesModal();
 };
@@ -635,12 +767,11 @@ function toggleTodasFacturas(checkbox) {
     calcularTotalesModal();
 }
 
-// 4. Calcular Totales en tiempo real
 function calcularTotalesModal() {
     let usd = 0;
     let bs = 0;
     window.facturasDisponibles.forEach(f => {
-        if(window.facturasSeleccionadas.has(f.venta_id)) {
+        if (window.facturasSeleccionadas.has(f.venta_id)) {
             usd += parseFloat(f.monto_usd || 0);
             bs += parseFloat(f.monto_bs || 0);
         }
@@ -653,7 +784,6 @@ window.enviarCierreSeleccionado = async function() {
     const inputFecha = document.getElementById('fechaCierreManualTemporal').value;
     const arrayIds = Array.from(window.facturasSeleccionadas);
 
-    // Si el día sí tiene facturas pero el cajero no marcó ninguna, le advertimos
     if (window.facturasDisponibles.length > 0 && arrayIds.length === 0) {
         return Swal.fire('Falta Selección', 'Por favor, selecciona al menos una factura para procesar el arqueo de esta fecha.', 'warning');
     }
@@ -667,7 +797,7 @@ window.enviarCierreSeleccionado = async function() {
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ 
                 fecha_manual: inputFecha, 
-                ids_ventas: arrayIds // Enviará [] si el día fue de $0.00
+                ids_ventas: arrayIds 
             })
         });
 
@@ -677,7 +807,7 @@ window.enviarCierreSeleccionado = async function() {
         if (res.ok) {
             Swal.fire('¡Arqueo Sellado!', `El balance para el día ${inputFecha} ha sido registrado exitosamente.`, 'success');
             window.cerrarModalFacturas();
-            cargarHistorial(); // Refrescar la tabla lateral
+            cargarHistorial(); 
         } else {
             throw new Error(data.error);
         }
@@ -690,15 +820,10 @@ window.cerrarModalFacturas = function() {
     document.getElementById('modalSeleccionFacturas').classList.add('hidden');
 };
 
-window.cerrarModalFacturas = function() {
-    document.getElementById('modalSeleccionFacturas').classList.add('hidden');
-};
-
 function cerrarModalFacturas() {
     document.getElementById('modalSeleccionFacturas').classList.add('hidden');
 }
 
-// Variable temporal para guardar las fechas calculadas en el frontend
 let limitesSemanaActual = { inicio: '', fin: '' };
 
 async function ejecutarCalculoSemanal() {
@@ -724,11 +849,9 @@ async function ejecutarCalculoSemanal() {
         if (!res.ok) throw new Error("Error en la respuesta consolidada del servidor.");
         const data = await res.json();
 
-        // Guardar límites para la descarga de Excel posterior
         limitesSemanaActual.inicio = data.rango.inicio;
         limitesSemanaActual.fin = data.rango.fin;
 
-        // 1. Renderizar Bloque de Alerta de Validación de los 6 Días
         boxStatus.classList.remove('hidden', 'bg-amber-50', 'border-amber-300', 'text-amber-800', 'bg-emerald-50', 'border-emerald-300', 'text-emerald-800');
         boxStatus.classList.add('flex');
 
@@ -740,11 +863,9 @@ async function ejecutarCalculoSemanal() {
             boxStatus.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-base"></i> <span>Atención: Semana incompleta. El rango (${data.rango.inicio} al ${data.rango.fin}) registra únicamente ${data.cantidad_dias} de los 6 días requeridos. El consolidado se calculará de forma parcial.</span>`;
         }
 
-        // 2. Renderizar Tarjetas de Montos Totales
         document.getElementById('semanalTotalUSD').innerText = formatMoney(parseFloat(data.totales.total_usd || 0));
         document.getElementById('semanalTotalBs').innerText = `Bs ${parseFloat(data.totales.total_bs || 0).toLocaleString('es-VE', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
 
-        // 3. Renderizar Tabla Desglosada por Método de Pago
         const tbody = document.getElementById('tablaDesgloseSemanal');
         if (data.desglose_metodos.length === 0) {
             tbody.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-slate-400 italic">No existen asientos de ventas consolidados para este rango de fechas.</td></tr>';
@@ -769,7 +890,6 @@ async function ejecutarCalculoSemanal() {
             }).join('');
         }
 
-        // 4. Alternar visibilidad de contenedores
         emptyState.classList.add('hidden');
         panel.classList.remove('hidden');
         panel.classList.add('flex');
@@ -822,9 +942,7 @@ window.abrirModalFiltroTiendas = async function() {
     container.innerHTML = '<div class="text-xs text-neutral-400 font-bold text-center py-4">Cargando tiendas...</div>';
     
     try {
-        const token = localStorage.getItem('token'); // Recuperamos tu token de sesión
-        
-        // Usamos una ruta específica para ventas/tiendas
+        const token = localStorage.getItem('token');
         const res = await fetch('/api/ventas/lista-tiendas', {
             headers: { 'Authorization': `Bearer ${token}` }
         }); 
@@ -833,7 +951,7 @@ window.abrirModalFiltroTiendas = async function() {
         
         const tiendas = await res.json();
         
-        if(tiendas.length === 0) {
+        if (tiendas.length === 0) {
             container.innerHTML = '<div class="text-xs text-amber-500 font-bold text-center py-4">No hay tiendas registradas.</div>';
             return;
         }
@@ -848,33 +966,26 @@ window.abrirModalFiltroTiendas = async function() {
         console.error('Error cargando tiendas:', error);
         container.innerHTML = `<div class="text-red-500 text-xs font-bold text-center py-4 border border-red-100 bg-red-50">Error al cargar tiendas.</div>`;
     }
-}
+};
 
 function cerrarModalFiltroTiendas() {
     document.getElementById('modalFiltroTiendas').classList.add('hidden');
 }
 
-// Recolectar datos y descargar de forma segura con Token
 window.ejecutarDescargaTiendas = function() {
     const inicio = document.getElementById('filtroInicioTiendas').value;
     const fin = document.getElementById('filtroFinTiendas').value;
     
-    // Obtener los IDs de las tiendas marcadas
     const checkboxes = document.querySelectorAll('.tienda-checkbox:checked');
     const tiendasIds = Array.from(checkboxes).map(cb => cb.value).join(',');
     
     if (!inicio || !fin) return Swal.fire({ icon: 'warning', text: 'Por favor, selecciona el rango de fechas.' });
     if (!tiendasIds) return Swal.fire({ icon: 'warning', text: 'Debes seleccionar al menos una tienda.' });
 
-    // Construir la URL con el filtro de tiendas
     const url = `/api/ventas/exportar/excel?filtro=tiendas&start=${inicio}&end=${fin}&tiendas=${tiendasIds}`;
-    
-    // 🔥 EL CAMBIO ESTÁ AQUÍ: Usamos la función nativa que inyecta el Token
     window.descargarExcel('consolidadotiendas', url);
-    
-    // Cerramos el modal
     cerrarModalFiltroTiendas();
-}
+};
 
 window.descargarCierreDeHoyExcel = async function() {
     const token = localStorage.getItem('token');

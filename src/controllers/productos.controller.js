@@ -478,6 +478,24 @@ const importarMasivo = async (req, res) => {
                 let generoRaw = p['genero'];
                 const presentacionRaw = p['presentacion'] || 'UND';
                 
+                // 📅 LECTURA Y CONVERSIÓN DE LA FECHA DE VENCIMIENTO DEL EXCEL
+                const fechaRaw = p['fecha vencimiento'] || p['vencimiento'] || p['fecha_vencimiento'] || p['vence'] || p['f. venc'] || p['f_vencimiento'];
+                let fechaVencimientoObj = null;
+
+                if (fechaRaw) {
+                    if (fechaRaw instanceof Date && !isNaN(fechaRaw.getTime())) {
+                        fechaVencimientoObj = fechaRaw;
+                    } else if (typeof fechaRaw === 'number' && fechaRaw > 25569) {
+                        // Conversión de número serie numérico de Excel
+                        fechaVencimientoObj = new Date((fechaRaw - 25569) * 86400 * 1000);
+                    } else if (typeof fechaRaw === 'string' && fechaRaw.trim() !== '') {
+                        const parsedDate = new Date(fechaRaw.trim());
+                        if (!isNaN(parsedDate.getTime())) {
+                            fechaVencimientoObj = parsedDate;
+                        }
+                    }
+                }
+                
                 let stockOriginal = isNaN(cantidadRaw) ? 0 : cantidadRaw;
                 let costoRaw = parseFloat(p['costo'] || p['costo und']);
                 if (isNaN(costoRaw)) costoRaw = 0;
@@ -560,8 +578,29 @@ const importarMasivo = async (req, res) => {
 
                     const loteAleatorio = `LOTE-EXCEL-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`;
                     
+                    // 🎯 INSERCIÓN DINÁMICA DE FECHA EN LA TABLA LOTES
+                    let queryLote = '';
+                    let paramsLote = [];
+
+                    if (fechaVencimientoObj) {
+                        const fechaFormatted = fechaVencimientoObj.toISOString().split('T')[0];
+                        queryLote = `
+                            INSERT INTO lotes (producto_id, codigo_lote, cantidad_inicial, cantidad_actual, fecha_vencimiento, costo_unitario, tienda_id) 
+                            VALUES ($1, $2, $3, $3, $4, $5, $6) 
+                            RETURNING id
+                        `;
+                        paramsLote = [productoId, loteAleatorio, stockAñadido, fechaFormatted, costo, idTiendaLocal];
+                    } else {
+                        queryLote = `
+                            INSERT INTO lotes (producto_id, codigo_lote, cantidad_inicial, cantidad_actual, fecha_vencimiento, costo_unitario, tienda_id) 
+                            VALUES ($1, $2, $3, $3, NOW() + INTERVAL '3 years', $4, $5) 
+                            RETURNING id
+                        `;
+                        paramsLote = [productoId, loteAleatorio, stockAñadido, costo, idTiendaLocal];
+                    }
+
                     const [loteRes] = await Promise.all([
-                        client.query(`INSERT INTO lotes (producto_id, codigo_lote, cantidad_inicial, cantidad_actual, fecha_vencimiento, costo_unitario, tienda_id) VALUES ($1, $2, $3, $3, NOW() + INTERVAL '3 years', $4, $5) RETURNING id`, [productoId, loteAleatorio, stockAñadido, costo, idTiendaLocal]),
+                        client.query(queryLote, paramsLote),
                         client.query(`INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, stock_nuevo, motivo, fecha, tienda_id, usuario_id) VALUES ($1, 'ENTRADA', $2, (SELECT stock_unidades FROM productos WHERE id=$1 AND tienda_id=$3), $4, NOW(), $3, $5)`, [productoId, stockAñadido, idTiendaLocal, `Carga Hoja: ${nombreHoja}`, usuarioId])
                     ]);
                     
@@ -1620,7 +1659,7 @@ const exportarExcel = async (req, res) => {
             sheetTraz.addRow([EMPRESA_NOMBRE]).font = { bold: true, size: 12 };
             sheetTraz.addRow([`R.I.F.: ${EMPRESA_RIF}`]).font = { bold: true, size: 10 };
             sheetTraz.addRow([textoFechas]).font = { bold: true, size: 9 };
-            sheetTraz.addRow(['Reporte de Trazabilidad y Cardex Progresivo de Movimientos']).font = { bold: true, size: 11 };
+            sheetTraz.addRow(['Reporte de Trazabilidad y Kardex Progresivo de Movimientos']).font = { bold: true, size: 11 };
             sheetTraz.addRow([]);
 
             const rowCatTraz = sheetTraz.addRow([
@@ -1645,25 +1684,45 @@ const exportarExcel = async (req, res) => {
             });
 
             let queryTraz = `
-                SELECT h.id, h.fecha, p.codigo, p.nombre, p.marca, p.costo, h.tipo_movimiento, h.cantidad, h.motivo, p.categoria, p.unidad_medida
-                FROM historial_movimientos h
-                JOIN productos p ON h.producto_id = p.id
-                WHERE p.tienda_id = $1
-            `;
+        SELECT h.id, h.fecha, p.codigo, p.nombre, p.marca, p.costo, h.tipo_movimiento, h.cantidad, h.motivo, p.categoria, p.unidad_medida
+        FROM historial_movimientos h
+        JOIN productos p ON h.producto_id = p.id
+        WHERE p.tienda_id = $1
+    `;
             let paramsTraz = [idTiendaLocal];
             let pIdxTraz = 2;
 
             if (start && end) {
-                queryTraz += ` AND h.fecha::date BETWEEN $${pIdxTraz} AND $${pIdxTraz + 1}`;
-                paramsTraz.push(start, end);
-                pIdxTraz += 2;
-            }
+        queryTraz += ` AND h.fecha::date BETWEEN $${pIdxTraz} AND $${pIdxTraz + 1}`;
+        paramsTraz.push(start, end);
+        pIdxTraz += 2;
+    }
 
             const refFilter = req.query.producto || req.query.referencia;
-            if (refFilter) {
-                queryTraz += ` AND (p.codigo ILIKE $${pIdxTraz} OR p.nombre ILIKE $${pIdxTraz})`;
-                paramsTraz.push(`%${refFilter}%`);
+    if (refFilter && refFilter.trim() !== '') {
+        const listaRefs = refFilter.split(',').map(r => r.trim()).filter(r => r !== '');
+        if (listaRefs.length > 0) {
+            queryTraz += ` AND (p.codigo = ANY($${pIdxTraz}) OR p.id::text = ANY($${pIdxTraz}) OR p.nombre ILIKE ANY($${pIdxTraz}))`;
+            // Pasamos el array mapeado como un solo parámetro PostgreSQL
+            paramsTraz.push(listaRefs.map(r => `%${r}%`)); 
+            pIdxTraz++;
+        }
+    } else {
+        // Filtro opcional por categoría si no eligió referencias específicas
+        const catQuery = req.query.categoria;
+        if (catQuery && catQuery !== 'todos') {
+            const catUpper = catQuery.toUpperCase();
+            if (catUpper === 'PT' || catUpper === 'TERMINADOS') {
+                queryTraz += ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
+            } else if (catUpper === 'INSUMOS') {
+                queryTraz += ` AND (p.categoria ILIKE '%esencia%' OR p.categoria ILIKE '%fijador%' OR p.categoria ILIKE '%alcohol%' OR p.categoria ILIKE '%frasco%' OR p.categoria ILIKE '%envase%')`;
+            } else {
+                queryTraz += ` AND p.categoria ILIKE $${pIdxTraz}`;
+                paramsTraz.push(`%${catQuery.trim()}%`);
+                pIdxTraz++;
             }
+        }
+    }
 
             queryTraz += ` ORDER BY p.codigo ASC, h.fecha ASC`;
 
@@ -2547,6 +2606,88 @@ const exportarListaPreciosExcel = async (req, res) => {
         res.status(500).send("Error generando el archivo Excel.");
     }
 };
+
+const exportarKardexProductoExcel = async (req, res) => {
+    try {
+        const { producto } = req.query;
+        const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;
+
+        if (!producto) {
+            return res.status(400).json({ error: "Debe especificar el ID del producto" });
+        }
+
+        // Obtener información del producto
+        const prodRes = await pool.query('SELECT * FROM productos WHERE id = $1 AND tienda_id = $2', [producto, idTiendaLocal]);
+        if (prodRes.rows.length === 0) {
+            return res.status(404).json({ error: "Producto no encontrado en esta sucursal" });
+        }
+        const prod = prodRes.rows[0];
+
+        // Obtener historial unificado (movimientos + ventas)
+        const queryMovimientos = `
+            SELECT fecha, tipo_movimiento, cantidad, stock_nuevo, motivo
+            FROM (
+                SELECT fecha, tipo_movimiento, cantidad, stock_nuevo, motivo 
+                FROM historial_movimientos 
+                WHERE producto_id = $1
+                
+                UNION ALL
+                
+                SELECT v.fecha, 'VENTA' as tipo_movimiento, d.cantidad, 0 as stock_nuevo, 
+                'Factura/Ticket #' || v.id || ' - ' || COALESCE(d.descripcion, '') as motivo
+                FROM detalle_ventas d
+                JOIN ventas v ON d.venta_id = v.id
+                WHERE d.producto_id = $1
+            ) as movimientos_combinados
+            ORDER BY fecha DESC;
+        `;
+        const resMov = await pool.query(queryMovimientos, [producto]);
+
+        // Construir Excel usando ExcelJS
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Historial de Movimientos');
+
+        sheet.addRow(['REPORTE DE KARDEX / HISTORIAL DE MOVIMIENTOS']).font = { bold: true, size: 14 };
+        sheet.addRow([`Producto:`, `${prod.nombre} (${prod.codigo})`]).font = { bold: true };
+        sheet.addRow([`Categoría:`, prod.categoria, `Marca:`, prod.marca || 'N/A']);
+        sheet.addRow([`Fecha Generación:`, new Date().toLocaleString('es-VE')]);
+        sheet.addRow([]);
+
+        const headers = sheet.addRow(['FECHA', 'TIPO MOVIMIENTO', 'CANTIDAD', 'STOCK RESULTANTE', 'MOTIVO / DETALLE']);
+        headers.eachCell(cell => {
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+
+        resMov.rows.forEach(m => {
+            sheet.addRow([
+                new Date(m.fecha).toLocaleString('es-VE'),
+                m.tipo_movimiento,
+                parseFloat(m.cantidad || 0),
+                parseFloat(m.stock_nuevo || 0),
+                m.motivo || 'N/A'
+            ]);
+        });
+
+        sheet.getColumn(1).width = 22;
+        sheet.getColumn(2).width = 18;
+        sheet.getColumn(3).width = 14;
+        sheet.getColumn(4).width = 18;
+        sheet.getColumn(5).width = 45;
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=Kardex_${prod.codigo}.xlsx`);
+
+        await workbook.xlsx.write(res);
+        res.end();
+
+    } catch (error) {
+        console.error("Error exportando Kardex Excel:", error);
+        res.status(500).send("Error al generar el reporte Excel.");
+    }
+};
+
 module.exports = { getProductos, createProducto, descargarAuditoriaExcel, cambiarSucursalActiva, updateProducto, deleteProducto, importarMasivo, getHistorialImportaciones, revertirImportacion, getKardex, getLotesProducto, eliminarFisico, reactivarProducto, reponerEstante, getProductosEstante,
     reportarMerma, getReporteKardex, organizarBotella, actualizarNivelBotella, getUbicacionSugerida, abrirBotellaGrupo, crearTester,
     moverStockEstante,
@@ -2554,5 +2695,6 @@ module.exports = { getProductos, createProducto, descargarAuditoriaExcel, cambia
     obtenerEstancamiento,
     exportarEstancamientoExcel,
     getReporteListaPrecios,
-    exportarListaPreciosExcel 
+    exportarListaPreciosExcel,
+    exportarKardexProductoExcel 
 };

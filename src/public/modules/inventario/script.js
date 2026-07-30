@@ -759,7 +759,10 @@ function imprimirEtiqueta(codigo, nombre) { // Se quitó parámetro precio
     ventana.document.close();
 }
 
+let productoKardexActivoId = null; // Guardará el ID del producto que se está consultando
+
 window.verKardex = async (id) => {
+    productoKardexActivoId = id; // 🔥 Almacenamos el ID para poder usarlo en la descarga
     const prod = productosGlobales.find(p => p.id === id);
     const nombreSeguro = prod ? escapeHtml(prod.nombre) : 'Producto';
 
@@ -767,7 +770,7 @@ window.verKardex = async (id) => {
     const title = document.getElementById('kardexProductoTitle');
     const tbody = document.getElementById('tablaKardex');
 
-    title.innerHTML = nombreSeguro; // Usamos innerHTML seguro porque pasamos por escapeHtml
+    title.innerHTML = nombreSeguro;
     modal.classList.remove('hidden');
     tbody.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-gray-400"><i class="fa-solid fa-circle-notch fa-spin text-2xl"></i><br>Consultando historial...</td></tr>';
 
@@ -780,7 +783,6 @@ window.verKardex = async (id) => {
             return;
         }
 
-        // Renderizado optimizado con map+join
         tbody.innerHTML = movimientos.map(m => {
             const fecha = new Date(m.fecha || Date.now()).toLocaleString();
             let badgeColor = 'bg-gray-100 text-gray-600';
@@ -803,9 +805,56 @@ window.verKardex = async (id) => {
     }
 };
 
-// Borra cualquier otra función con este nombre y deja solo esta:
 
-// Función corregida para calcular botellas enteras
+window.descargarKardexExcel = async function() {
+    if (!productoKardexActivoId) {
+        return Swal.fire('Error', 'No hay ningún producto seleccionado.', 'warning');
+    }
+
+    try {
+        const token = localStorage.getItem('token');
+        const prod = productosGlobales.find(p => p.id === productoKardexActivoId);
+        const refNombre = prod ? prod.nombre : 'Producto';
+
+        Swal.fire({
+            title: 'Generando Reporte...',
+            text: `Exportando historial de ${refNombre} a Excel`,
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        // Llamada al endpoint para exportar el Kardex de este producto específico
+        const res = await fetch(`/api/productos/exportar-kardex?producto=${productoKardexActivoId}`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!res.ok) {
+            throw new Error('No se pudo generar el archivo de reporte.');
+        }
+
+        const blob = await res.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `Kardex_${refNombre.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+
+        Swal.close();
+    } catch (error) {
+        console.error("Error descargando Kardex:", error);
+        Swal.fire('Error', error.message, 'error');
+    }
+};
+
+
+
+
+
 window.abrirReponerEstante = async function(id, nombre, contenido, stockTotalGramos) {
     if (!contenido || contenido <= 0) {
         Swal.fire('Error', 'Configura el contenido (g/ml) primero.', 'warning');

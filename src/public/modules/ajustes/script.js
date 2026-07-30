@@ -305,20 +305,46 @@ function filtrarLista(texto) {
     });
 }
 
-// --- SELECCIÓN INTELIGENTE DE LOTES (LÓGICA PRÁCTICA) ---
 window.seleccionarProducto = async function(id, nombre, stock, unidad) {
     // 1. Setear datos básicos
     document.getElementById('producto_id').value = id;
     document.getElementById('nombreProductoDisplay').value = nombre;
     
-    // 2. Actualizar etiquetas de UI (Unidad y Stock)
-    const mapUnidades = {
+    // Buscar datos completos del producto en la caché local
+    const productoObj = productosCache.find(p => p.id === id) || {};
+    const categoria = (productoObj.categoria || '').toUpperCase();
+    const nombreUpper = nombre.toUpperCase();
+
+    // 2. Configurar las opciones de magnitudes dinámicas según la categoría/producto
+    const selectUnidades = document.getElementById('unidadSeleccion');
+    selectUnidades.innerHTML = ''; // Limpiar opciones anteriores
+
+    if (categoria.includes('ALCOHOL') || nombreUpper.includes('ALCOHOL')) {
+        // Para Alcohol: Mililitros y Litros
+        selectUnidades.innerHTML = `
+            <option value="ML">ML</option>
+            <option value="L">L</option>
+        `;
+    } else if (categoria.includes('ESENCIA') || nombreUpper.includes('ESENCIA')) {
+        // Para Esencias: Gramos y Kilogramos
+        selectUnidades.innerHTML = `
+            <option value="G">G</option>
+            <option value="KG">K</option>
+        `;
+    } else {
+        // Para cualquier otro producto: Unidades por defecto
+        selectUnidades.innerHTML = `
+            <option value="UNIDAD">UNIDADES</option>
+        `;
+    }
+
+    // 3. Actualizar etiquetas de UI para visualizar el stock registrado
+    const mapUnidadesBadge = {
         'GRAMOS': 'g',
         'MILILITROS': 'ml',
         'UNIDAD': 'u'
     };
-    const unidadFmt = mapUnidades[unidad] || 'u';
-    document.getElementById('labelUnidad').innerText = unidadFmt; 
+    const unidadFmt = mapUnidadesBadge[unidad] || 'u';
     document.getElementById('stockUnitBadge').innerText = unidadFmt; 
     document.getElementById('stockValue').innerText = parseFloat(stock).toFixed(2).replace(/\.00$/, '');
     document.getElementById('stockBadge').classList.remove('hidden');
@@ -326,67 +352,55 @@ window.seleccionarProducto = async function(id, nombre, stock, unidad) {
     cerrarModalSeleccion();
     actualizarUIporTipo(); 
 
-    // 3. Cargar Lotes para Salida
+    // 4. Cargar Lotes para Salida (Si aplica)
     const selectLotes = document.getElementById('loteSeleccion');
-    selectLotes.innerHTML = '<option>Consultando lotes...</option>';
+    if (selectLotes) {
+        selectLotes.innerHTML = '<option>Consultando lotes...</option>';
 
-    try {
-        const res = await fetch(`/api/productos/${id}/lotes`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
-        const lotes = await res.json();
-        
-        selectLotes.innerHTML = ''; // Limpiar
+        try {
+            const res = await fetch(`/api/productos/${id}/lotes`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } });
+            const lotes = await res.json();
+            
+            selectLotes.innerHTML = ''; 
 
-        if(!lotes || lotes.length === 0) {
-            selectLotes.innerHTML = '<option value="">⚠️ No hay lotes con stock</option>';
-        } 
-        
-        // --- AQUÍ ESTÁ LA LÓGICA PEDIDA ---
-        // CASO 1: UN SOLO LOTE (AUTO-SELECCIÓN)
-        else if(lotes.length === 1) {
-            const l = lotes[0];
-            const cantFmt = parseFloat(l.cantidad_actual).toFixed(2).replace(/\.00$/, '');
-            const fecha = new Date(l.fecha_vencimiento).toLocaleDateString();
-            
-            // Lo marcamos como selected automáticamente
-            selectLotes.innerHTML = `
-                <option value="${l.id}" selected>
-                    ✅ LOTE ÚNICO: ${l.codigo_lote} (Disp: ${cantFmt} ${unidadFmt})
-                </option>`;
-            
-            // Toast discreto para confirmar que se eligió solo
-            const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
-            Toast.fire({ icon: 'info', title: 'Lote único seleccionado automáticamente' });
-            
-            // Saltamos directo al campo cantidad para ser rápidos
-            document.getElementById('cantidad').focus();
-        } 
-        
-        // CASO 2: MÚLTIPLES LOTES (MOSTRAR PARA ELEGIR)
-        else {
-            selectLotes.innerHTML = `<option value="">👇 -- EXISTEN ${lotes.length} LOTES. ELIGE UNO --</option>`;
-            
-            // Opción extra por si quiere FIFO
-            selectLotes.innerHTML += `<option value="">⚡ Automático (Más Antiguo Primero)</option>`;
-
-            lotes.forEach(l => {
+            if(!lotes || lotes.length === 0) {
+                selectLotes.innerHTML = '<option value="">⚠️ No hay lotes con stock</option>';
+            } 
+            else if(lotes.length === 1) {
+                const l = lotes[0];
                 const cantFmt = parseFloat(l.cantidad_actual).toFixed(2).replace(/\.00$/, '');
-                const fecha = new Date(l.fecha_vencimiento).toLocaleDateString();
-                // Marcamos visualmente si está vencido
-                const esVencido = new Date(l.fecha_vencimiento) < new Date();
+                selectLotes.innerHTML = `
+                    <option value="${l.id}" selected>
+                        ✅ LOTE ÚNICO: ${l.codigo_lote} (Disp: ${cantFmt} ${unidadFmt})
+                    </option>`;
                 
-                selectLotes.innerHTML += `
-                    <option value="${l.id}">
-                        ${esVencido ? '⚠️' : '📦'} ${l.codigo_lote} | Disp: ${cantFmt} | Vence: ${fecha}
-                    </option>
-                `;
-            });
-            
-            // Enfocamos el selector para obligar a ver
-            selectLotes.focus();
+                const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                Toast.fire({ icon: 'info', title: 'Lote único seleccionado automáticamente' });
+                
+                document.getElementById('cantidad').focus();
+            } 
+            else {
+                selectLotes.innerHTML = `<option value="">👇 -- EXISTEN ${lotes.length} LOTES. ELIGE UNO --</option>`;
+                selectLotes.innerHTML += `<option value="">⚡ Automático (Más Antiguo Primero)</option>`;
+
+                lotes.forEach(l => {
+                    const cantFmt = parseFloat(l.cantidad_actual).toFixed(2).replace(/\.00$/, '');
+                    const fecha = new Date(l.fecha_vencimiento).toLocaleDateString();
+                    const esVencido = new Date(l.fecha_vencimiento) < new Date();
+                    
+                    selectLotes.innerHTML += `
+                        <option value="${l.id}">
+                            ${esVencido ? '⚠️' : '📦'} ${l.codigo_lote} | Disp: ${cantFmt} | Vence: ${fecha}
+                        </option>
+                    `;
+                });
+                
+                selectLotes.focus();
+            }
+        } catch(e) {
+            console.error(e);
+            selectLotes.innerHTML = '<option value="">Error cargando lotes</option>';
         }
-    } catch(e) {
-        console.error(e);
-        selectLotes.innerHTML = '<option value="">Error cargando lotes</option>';
     }
 };
 
@@ -400,11 +414,21 @@ async function procesarAjuste() {
         nombreFoto = fileInput.files[0].name;
     }
 
+    const cantidadInput = parseFloat(document.getElementById('cantidad').value) || 0;
+    const unidadMedidaElegida = document.getElementById('unidadSeleccion')?.value || 'UNIDAD';
+    
+    // Convertir Kilogramos a Gramos o Litros a ML si la persona seleccionó K o L
+    let cantidadFinal = cantidadInput;
+    if (unidadMedidaElegida === 'L' || unidadMedidaElegida === 'KG') {
+        cantidadFinal = cantidadInput * 1000;
+    }
+
     const data = {
         producto_id: document.getElementById('producto_id').value,
         tipo: tipoActivo,
         ubicacion: ubicacionActiva,
-        cantidad: document.getElementById('cantidad').value,
+        cantidad: cantidadFinal,
+        unidad_medida_movimiento: unidadMedidaElegida,
         motivo: document.getElementById('motivo').value,
         lote_id: document.getElementById('loteSeleccion')?.value || null,         
         codigo_manual: document.getElementById('codigoLoteManual')?.value || null,
@@ -412,7 +436,7 @@ async function procesarAjuste() {
     };
 
     if (!data.producto_id) return Swal.fire('Atención', "Por favor selecciona un producto.", 'warning');
-    if (!data.cantidad || data.cantidad <= 0) return Swal.fire('Atención', "Ingresa una cantidad válida mayor a cero.", 'warning');
+    if (!cantidadInput || cantidadInput <= 0) return Swal.fire('Atención', "Ingresa una cantidad válida mayor a cero.", 'warning');
 
     const result = await Swal.fire({
         title: `Confirmar Ajuste Manual`,
@@ -421,7 +445,7 @@ async function procesarAjuste() {
                 <p class="mb-1"><b>Producto:</b> ${document.getElementById('nombreProductoDisplay').value}</p>
                 <p class="mb-1"><b>Área Afectada:</b> <span class="text-neutral-950 font-black">${data.ubicacion}</span></p>
                 <p class="mb-1"><b>Tipo:</b> <span class="font-black">${data.tipo}</span></p>
-                <p class="mb-1"><b>Cantidad:</b> <span class="text-sm font-black text-red-600">${data.cantidad}</span></p>
+                <p class="mb-1"><b>Cantidad Ingresada:</b> <span class="text-sm font-black text-red-600">${cantidadInput} ${unidadMedidaElegida}</span> ${unidadMedidaElegida === 'L' || unidadMedidaElegida === 'KG' ? `(${cantidadFinal} equivalentes)` : ''}</p>
                 <p class="mb-1"><b>Motivo:</b> ${data.motivo}</p>
             </div>
         `,
@@ -454,6 +478,8 @@ async function procesarAjuste() {
         }
     }
 }
+
+
 // =====================================================================
 // AUTOMATIZACIÓN DE TASA BCV - INYECCIÓN INDESTRUCTIBLE POR SCRIPT
 // =====================================================================
