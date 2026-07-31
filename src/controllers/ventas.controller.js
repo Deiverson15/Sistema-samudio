@@ -1082,7 +1082,7 @@ const exportarReporteGeneral = async (req, res) => {
         // REPORTE H: MAESTRO ESTRUCTURAL DE FORMULAS Y COSTOS (PLANTILLA)
         // =========================================================
         if (filtro === 'formulas') {
-            const sheet = workbook.addWorksheet('Costos Perfumix');
+            const sheet = workbook.addWorksheet('Costos Perfumes');
             
             // 1. Configuramos el ancho exacto de las columnas como en tu Excel
             sheet.columns = [

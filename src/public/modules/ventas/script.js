@@ -680,8 +680,7 @@ window.imprimirFacturaOriginalDirecta = async function(idVenta) {
                 </head>
                 <body onload="window.print(); window.close();">
                     <div class="text-center">
-                        <div class="font-bold" style="font-size: 13px;">PERFUMIX C.A.</div>
-                        <div>RIF: J-50000000-0</div>
+                        <div class="font-bold" style="font-size: 13px;">PERFUMES C.A.</div>
                         <div style="font-size: 9px; line-height: 1.2;">CARACAS - VENEZUELA</div>
                     </div>
                     <div class="divider-solid"></div>

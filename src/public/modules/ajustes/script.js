@@ -176,7 +176,7 @@ window.actualizarUIporTipo = function() {
 };
 
 // =====================================================================
-// RENDERING ACTUALIZADO DEL DASHBOARD PERFUMIX
+// RENDERING ACTUALIZADO DEL DASHBOARD PERFUMES
 // =====================================================================
 function actualizarUIdashboard(data) {
     if (!data) return;

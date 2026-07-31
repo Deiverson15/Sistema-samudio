@@ -286,7 +286,7 @@ const sincronizarTasaBCV = async (req, res) => {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 segundos por intento
 
-            console.log(`[PERFUMIX PROXY] Conectando a IP de contingencia fiscal: ${urlIp}`);
+            console.log(`[PERFUMES PROXY] Conectando a IP de contingencia fiscal: ${urlIp}`);
             
             const response = await fetch(urlIp, { 
                 method: 'GET',
@@ -311,7 +311,7 @@ const sincronizarTasaBCV = async (req, res) => {
             }
         } catch (err) {
             ultimoError = err.message;
-            console.warn(`[PERFUMIX PROXY WARNING] Falla en pasarela IP ${urlIp}: ${err.message}`);
+            console.warn(`PERFUMES PROXY WARNING] Falla en pasarela IP ${urlIp}: ${err.message}`);
         }
     }
 
@@ -323,7 +323,7 @@ const sincronizarTasaBCV = async (req, res) => {
 
         // 💾 Guardamos físicamente en tu tabla de configuración en PostgreSQL
         await pool.query("UPDATE configuracion SET valor = $1 WHERE clave = 'tasa_dolar'", [tasaNumerica]);         
-        console.log(`[PERFUMIX BACKEND OK] Tasa grabada con éxito por túnel IP: ${tasaNumerica} Bs.`);
+        console.log(`[PERFUMES BACKEND OK] Tasa grabada con éxito por túnel IP: ${tasaNumerica} Bs.`);
 
         res.json({ 
             mensaje: 'Sincronización automatizada por proxy IP completada.',

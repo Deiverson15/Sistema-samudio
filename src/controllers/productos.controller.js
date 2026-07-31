@@ -2578,7 +2578,7 @@ const exportarListaPreciosExcel = async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet('Inventario y Lista Precios');
 
-        sheet.addRow(['PERFUMIX C.A. - INVENTARIO Y CATÁLOGO DE PRECIOS']).font = { bold: true, size: 14 };
+        sheet.addRow(['PERFUMES C.A. - INVENTARIO Y CATÁLOGO DE PRECIOS']).font = { bold: true, size: 14 };
         sheet.addRow([`Sucursal: ${result.rows[0]?.tienda_nombre || 'Todas las Sucursales'}`]);
         sheet.addRow([`Fecha de Generación: ${new Date().toLocaleDateString('es-VE')}`]);
         sheet.addRow([]);
