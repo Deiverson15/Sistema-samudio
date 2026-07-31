@@ -194,90 +194,96 @@
     </div>
 
     <!-- ========================================================== -->
-    <!-- FILA 4: TABLA DE ANÁLISIS DE ESTANCAMIENTO (HUESOS)        -->
-    <!-- ========================================================== -->
-    <div class="grid grid-cols-1 gap-6 mt-6 animate-fade-in">
-        <div class="bg-white p-8 border-t-4 border-neutral-950 border-l border-r border-b border-neutral-300 rounded-none shadow-sm">
-            
-            <!-- ENCABEZADO Y FILTROS -->
-            <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 gap-4">
-                <div>
-                    <h3 class="font-black text-neutral-950 flex items-center text-sm uppercase tracking-widest">
-                        <i class="fa-solid fa-box-archive mr-3 text-amber-600"></i> Auditoría de Inventario Inmovilizado (Huesos)
-                    </h3>
-                    <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Detección de capital atrapado sin rotación en punto de venta o almacén</p>
+<!-- FILA 4: TABLA DE ANÁLISIS DE ESTANCAMIENTO (HUESOS)        -->
+<!-- ========================================================== -->
+<div class="grid grid-cols-1 gap-6 mt-6 animate-fade-in">
+    <div class="bg-white p-8 border-t-4 border-neutral-950 border-l border-r border-b border-neutral-300 rounded-none shadow-sm">
+        
+        <!-- ENCABEZADO Y FILTROS -->
+        <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 gap-4">
+            <div>
+                <h3 class="font-black text-neutral-950 flex items-center text-sm uppercase tracking-widest">
+                    <i class="fa-solid fa-box-archive mr-3 text-amber-600"></i> Auditoría de Inventario Inmovilizado (Huesos)
+                </h3>
+                <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Detección de capital atrapado sin rotación en punto de venta o almacén</p>
+            </div>
+
+            <!-- CONTROLES DE AUDITORÍA CON BÚSQUEDA INTEGRADA -->
+            <div class="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+                
+                <!-- 🔍 BARRA DE BÚSQUEDA RÁPIDA -->
+                <div class="relative flex-1 md:w-64">
+                    <input type="text" id="busquedaHuesos" onkeyup="window.debouncedCargarAuditoria()" placeholder="Buscar frasco, esencia..." class="w-full bg-neutral-900 text-white border border-neutral-700 p-2 pl-8 text-[10px] font-bold uppercase tracking-wider outline-none focus:border-white">
+                    <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-3 text-neutral-500 text-xs"></i>
                 </div>
+                
+                <select id="filtroInactividadHuesos" onchange="window.manejarFiltroTiempoHuesos()" class="bg-neutral-900 text-white border border-neutral-700 p-2.5 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
+                    <option value="30">Sin movimiento >= 30 Días (1 Mes)</option>
+                    <option value="60">Sin movimiento >= 60 Días (2 Meses)</option>
+                    <option value="90">Sin movimiento >= 90 Días (3 Meses)</option>
+                    <option value="180">Sin movimiento >= 180 Días (6 Meses)</option>
+                    <option value="LOTES_NUEVOS">Lotes Recientes Sin Vender</option>
+                    <option value="CUSTOM">Rango de Fechas Personalizado...</option>
+                </select>
 
-                <!-- CONTROLES DE AUDITORÍA -->
-                <div class="flex flex-wrap items-center gap-3 w-full xl:w-auto">
-                    
-                    <select id="filtroInactividadHuesos" onchange="window.manejarFiltroTiempoHuesos()" class="bg-neutral-900 text-white border border-neutral-700 p-2.5 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
-                        <option value="30">Sin movimiento >= 30 Días (1 Mes)</option>
-                        <option value="60">Sin movimiento >= 60 Días (2 Meses)</option>
-                        <option value="90">Sin movimiento >= 90 Días (3 Meses)</option>
-                        <option value="180">Sin movimiento >= 180 Días (6 Meses)</option>
-                        <option value="LOTES_NUEVOS">Lotes Recientes Sin Vender</option>
-                        <option value="CUSTOM">Rango de Fechas Personalizado...</option>
-                    </select>
-
-                    <div id="cajaFechasHuesos" class="hidden items-center gap-2">
-                        <input type="date" id="huesosFechaStart" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-bold outline-none uppercase">
-                        <span class="text-neutral-500 font-bold">-</span>
-                        <input type="date" id="huesosFechaEnd" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-bold outline-none uppercase">
-                        <button onclick="window.cargarAuditoriaEstancamiento()" class="bg-white text-neutral-950 px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 transition-colors">
-                            <i class="fa-solid fa-check"></i>
-                        </button>
-                    </div>
-
-                    <select id="filtroCatHuesos" onchange="window.cargarAuditoriaEstancamiento()" class="bg-neutral-900 text-white border border-neutral-700 p-2.5 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
-                        <option value="TODOS">Todas las Categorías</option>
-                        <option value="ESENCIAS">Esencias Puras</option>
-                        <option value="TERMINADOS">Perfumes Terminados</option>
-                        <option value="INSUMOS">Materias Primas / Envases</option>
-                    </select>
-
-                    <button onclick="window.exportarEstancamientoExcel()" class="bg-green-600 hover:bg-green-500 text-white border border-green-700 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2">
-                        <i class="fa-solid fa-file-excel"></i> Exportar Audit
+                <div id="cajaFechasHuesos" class="hidden items-center gap-2">
+                    <input type="date" id="huesosFechaStart" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-bold outline-none uppercase">
+                    <span class="text-neutral-500 font-bold">-</span>
+                    <input type="date" id="huesosFechaEnd" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-bold outline-none uppercase">
+                    <button onclick="window.cargarAuditoriaEstancamiento()" class="bg-white text-neutral-950 px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 transition-colors">
+                        <i class="fa-solid fa-check"></i>
                     </button>
                 </div>
-            </div>
 
-            <!-- IMPACTO FINANCIERO -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-neutral-100 p-4 border border-neutral-300">
-                <div class="border-r border-neutral-300 pr-4">
-                    <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">Capital Inmovilizado:</span>
-                    <span id="txtCapitalInmovilizado" class="text-lg font-black text-red-600">$0.00</span>
-                </div>
-                <div class="border-r border-neutral-300 pr-4">
-                    <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">SKUs Estancados:</span>
-                    <span id="txtSkusEstancados" class="text-lg font-black text-neutral-950">0 Productos</span>
-                </div>
-                <div>
-                    <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">Riesgo Financiero:</span>
-                    <span id="txtRiesgoEstancamiento" class="text-xs font-black text-amber-600 uppercase tracking-wider">Bajo</span>
-                </div>
-            </div>
+                <select id="filtroCatHuesos" onchange="window.cargarAuditoriaEstancamiento()" class="bg-neutral-900 text-white border border-neutral-700 p-2.5 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
+                    <option value="TODOS">Todas las Categorías</option>
+                    <option value="ESENCIAS">Esencias Puras</option>
+                    <option value="TERMINADOS">Perfumes Terminados</option>
+                    <option value="INSUMOS">Materias Primas / Envases</option>
+                </select>
 
-            <!-- TABLA RESUMIDA -->
-            <div class="overflow-x-auto border border-neutral-200 bg-neutral-50">
-                <table class="min-w-full text-sm text-left border-collapse">
-                    <thead class="text-[10px] text-neutral-950 font-black uppercase tracking-widest bg-neutral-100 border-b border-neutral-300">
-                        <tr>
-                            <th class="px-6 py-4">Producto / Insumo</th>
-                            <th class="px-6 py-4">Categoría</th>
-                            <th class="px-6 py-4 text-center">Último Movimiento / Carga</th>
-                            <th class="px-6 py-4 text-center">Stock Atrapado</th>
-                            <th class="px-6 py-4 text-center">Costo Atrapado ($)</th>
-                            <th class="px-6 py-4 text-right pr-6">Acción</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tablaHuesos" class="text-neutral-700 font-medium divide-y divide-neutral-200 bg-white">
-                        <tr><td colspan="6" class="text-center py-8 text-neutral-400 font-bold text-xs uppercase tracking-widest">Calculando vectores de inactividad...</td></tr>
-                    </tbody>
-                </table>
+                <button onclick="window.exportarEstancamientoExcel()" class="bg-green-600 hover:bg-green-500 text-white border border-green-700 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2">
+                    <i class="fa-solid fa-file-excel"></i> Exportar Audit
+                </button>
             </div>
         </div>
+
+        <!-- IMPACTO FINANCIERO -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-neutral-100 p-4 border border-neutral-300">
+            <div class="border-r border-neutral-300 pr-4">
+                <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">Capital Inmovilizado:</span>
+                <span id="txtCapitalInmovilizado" class="text-lg font-black text-red-600">$0.00</span>
+            </div>
+            <div class="border-r border-neutral-300 pr-4">
+                <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">SKUs Estancados:</span>
+                <span id="txtSkusEstancados" class="text-lg font-black text-neutral-950">0 Productos</span>
+            </div>
+            <div>
+                <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">Riesgo Financiero:</span>
+                <span id="txtRiesgoEstancamiento" class="text-xs font-black text-amber-600 uppercase tracking-wider">Bajo</span>
+            </div>
+        </div>
+
+        <!-- TABLA RESUMIDA -->
+        <div class="overflow-x-auto border border-neutral-200 bg-neutral-50">
+            <table class="min-w-full text-sm text-left border-collapse">
+                <thead class="text-[10px] text-neutral-950 font-black uppercase tracking-widest bg-neutral-100 border-b border-neutral-300">
+                    <tr>
+                        <th class="px-6 py-4">Producto / Insumo</th>
+                        <th class="px-6 py-4">Categoría</th>
+                        <th class="px-6 py-4 text-center">Último Movimiento / Carga</th>
+                        <th class="px-6 py-4 text-center">Stock Atrapado</th>
+                        <th class="px-6 py-4 text-center">Costo Atrapado ($)</th>
+                        <th class="px-6 py-4 text-right pr-6">Acción</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaHuesos" class="text-neutral-700 font-medium divide-y divide-neutral-200 bg-white">
+                    <tr><td colspan="6" class="text-center py-8 text-neutral-400 font-bold text-xs uppercase tracking-widest">Calculando vectores de inactividad...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
+</div>
 
     <!-- MODAL DE DETALLE DE LOTE ESTANCADO -->
     <div id="modalDetalleEstancado" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-modal="true">

@@ -74,6 +74,20 @@
                 <i class="fa-solid fa-user-pen text-neutral-400"></i> Cambiar
             </button>
         </div>
+
+        <div class="px-6 py-3 bg-white border-b border-neutral-200 shrink-0">
+            <div class="relative group">
+                <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-400">
+                    <i class="fa-solid fa-filter text-xs"></i>
+                </span>
+                <input type="text" id="buscadorCarrito" oninput="filtrarCarrito(this.value)"
+                    class="w-full pl-9 pr-3 py-2 bg-neutral-50 border border-neutral-300 rounded-none outline-none focus:bg-white focus:border-neutral-950 font-black text-neutral-900 text-[10px] uppercase tracking-wider transition-colors placeholder-neutral-400" 
+                    placeholder="BUSCAR EN TICKET (CÓDIGO O NOMBRE)...">
+            </div>
+            <div class="flex justify-between items-center mt-2 text-[9px] font-bold text-neutral-500 uppercase tracking-widest">
+                <span id="contadorItemsFiltrados">Mostrando todos</span>
+            </div>
+        </div>
         
         <div id="listaCarrito" class="flex-1 overflow-y-auto p-6 space-y-4 bg-white custom-scrollbar">
             </div>

@@ -2256,7 +2256,7 @@ const getReporteKardex = async (req, res) => {
 };
 
 const obtenerEstancamiento = async (req, res) => {
-    const { dias, categoria, start, end } = req.query;
+    const { dias, categoria, start, end, busqueda } = req.query;
     let idTiendaLocal = 1;
     if (req.user && req.user.tienda_id !== undefined && req.user.tienda_id !== null && req.user.tienda_id !== '') {
         idTiendaLocal = parseInt(req.user.tienda_id, 10);
@@ -2266,45 +2266,63 @@ const obtenerEstancamiento = async (req, res) => {
 
     try {
         let filterCat = "";
-        if (categoria === 'ESENCIAS') filterCat = "AND p.categoria ILIKE '%esencia%'";
-        else if (categoria === 'TERMINADOS') filterCat = "AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminados%')";
-        else if (categoria === 'INSUMOS') filterCat = "AND p.categoria NOT ILIKE '%esencia%' AND p.categoria NOT ILIKE '%terminados%'";
+        if (categoria === 'ESENCIAS') {
+            filterCat = "AND p.categoria ILIKE '%esencia%'";
+        } else if (categoria === 'TERMINADOS') {
+            filterCat = "AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminados%' OR p.categoria ILIKE '%perfume%')";
+        } else if (categoria === 'INSUMOS') {
+            filterCat = "AND p.categoria NOT ILIKE '%esencia%' AND p.categoria NOT ILIKE '%terminados%' AND p.categoria NOT ILIKE '%perfume%'";
+        }
+
+        let filterBusqueda = "";
+        let params = [idTiendaLocal];
+        let paramIdx = 2;
+
+        if (busqueda && busqueda.trim() !== '') {
+            filterBusqueda = ` AND (p.nombre ILIKE $${paramIdx} OR p.codigo ILIKE $${paramIdx} OR p.categoria ILIKE $${paramIdx})`;
+            params.push(`%${busqueda.trim()}%`);
+            paramIdx++;
+        }
 
         let filterInactividad = "";
-        let params = [idTiendaLocal];
-
-        // LÓGICA DE FILTRADO POR FECHA PERSONALIZADA O DÍAS ESTÁNDAR
         if (dias === 'CUSTOM' && start && end) {
-            filterInactividad = `HAVING (MAX(v.fecha)::date NOT BETWEEN $2 AND $3 OR MAX(v.fecha) IS NULL) AND p.stock_unidades > 0`;
+            filterInactividad = `HAVING (MAX(v_fechas.fecha_movimiento)::date NOT BETWEEN $${paramIdx}::date AND $${paramIdx + 1}::date OR MAX(v_fechas.fecha_movimiento) IS NULL) AND (p.stock_unidades + p.stock_estante) > 0`;
             params.push(start, end);
         } else if (dias === 'LOTES_NUEVOS') {
-            filterInactividad = "HAVING MAX(v.fecha) IS NULL AND p.stock_unidades > 0";
+            filterInactividad = "HAVING MAX(v_fechas.fecha_movimiento) IS NULL AND (p.stock_unidades + p.stock_estante) > 0";
         } else {
             const numDias = parseInt(dias, 10) || 30;
-            filterInactividad = `HAVING (MAX(v.fecha) < NOW() - INTERVAL '${numDias} days' OR MAX(v.fecha) IS NULL) AND p.stock_unidades > 0`;
+            filterInactividad = `HAVING (MAX(v_fechas.fecha_movimiento) < NOW() - INTERVAL '${numDias} days' OR MAX(v_fechas.fecha_movimiento) IS NULL) AND (p.stock_unidades + p.stock_estante) > 0`;
         }
 
         const query = `
+            WITH movimientos_ventas AS (
+                SELECT dv.producto_id, v.fecha as fecha_movimiento
+                FROM detalle_ventas dv
+                JOIN ventas v ON dv.venta_id = v.id
+                WHERE v.tienda_id = $1 AND dv.producto_id IS NOT NULL
+            )
             SELECT 
                 p.id, 
                 p.codigo, 
                 p.nombre, 
                 p.categoria, 
-                p.stock_unidades, 
+                p.stock_unidades,
+                p.stock_estante,
+                (COALESCE(p.stock_unidades, 0) + COALESCE(p.stock_estante, 0)) as stock_total_real,
                 p.costo, 
                 p.unidad_medida,
-                MAX(v.fecha) as ultima_venta,
+                MAX(v_fechas.fecha_movimiento) as ultima_venta,
                 CASE 
-                    WHEN MAX(v.fecha) IS NULL THEN -1
-                    ELSE DATE_PART('day', NOW() - MAX(v.fecha))::integer
+                    WHEN MAX(v_fechas.fecha_movimiento) IS NULL THEN -1
+                    ELSE DATE_PART('day', NOW() - MAX(v_fechas.fecha_movimiento))::integer
                 END as dias_inactivo
             FROM productos p
-            LEFT JOIN detalle_ventas dv ON p.id = dv.producto_id
-            LEFT JOIN ventas v ON dv.venta_id = v.id
-            WHERE p.tienda_id = $1 AND p.activo = true ${filterCat}
-            GROUP BY p.id, p.codigo, p.nombre, p.categoria, p.stock_unidades, p.costo, p.unidad_medida
+            LEFT JOIN movimientos_ventas v_fechas ON p.id = v_fechas.producto_id
+            WHERE p.tienda_id = $1 AND p.activo = true ${filterCat} ${filterBusqueda}
+            GROUP BY p.id, p.codigo, p.nombre, p.categoria, p.stock_unidades, p.stock_estante, p.costo, p.unidad_medida
             ${filterInactividad}
-            ORDER BY (p.stock_unidades * 
+            ORDER BY ((COALESCE(p.stock_unidades, 0) + COALESCE(p.stock_estante, 0)) * 
                 CASE 
                     WHEN p.categoria ILIKE '%esencia%' OR p.categoria ILIKE '%alcohol%' OR p.categoria ILIKE '%fijador%' OR p.unidad_medida = 'GRAMOS' OR p.unidad_medida = 'ML' 
                     THEN p.costo / 1000.0 ELSE p.costo 
@@ -2316,7 +2334,7 @@ const obtenerEstancamiento = async (req, res) => {
         
         let totalCapitalAtrapado = 0;
         const items = result.rows.map(r => {
-            const stock = parseFloat(r.stock_unidades || 0);
+            const stockTotal = parseFloat(r.stock_total_real || 0);
             let costoUnit = parseFloat(r.costo || 0);
             const catUpper = (r.categoria || '').toUpperCase();
             const uniUpper = (r.unidad_medida || '').toUpperCase();
@@ -2325,7 +2343,7 @@ const obtenerEstancamiento = async (req, res) => {
                 costoUnit = costoUnit / 1000.0;
             }
 
-            const costoTotal = stock * costoUnit;
+            const costoTotal = stockTotal * costoUnit;
             totalCapitalAtrapado += costoTotal;
 
             return {
@@ -2333,7 +2351,7 @@ const obtenerEstancamiento = async (req, res) => {
                 codigo: r.codigo,
                 nombre: r.nombre,
                 categoria: r.categoria,
-                stock_unidades: stock,
+                stock_unidades: stockTotal,
                 costo_unitario: costoUnit,
                 costo_estancado: costoTotal,
                 dias_inactivo: r.dias_inactivo,

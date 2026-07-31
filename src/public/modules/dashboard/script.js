@@ -34,6 +34,17 @@ export async function init() {
     }
 }
 
+let debounceTimerHuesos;
+window.debouncedCargarAuditoria = () => {
+    clearTimeout(debounceTimerHuesos);
+    debounceTimerHuesos = setTimeout(() => {
+        window.cargarAuditoriaEstancamiento();
+    }, 350); // Espera 350ms a que el usuario termine de escribir
+};
+
+
+
+
 async function cargarDatos(rango) {
     try {
         document.body.style.cursor = 'wait';
@@ -57,7 +68,7 @@ async function cargarDatos(rango) {
         dataTopProductos = reportes.top_productos || [];
         dataCategorias = reportes.categorias || [];
 
-        // --- CORRECCIÓN CLAVE: RELLENAR DÍAS VACÍOS PARA QUE SE VEA LA LÍNEA ---
+        // --- RELLENAR DÍAS VACÍOS PARA QUE SE VEA LA LÍNEA ---
         const datosCompletos = completarDatosGrafica(reportes.financiero || [], rango);
         renderFinanzasChart(datosCompletos);
         
@@ -70,6 +81,11 @@ async function cargarDatos(rango) {
         }
 
         renderHuesos(reportes.huesos || []);
+
+        // 🚨 SINCRO EN TIEMPO REAL CON LA AUDITORÍA COMPLETA DE ESTANCAMIENTO (HUESOS)
+        if (typeof window.cargarAuditoriaEstancamiento === 'function') {
+            window.cargarAuditoriaEstancamiento();
+        }
 
     } catch (e) {
         console.error("Error cargando dashboard:", e);
@@ -893,6 +909,43 @@ window.cerrarModalRanking = function() {
 };
 
 
+async function cargarPodioHTML() {
+    try {
+        // 1. Petición a la API (Trae todos los datos sin filtro de cantidad)
+        const res = await fetch(`/api/ventas/podio?tipo=${tipoActual}&rango=${rangoActual}`);
+        const data = await res.json(); // 'data' contiene la lista completa (ej: 300 o 1000 productos)
+
+        // Guardamos la lista completa en una variable global por si la necesitas
+        window.podioCompletoData = data; 
+
+        // 🚨 2. CORRECCIÓN CLAVE: Cortamos solo los primeros 50 para el HTML
+        const top50Pantalla = data.slice(0, 50);
+
+        const contenedorHTML = document.getElementById('tablaPodioBody'); // Tu contenedor HTML
+        if (!contenedorHTML) return;
+
+        contenedorHTML.innerHTML = top50Pantalla.map((item, index) => `
+            <tr>
+                <td>#${index + 1}</td>
+                <td>${item.nombre}</td>
+                <td>${item.categoria}</td>
+                <td>${item.genero}</td>
+                <td>${parseFloat(item.total_unidades).toFixed(0)} Uds</td>
+                <td>$${parseFloat(item.total_ingresos).toFixed(2)}</td>
+            </tr>
+        `).join('');
+
+        // Actualizamos el contador de pantalla si tienes una etiqueta indicativa
+        const lblTotal = document.getElementById('lblContadorPodio');
+        if (lblTotal) {
+            lblTotal.innerText = `Mostrando Top 50 en pantalla (${data.length} en total para exportar)`;
+        }
+
+    } catch (error) {
+        console.error("Error cargando Podio en HTML:", error);
+    }
+}
+
 // ==========================================
 // 🏆 CONTROLADOR DEL PODIO DE VENTAS
 // ==========================================
@@ -985,6 +1038,11 @@ window.exportarPodioExcel = () => {
     window.open(url, '_blank');
 };
 
+function descargarPodioExcel() {
+    // Redirige directamente al endpoint de exportación sin restricciones
+    window.location.href = `/api/ventas/podio/excel?tipo=${tipoActual}&rango=${rangoActual}&start=${startFmt}&end=${endFmt}`;
+}
+
 // Cargar al iniciar la página por defecto (7 días, TODOS)
 document.addEventListener('DOMContentLoaded', cargarPodioDinamico);
 
@@ -1009,42 +1067,48 @@ window.manejarFiltroTiempoHuesos = () => {
 };
 
 window.cargarAuditoriaEstancamiento = async () => {
-    const inactividad = document.getElementById('filtroInactividadHuesos').value;
-    const categoria = document.getElementById('filtroCatHuesos').value;
+    const inactividad = document.getElementById('filtroInactividadHuesos')?.value || '30';
+    const categoria = document.getElementById('filtroCatHuesos')?.value || 'TODOS';
+    const busqueda = document.getElementById('busquedaHuesos')?.value || '';
     let start = '', end = '';
 
     if (inactividad === 'CUSTOM') {
-        start = document.getElementById('huesosFechaStart').value;
-        end = document.getElementById('huesosFechaEnd').value;
-        if (!start || !end) return; // Espera a que el usuario seleccione ambas fechas
+        start = document.getElementById('huesosFechaStart')?.value || '';
+        end = document.getElementById('huesosFechaEnd')?.value || '';
+        if (!start || !end) return;
     }
 
     const tbody = document.getElementById('tablaHuesos');
+    if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-neutral-400 font-bold text-xs uppercase tracking-widest"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Auditando historiales de inventario y lotes...</td></tr>';
 
     try {
         const token = localStorage.getItem('token');
-        const url = `/api/productos/estancamiento?dias=${inactividad}&categoria=${categoria}&start=${start}&end=${end}`;
+        const url = `/api/productos/estancamiento?dias=${inactividad}&categoria=${categoria}&busqueda=${encodeURIComponent(busqueda)}&start=${start}&end=${end}`;
         const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
         
         if (!res.ok) throw new Error("Error en auditoría");
         const data = await res.json();
 
         // Actualizar métricas generales
-        document.getElementById('txtCapitalInmovilizado').innerText = `$${parseFloat(data.total_capital || 0).toFixed(2)}`;
-        document.getElementById('txtSkusEstancados').innerText = `${data.items.length} SKUs`;
+        const elCap = document.getElementById('txtCapitalInmovilizado');
+        const elSkus = document.getElementById('txtSkusEstancados');
+        const elRiesgo = document.getElementById('txtRiesgoEstancamiento');
+
+        if (elCap) elCap.innerText = `$${parseFloat(data.total_capital || 0).toFixed(2)}`;
+        if (elSkus) elSkus.innerText = `${data.items.length} SKUs`;
         
         const riesgo = data.total_capital > 1000 ? 'ALTO (Atención Rápida)' : (data.total_capital > 300 ? 'MODERADO' : 'BAJO');
-        document.getElementById('txtRiesgoEstancamiento').innerText = riesgo;
+        if (elRiesgo) elRiesgo.innerText = riesgo;
 
         if (data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-neutral-500 font-bold text-xs uppercase bg-white">Excelente: No hay inventario estancado bajo estos parámetros.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-neutral-500 font-bold text-xs uppercase bg-white">No se encontraron productos estancados con estos filtros.</td></tr>';
             return;
         }
 
         tbody.innerHTML = data.items.map(i => {
             const diasTxt = i.dias_inactivo >= 0 ? `${i.dias_inactivo} días` : 'Sin Ventas Registradas';
-            const badgeColor = i.dias_inactivo > 90 ? 'bg-red-100 text-red-800 border-red-300' : 'bg-amber-100 text-amber-800 border-amber-300';
+            const badgeColor = i.dias_inactivo > 90 || i.dias_inactivo === -1 ? 'bg-red-100 text-red-800 border-red-300' : 'bg-amber-100 text-amber-800 border-amber-300';
 
             return `
                 <tr class="hover:bg-neutral-100 border-b border-neutral-200 transition-colors">

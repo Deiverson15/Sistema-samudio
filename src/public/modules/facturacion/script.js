@@ -801,17 +801,22 @@ function renderCarrito() {
     const totalEl = document.getElementById('totalMonto');
     const itemsEl = document.getElementById('totalItems');
     const bsEl = document.getElementById('totalBs'); 
+    const contadorFiltradosEl = document.getElementById('contadorItemsFiltrados');
 
     if (!lista) return;
 
     lista.innerHTML = '';
     let total = 0;
-    let cantidadTotal = 0;
+    let cantidadTotalGlobal = 0;
+    let cantidadFiltradaMostrada = 0;
+
+    // Filtrar carrito según lo que escriba el usuario en el buscador del ticket
+    const filtro = (textoFiltroCarrito || "").toLowerCase().trim();
 
     carrito.forEach((item, index) => {
         const subtotal = item.precio * item.cantidad;
         total += subtotal;
-        cantidadTotal += item.cantidad;
+        cantidadTotalGlobal += item.cantidad;
 
         // Búsqueda del código visual para el ticket
         const prodRef = todosLosProductos.find(p => p.id === item.id);
@@ -819,55 +824,74 @@ function renderCarrito() {
             ? (item.codigo_pt || (prodRef ? `${prodRef.codigo}-T` : 'PT'))
             : (prodRef ? prodRef.codigo : 'S/C');
 
-        // Badge Perfume Terminado (PT) vs Fórmula
-        const badgePT = item.es_pt 
-            ? `<span class="text-[9px] px-1.5 py-0.5 rounded border bg-emerald-100 text-emerald-800 border-emerald-300 font-black ml-1 uppercase">PT (UNIDAD)</span>` 
-            : `<span class="text-[9px] px-1.5 py-0.5 rounded border bg-blue-100 text-blue-800 border-blue-300 font-black ml-1 uppercase">FÓRMULA</span>`;
+        // Validar si coincide con el filtro (por nombre o por código)
+        const coincide = !filtro || 
+            item.nombre.toLowerCase().includes(filtro) || 
+            codigoMostrar.toLowerCase().includes(filtro);
 
-        // Badge Escala de precio
-        const badgeTarifa = item.tipoPrecio && item.tipoPrecio !== 'DETAL' 
-            ? `<span class="text-[9px] px-1.5 py-0.5 rounded border ${item.badgeColor || 'bg-slate-100 text-slate-700 border-slate-200'} font-bold ml-1 shadow-sm uppercase">${item.tipoPrecio}</span>` 
-            : '';
+        if (coincide) {
+            cantidadFiltradaMostrada += item.cantidad;
 
-        lista.innerHTML += `
-            <div class="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100 mb-2 hover:shadow-sm transition">
-                <div class="flex-1">
-                    <!-- 📌 MUESTRA EL CÓDIGO (Ej: E148 o E148-T30) EN LA PARTE SUPERIOR -->
-                    <div class="text-[10px] font-mono font-black text-neutral-500 uppercase tracking-wider mb-0.5">
-                        <i class="fa-solid fa-barcode text-neutral-400 mr-1"></i>${codigoMostrar}
+            const badgePT = item.es_pt 
+                ? `<span class="text-[9px] px-1.5 py-0.5 rounded border bg-emerald-100 text-emerald-800 border-emerald-300 font-black ml-1 uppercase">PT (UNIDAD)</span>` 
+                : `<span class="text-[9px] px-1.5 py-0.5 rounded border bg-blue-100 text-blue-800 border-blue-300 font-black ml-1 uppercase">FÓRMULA</span>`;
+
+            const badgeTarifa = item.tipoPrecio && item.tipoPrecio !== 'DETAL' 
+                ? `<span class="text-[9px] px-1.5 py-0.5 rounded border ${item.badgeColor || 'bg-slate-100 text-slate-700 border-slate-200'} font-bold ml-1 shadow-sm uppercase">${item.tipoPrecio}</span>` 
+                : '';
+
+            lista.innerHTML += `
+                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100 mb-2 hover:shadow-sm transition">
+                    <div class="flex-1">
+                        <div class="text-[10px] font-mono font-black text-neutral-500 uppercase tracking-wider mb-0.5">
+                            <i class="fa-solid fa-barcode text-neutral-400 mr-1"></i>${codigoMostrar}
+                        </div>
+
+                        <div class="font-bold text-slate-800 text-sm flex items-center flex-wrap gap-1 leading-tight">
+                            ${item.nombre}
+                            ${badgePT}
+                            ${badgeTarifa}
+                        </div>
+                        <div class="text-xs text-slate-400 mt-0.5">$${parseFloat(item.precio).toFixed(2)} c/u</div>
                     </div>
 
-                    <div class="font-bold text-slate-800 text-sm flex items-center flex-wrap gap-1 leading-tight">
-                        ${item.nombre}
-                        ${badgePT}
-                        ${badgeTarifa}
+                    <div class="flex items-center gap-3">
+                        <div class="flex items-center border border-gray-300 rounded bg-white overflow-hidden shadow-sm w-16 h-8">
+                            <input type="number" 
+                                   value="${item.cantidad}" 
+                                   min="1"
+                                   onchange="actualizarCantidadCarrito(${index}, this.value)"
+                                   class="w-full h-full text-center text-sm font-bold outline-none border-none bg-transparent text-slate-800 focus:bg-blue-50">
+                        </div>
+
+                        <div class="font-bold text-slate-800 w-16 text-right">$${subtotal.toFixed(2)}</div>
+
+                        <button onclick="eliminarDelCarrito(${index})" class="text-red-400 hover:text-red-600 w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-50 transition ml-1" title="Eliminar ítem">
+                            <i class="fa-solid fa-trash text-xs"></i>
+                        </button>
                     </div>
-                    <div class="text-xs text-slate-400 mt-0.5">$${parseFloat(item.precio).toFixed(2)} c/u</div>
                 </div>
-
-                <div class="flex items-center gap-3">
-                    <div class="flex items-center border border-gray-300 rounded bg-white overflow-hidden shadow-sm w-16 h-8">
-                        <input type="number" 
-                               value="${item.cantidad}" 
-                               min="1"
-                               onchange="actualizarCantidadCarrito(${index}, this.value)"
-                               class="w-full h-full text-center text-sm font-bold outline-none border-none bg-transparent text-slate-800 focus:bg-blue-50">
-                    </div>
-
-                    <div class="font-bold text-slate-800 w-16 text-right">$${subtotal.toFixed(2)}</div>
-
-                    <button onclick="eliminarDelCarrito(${index})" class="text-red-400 hover:text-red-600 w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-50 transition ml-1" title="Eliminar ítem">
-                        <i class="fa-solid fa-trash text-xs"></i>
-                    </button>
-                </div>
-            </div>
-        `;
+            `;
+        }
     });
+
+    if (lista.innerHTML === '') {
+        lista.innerHTML = `<div class="text-center text-neutral-400 font-bold text-[10px] uppercase tracking-widest py-10">No hay coincidencias en el ticket</div>`;
+    }
 
     // 3. Actualización de totales globales
     if (totalEl) totalEl.innerText = `$${total.toFixed(2)}`;
-    if (itemsEl) itemsEl.innerText = `${cantidadTotal} Items`;
+    if (itemsEl) itemsEl.innerText = `${cantidadTotalGlobal} Items`;
     if (bsEl) bsEl.innerText = `Bs ${(total * tasaCambio).toFixed(2)}`;
+
+    // Actualizar texto del contador filtrado
+    if (contadorFiltradosEl) {
+        if (filtro) {
+            contadorFiltradosEl.innerText = `Filtrados: ${cantidadFiltradaMostrada} unidades`;
+        } else {
+            contadorFiltradosEl.innerText = `Mostrando todos (${cantidadTotalGlobal} items)`;
+        }
+    }
 
     // 4. Sincronizar modal de cobro si está abierto
     const modalCobro = document.getElementById('modalCobro');
@@ -875,6 +899,14 @@ function renderCarrito() {
         actualizarResumenCobro();
     }
 }
+
+// Función global para capturar lo que escribes en el buscador del carrito
+window.filtrarCarrito = function(texto) {
+    textoFiltroCarrito = texto;
+    renderCarrito();
+};
+
+let textoFiltroCarrito = "";
 
 function cambiarCantidad(idx, delta) {
     const item = carrito[idx];
@@ -1500,22 +1532,23 @@ window.finalizarVentaBackend = async function(confirmacionAlmacen = false) {
     const totalVentaFinal = Math.round((totalVentaCalculado + Number.EPSILON) * 100) / 100;
 
     const itemsLimpios = carrito.map(i => {
-    const precioUnitarioLimpio = Math.round((parseFloat(i.precio) + Number.EPSILON) * 100) / 100;
-    const subtotalLimpio = Math.round((precioUnitarioLimpio * parseFloat(i.cantidad) + Number.EPSILON) * 100) / 100;
+        const precioUnitarioLimpio = Math.round((parseFloat(i.precio) + Number.EPSILON) * 100) / 100;
+        const subtotalLimpio = Math.round((precioUnitarioLimpio * parseFloat(i.cantidad) + Number.EPSILON) * 100) / 100;
 
-    return { 
-        id: parseInt(i.id, 10),
-        cantidad: parseFloat(i.cantidad), 
-        precio: precioUnitarioLimpio,
-        subtotal: subtotalLimpio,
-        formula_id: i.formula_id ? parseInt(i.formula_id, 10) : null,
-        descripcion: i.nombre ? i.nombre.toUpperCase() : 'PRODUCTO FRAGANZA',
-        gramos_extra: parseFloat(i.gramos_extra || 0),
-        ml_alcohol_override: i.ml_alcohol_override !== undefined ? parseFloat(i.ml_alcohol_override) : null,
-        es_recarga: i.es_recarga || false,
-        es_pt: i.es_pt || false // 👈 Transmite la bandera al backend
-    };
-});
+        return { 
+            id: parseInt(i.id, 10),
+            cantidad: parseFloat(i.cantidad), 
+            precio: precioUnitarioLimpio,
+            subtotal: subtotalLimpio,
+            formula_id: i.formula_id ? parseInt(i.formula_id, 10) : null,
+            descripcion: i.nombre ? i.nombre.toUpperCase() : 'PRODUCTO FRAGANZA',
+            gramos_extra: parseFloat(i.gramos_extra || 0),
+            ml_alcohol_override: i.ml_alcohol_override !== undefined ? parseFloat(i.ml_alcohol_override) : null,
+            es_recarga: i.es_recarga || false,
+            es_pt: i.es_pt || false
+        };
+    });
+
     const pagosLimpios = pagosRealizados.map(p => ({
         metodo: p.metodo,
         moneda: p.moneda.toUpperCase(),
@@ -1539,20 +1572,20 @@ window.finalizarVentaBackend = async function(confirmacionAlmacen = false) {
                 pagos: pagosLimpios,
                 tipo_documento: tipoDoc,
                 usuario_id: usuarioLogueadoId,
-                confirmacion_almacen: confirmacionAlmacen // 🔥 2. ENVIAMOS LA BANDERA AL BACKEND
+                confirmacion_almacen: confirmacionAlmacen
             })
         });
 
         const data = await res.json();
 
-        // 🔥 3. ATRAPAMOS LA ALERTA DE STOCK ANTES DE QUE FALLE
+        // ATRAPAMOS LA ALERTA DE STOCK ANTES DE QUE FALLE
         if (res.status === 409 && data.error === 'ALERTA_ALMACEN') {
             btn.innerHTML = originalText;
             btn.disabled = false;
 
             const result = await Swal.fire({
                 title: 'Mostrador Insuficiente',
-                html: data.mensaje, // Aquí se muestra el mensaje de cuántos gramos faltan
+                html: data.mensaje,
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#0a0a0a',
@@ -1563,10 +1596,9 @@ window.finalizarVentaBackend = async function(confirmacionAlmacen = false) {
             });
 
             if (result.isConfirmed) {
-                // Si la cajera dice que SÍ, volvemos a lanzar la venta pero con permiso activado
                 return window.finalizarVentaBackend(true); 
             } else {
-                return; // Si dice que NO, la venta se aborta de forma segura
+                return;
             }
         }
 
@@ -1577,6 +1609,15 @@ window.finalizarVentaBackend = async function(confirmacionAlmacen = false) {
             localStorage.removeItem('carrito_pos_respaldo');
             localStorage.removeItem('pos_state_draft');
             renderCarrito();
+
+            // 🚨 REFRESCAR AUDITORÍA DE ESTANCAMIENTO Y PODIO DE VENTAS EN TIEMPO REAL
+            if (typeof window.cargarAuditoriaEstancamiento === 'function') {
+                window.cargarAuditoriaEstancamiento();
+            }
+            if (typeof window.cargarPodioDinamico === 'function') {
+                window.cargarPodioDinamico();
+            }
+
             Swal.fire({ icon: 'success', title: '¡Venta Exitosa!', text: `Ticket #${data.id_venta} generado.`, timer: 1500, showConfirmButton: false })
             .then(() => {
                 imprimirTicketFactura({

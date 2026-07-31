@@ -353,7 +353,7 @@ const exportarReporteGeneral = async (req, res) => {
         }
 
         // =========================================================
-        // REPORTE B: VENTAS POR REFERENCIAS (CON FILTRO DE MATERIA PRIMA)
+        // REPORTE B: VENTAS POR REFERENCIAS (SOLUCIÓN DE REPORTES VACÍOS)
         // =========================================================
         if (filtro === 'referencias') {
             const sheet = workbook.addWorksheet('Ventas por Referencia');
@@ -371,10 +371,35 @@ const exportarReporteGeneral = async (req, res) => {
             rowHeaders.alignment = { horizontal: 'center' };
             const filaEncabezadoNum = rowHeaders.number;
 
+            // 1. CONSTRUCCIÓN DE PARÁMETROS SEGUROS DE FECHA
+            let queryParams = [start, end];
+            let paramIdx = 3;
+
+            // 2. FILTRO DE TIENDA DINÁMICO CON PARÁMETROS ($)
+            let filtroTiendaRef = '';
+            if (esUsuarioMaestro && tienda && tienda !== 'todas') {
+                filtroTiendaRef = ` AND v.tienda_id = $${paramIdx}`;
+                queryParams.push(parseInt(tienda, 10));
+                paramIdx++;
+            } else if (!esUsuarioMaestro) {
+                filtroTiendaRef = ` AND v.tienda_id = $${paramIdx}`;
+                queryParams.push(idTiendaLocal);
+                paramIdx++;
+            }
+
+            // 3. FILTRO DE VENDEDOR DINÁMICO ($)
+            let filtroVendedorRef = '';
+            if (vendedor && vendedor.trim() !== '') {
+                filtroVendedorRef = ` AND u.nombre ILIKE $${paramIdx}`;
+                queryParams.push(`%${vendedor.trim()}%`);
+                paramIdx++;
+            }
+
+            // 4. FILTRO DE CATEGORÍA / MATERIA PRIMA
             let filtroCategoriaStr = '';
             if (categoria && categoria !== 'todos') {
                 const catUpper = categoria.toUpperCase();
-                if (catUpper === 'MATERIA_PRIMA') {
+                if (catUpper === 'MATERIA_PRIMA' || catUpper === 'INSUMOS') {
                     filtroCategoriaStr = ` AND (
                         p.categoria ILIKE '%esencia%' OR 
                         p.categoria ILIKE '%fijador%' OR 
@@ -382,15 +407,18 @@ const exportarReporteGeneral = async (req, res) => {
                         p.categoria ILIKE '%frasco%' OR 
                         p.categoria ILIKE '%envase%'
                     )`;
-                } else if (catUpper === 'TERMINADOS') {
+                } else if (catUpper === 'TERMINADOS' || catUpper === 'PT') {
                     filtroCategoriaStr = ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
-                } else if (catUpper === 'FRASCO') {
+                } else if (catUpper === 'FRASCO' || catUpper === 'FRASCOS') {
                     filtroCategoriaStr = ` AND (p.categoria ILIKE '%frasco%' OR p.categoria ILIKE '%envase%')`;
                 } else {
-                    filtroCategoriaStr = ` AND p.categoria ILIKE '%${categoria.trim()}%'`;
+                    filtroCategoriaStr = ` AND p.categoria ILIKE $${paramIdx}`;
+                    queryParams.push(`%${categoria.trim()}%`);
+                    paramIdx++;
                 }
             }
 
+            // 🎯 CONSULTA SQL CORREGIDA (CASTEO DE FECHA CON TYPE CAST ::date)
             const resReferencias = await client.query(`
                 SELECT 
                     COALESCE(
@@ -400,10 +428,10 @@ const exportarReporteGeneral = async (req, res) => {
                         p.unidad_medida,
                         'N/A'
                     ) as medida,
-                    COALESCE(p.genero, 'S/N') as genero,
+                    COALESCE(p.genero, 'UNISEX') as genero,
                     p.codigo as referencia,
                     p.nombre as descripcion,
-                    p.marca as marca,
+                    COALESCE(p.marca, 'S/M') as marca,
                     SUM(dv.cantidad) as total_unidades,
                     SUM(dv.subtotal) as monto_total_usd 
                 FROM ventas v
@@ -411,8 +439,8 @@ const exportarReporteGeneral = async (req, res) => {
                 JOIN productos p ON dv.producto_id = p.id
                 LEFT JOIN formulas f ON dv.formula_id = f.id
                 LEFT JOIN usuarios u ON v.usuario_id = u.id
-                WHERE DATE(v.fecha) BETWEEN $1 AND $2 
-                  ${filtroTiendaGeneral} ${filtroVendedorStr} ${filtroCategoriaStr}
+                WHERE v.fecha::date BETWEEN $1::date AND $2::date
+                  ${filtroTiendaRef} ${filtroVendedorRef} ${filtroCategoriaStr}
                 GROUP BY 
                     COALESCE(
                         NULLIF(dv.tamano, 'N/A'),
@@ -423,7 +451,7 @@ const exportarReporteGeneral = async (req, res) => {
                     ), 
                     p.genero, p.codigo, p.nombre, p.marca
                 ORDER BY p.nombre ASC
-            `, [start, end]);
+            `, queryParams);
 
             let totalAcumuladoUSD = 0;
             let totalUnidadesAcumuladas = 0;
@@ -434,10 +462,10 @@ const exportarReporteGeneral = async (req, res) => {
 
                 sheet.addRow([
                     r.medida, 
-                    r.genero ? r.genero.toUpperCase() : 'S/N', 
+                    r.genero ? r.genero.toUpperCase() : 'UNISEX', 
                     r.referencia || 'S/N',
                     r.descripcion || 'S/N',
-                    r.marca || 'S/N',
+                    r.marca || 'S/M',
                     uds,
                     monto
                 ]);
@@ -461,17 +489,47 @@ const exportarReporteGeneral = async (req, res) => {
             rowTotalesRef.getCell(5).alignment = { horizontal: 'right' };
 
             sheet.getColumn(1).width = 18;
+            sheet.getColumn(2).width = 15;
+            sheet.getColumn(3).width = 18;
             sheet.getColumn(4).width = 40;
+            sheet.getColumn(5).width = 18;
+            sheet.getColumn(6).width = 18;
             sheet.getColumn(7).width = 30;
             sheet.getColumn(7).numFmt = '"$"#,##0.00';
         }
 
-        // =========================================================
-        // REPORTE C: VENTAS CONSOLIDADAS POR TIENDA (DYNAMIC PROMOS)
+       // =========================================================
+        // REPORTE C: VENTAS CONSOLIDADAS POR TIENDA (FÓRMULAS DINÁMICAS SÍN ERROR)
         // =========================================================
         if (filtro === 'tiendas') {
             const sheet = workbook.addWorksheet('Consolidado Tiendas');
-            agregarMembreteCorporativo(sheet, 'Ventas por Tienda (Consolidado)');
+            
+            // 1. MEMBRETE CORPORATIVO FIJO
+            sheet.addRow([EMPRESA_NOMBRE]).font = { bold: true, size: 12 };
+            sheet.addRow([`R.I.F.: ${EMPRESA_RIF}`]).font = { bold: true, size: 10 };
+            sheet.addRow([textoRangoFechas]).font = { bold: true, size: 9 };
+            sheet.addRow([]); // Fila 4 en blanco para separar
+
+            // 2. TABLA PARAMÉTRICA DE COSTOS BASE (FILA 5 Y FILA 6 EXACTAS)
+            sheet.addRow(['PARÁMETROS DE COSTOS BASE (EDITABLES)']).font = { bold: true, size: 10, color: { argb: 'FF1E293B' } };
+            
+            const rowCostosHeader = sheet.addRow(['', 'Costo 30ml', 'Costo 60ml', 'Costo 100ml']);
+            rowCostosHeader.font = { bold: true };
+            rowCostosHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+            
+            // Fila 7: Celdas B7, C7 y D7 tienen los números puros
+            const rowCostosValores = sheet.addRow(['', 0.69, 1.19, 2.08]);
+            rowCostosValores.font = { bold: true };
+            rowCostosValores.getCell(2).numFmt = '"$"#,##0.00';
+            rowCostosValores.getCell(3).numFmt = '"$"#,##0.00';
+            rowCostosValores.getCell(4).numFmt = '"$"#,##0.00';
+
+            // Coordenadas absolutas EXACTAS donde están los números puros
+            const refCosto30 = '$B$7';  // Celda B7 = 0.69
+            const refCosto60 = '$C$7';  // Celda C7 = 1.19
+            const refCosto100 = '$D$7'; // Celda D7 = 2.08
+
+            sheet.addRow([]); // Fila 8 espaciadora
 
             const tiendasParam = req.query.tiendas; 
             let arrTiendas = [];
@@ -502,18 +560,14 @@ const exportarReporteGeneral = async (req, res) => {
                 
                 tarifasBase.forEach(tarifa => {
                     report[tName].tarifas[tarifa] = {
-                        u30: 0, c30: 0, p30: 0, r30: 0,
-                        u60: 0, c60: 0, p60: 0, r60: 0,
-                        u100: 0, c100: 0, p100: 0, r100: 0,
-                        ue: 0, ce: 0, pe: 0, re: 0,
-                        ut: 0, ct: 0, pt: 0, rt: 0
+                        u30: 0, p30: 0,
+                        u60: 0, p60: 0,
+                        u100: 0, p100: 0,
+                        ue: 0, ce: 0, pe: 0
                     };
                 });
             });
 
-            // 🎯 CONSULTA SQL CORREGIDA:
-            // 1. Usa COALESCE para tomar el costo histórico o el costo actual del producto (p.costo).
-            // 2. Detecta si la unidad es GRAMOS/ML o categoría Esencia/Alcohol/Fijador para dividir el costo unitario entre 1000.
             const resData = await client.query(`
                 SELECT 
                     t.nombre as tienda_nombre,
@@ -524,12 +578,7 @@ const exportarReporteGeneral = async (req, res) => {
                     p.unidad_medida as producto_unidad,
                     dv.descripcion as detalle_desc,
                     dv.cantidad,
-                    -- Fallback inteligente de costo:
-                    CASE 
-                        WHEN (p.categoria ILIKE '%esencia%' OR p.categoria ILIKE '%alcohol%' OR p.categoria ILIKE '%fijador%' OR p.unidad_medida = 'GRAMOS' OR p.unidad_medida = 'ML') 
-                        THEN COALESCE(NULLIF(dv.costo_unitario_historico, 0), p.costo, 0) / 1000.0
-                        ELSE COALESCE(NULLIF(dv.costo_unitario_historico, 0), p.costo, 0)
-                    END as costo_unitario_calculado,
+                    COALESCE(NULLIF(dv.costo_unitario_historico, 0), p.costo, 0) as costo_historico,
                     dv.subtotal as precio_total
                 FROM ventas v
                 JOIN detalle_ventas dv ON v.id = dv.venta_id
@@ -557,9 +606,8 @@ const exportarReporteGeneral = async (req, res) => {
 
                 if (!report[tName].tarifas[tarifaReal]) {
                     report[tName].tarifas[tarifaReal] = {
-                        u30: 0, c30: 0, p30: 0, r30: 0, u60: 0, c60: 0, p60: 0, r60: 0,
-                        u100: 0, c100: 0, p100: 0, r100: 0, ue: 0, ce: 0, pe: 0, re: 0,
-                        ut: 0, ct: 0, pt: 0, rt: 0
+                        u30: 0, p30: 0, u60: 0, p60: 0,
+                        u100: 0, p100: 0, ue: 0, ce: 0, pe: 0
                     };
                 }
 
@@ -568,23 +616,18 @@ const exportarReporteGeneral = async (req, res) => {
                 const textStr = ((r.producto_nombre || '') + ' ' + (r.detalle_desc || '')).toUpperCase();
                 
                 const cant = parseFloat(r.cantidad || 0);
-                
-                // 💰 CÁLCULO EXACTO DEL COSTO Y RENTABILIDAD
-                const costoUnit = parseFloat(r.costo_unitario_calculado || 0);
-                const costoTot = costoUnit * cant;
                 const precio = parseFloat(r.precio_total || 0);
-                const rentabilidad = precio - costoTot;
+                const costoHist = parseFloat(r.costo_historico || 0) * cant;
 
                 if (tamStr === '30' || tamStr === '30ML' || textStr.includes('30ML') || textStr.includes('30 ML')) {
-                    cat.u30 += cant; cat.c30 += costoTot; cat.p30 += precio; cat.r30 += rentabilidad;
+                    cat.u30 += cant; cat.p30 += precio;
                 } else if (tamStr === '60' || tamStr === '60ML' || textStr.includes('60ML') || textStr.includes('60 ML')) {
-                    cat.u60 += cant; cat.c60 += costoTot; cat.p60 += precio; cat.r60 += rentabilidad;
+                    cat.u60 += cant; cat.p60 += precio;
                 } else if (tamStr === '100' || tamStr === '100ML' || textStr.includes('100ML') || textStr.includes('100 ML')) {
-                    cat.u100 += cant; cat.c100 += costoTot; cat.p100 += precio; cat.r100 += rentabilidad;
+                    cat.u100 += cant; cat.p100 += precio;
                 } else { 
-                    cat.ue += cant; cat.ce += costoTot; cat.pe += precio; cat.re += rentabilidad;
+                    cat.ue += cant; cat.ce += costoHist; cat.pe += precio;
                 }
-                cat.ut += cant; cat.ct += costoTot; cat.pt += precio; cat.rt += rentabilidad;
             });
 
             Object.keys(report).forEach(tName => {
@@ -592,7 +635,7 @@ const exportarReporteGeneral = async (req, res) => {
                 sheet.addRow([]);
                 
                 const headerTarjeta = sheet.addRow([`🏪 TIENDA: ${tName.toUpperCase()}   |   ID SERIAL: ${tiendaData.codigo}   |   MONEDA: DÓLARES (USD)`]);
-                headerTarjeta.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+                headerTarjeta.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
                 headerTarjeta.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
                 sheet.mergeCells(headerTarjeta.number, 1, headerTarjeta.number, 21);
                 
@@ -604,19 +647,74 @@ const exportarReporteGeneral = async (req, res) => {
                     'Unds Extras', 'Costo Extras', 'Precio Extras', 'Rentab. Extras',
                     'TOTAL Unds', 'TOTAL Costo', 'TOTAL Precio', 'TOTAL Rentab.'
                 ]);
-                rowCols.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
+                rowCols.font = { bold: true, size: 9, color: { argb: 'FF334155' } };
                 rowCols.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
                 rowCols.alignment = { horizontal: 'center' };
 
-                let gt = { u30:0, c30:0, p30:0, r30:0, u60:0, c60:0, p60:0, r60:0, u100:0, c100:0, p100:0, r100:0, ue:0, ce:0, pe:0, re:0, ut:0, ct:0, pt:0, rt:0 };
+                const primeraFilaDatos = sheet.lastRow.number + 1;
 
                 Object.keys(tiendaData.tarifas).forEach(tarifaName => {
                     const d = tiendaData.tarifas[tarifaName];
-                    sheet.addRow([tarifaName, d.u30, d.c30, d.p30, d.r30, d.u60, d.c60, d.p60, d.r60, d.u100, d.c100, d.p100, d.r100, d.ue, d.ce, d.pe, d.re, d.ut, d.ct, d.pt, d.rt]);
-                    Object.keys(gt).forEach(k => gt[k] += d[k]);
+                    const filaNum = sheet.lastRow.number + 1;
+
+                    // FÓRMULAS CON COORDENADAS PERFECTAS PARA EVITAR EL #¡VALOR!
+                    const formulaC30 = `B${filaNum}*${refCosto30}`;
+                    const formulaR30 = `D${filaNum}-C${filaNum}`;
+
+                    const formulaC60 = `F${filaNum}*${refCosto60}`;
+                    const formulaR60 = `H${filaNum}-G${filaNum}`;
+
+                    const formulaC100 = `J${filaNum}*${refCosto100}`;
+                    const formulaR100 = `L${filaNum}-K${filaNum}`;
+
+                    const formulaRExtras = `P${filaNum}-O${filaNum}`;
+
+                    const formulaTotalU = `B${filaNum}+F${filaNum}+J${filaNum}+N${filaNum}`;
+                    const formulaTotalC = `C${filaNum}+G${filaNum}+K${filaNum}+O${filaNum}`;
+                    const formulaTotalP = `D${filaNum}+H${filaNum}+L${filaNum}+P${filaNum}`;
+                    const formulaTotalR = `T${filaNum}-S${filaNum}`;
+
+                    sheet.addRow([
+                        tarifaName, 
+                        d.u30, { formula: formulaC30 }, d.p30, { formula: formulaR30 },
+                        d.u60, { formula: formulaC60 }, d.p60, { formula: formulaR60 },
+                        d.u100, { formula: formulaC100 }, d.p100, { formula: formulaR100 },
+                        d.ue, d.ce, d.pe, { formula: formulaRExtras },
+                        { formula: formulaTotalU }, { formula: formulaTotalC }, { formula: formulaTotalP }, { formula: formulaTotalR }
+                    ]);
                 });
 
-                const rowTotalTienda = sheet.addRow(['TOTALES DE LA SUCURSAL:', gt.u30, gt.c30, gt.p30, gt.r30, gt.u60, gt.c60, gt.p60, gt.r60, gt.u100, gt.c100, gt.p100, gt.r100, gt.ue, gt.ce, gt.pe, gt.re, gt.ut, gt.ct, gt.pt, gt.rt]);
+                const ultimaFilaDatos = sheet.lastRow.number;
+
+                // FILA DE TOTALES POR SUCURSAL
+                const rowTotalTienda = sheet.addRow([
+                    'TOTALES DE LA SUCURSAL:', 
+                    { formula: `SUM(B${primeraFilaDatos}:B${ultimaFilaDatos})` },
+                    { formula: `SUM(C${primeraFilaDatos}:C${ultimaFilaDatos})` },
+                    { formula: `SUM(D${primeraFilaDatos}:D${ultimaFilaDatos})` },
+                    { formula: `SUM(E${primeraFilaDatos}:E${ultimaFilaDatos})` },
+
+                    { formula: `SUM(F${primeraFilaDatos}:F${ultimaFilaDatos})` },
+                    { formula: `SUM(G${primeraFilaDatos}:G${ultimaFilaDatos})` },
+                    { formula: `SUM(H${primeraFilaDatos}:H${ultimaFilaDatos})` },
+                    { formula: `SUM(I${primeraFilaDatos}:I${ultimaFilaDatos})` },
+
+                    { formula: `SUM(J${primeraFilaDatos}:J${ultimaFilaDatos})` },
+                    { formula: `SUM(K${primeraFilaDatos}:K${ultimaFilaDatos})` },
+                    { formula: `SUM(L${primeraFilaDatos}:L${ultimaFilaDatos})` },
+                    { formula: `SUM(M${primeraFilaDatos}:M${ultimaFilaDatos})` },
+
+                    { formula: `SUM(N${primeraFilaDatos}:N${ultimaFilaDatos})` },
+                    { formula: `SUM(O${primeraFilaDatos}:O${ultimaFilaDatos})` },
+                    { formula: `SUM(P${primeraFilaDatos}:P${ultimaFilaDatos})` },
+                    { formula: `SUM(Q${primeraFilaDatos}:Q${ultimaFilaDatos})` },
+
+                    { formula: `SUM(R${primeraFilaDatos}:R${ultimaFilaDatos})` },
+                    { formula: `SUM(S${primeraFilaDatos}:S${ultimaFilaDatos})` },
+                    { formula: `SUM(T${primeraFilaDatos}:T${ultimaFilaDatos})` },
+                    { formula: `SUM(U${primeraFilaDatos}:U${ultimaFilaDatos})` }
+                ]);
+                
                 rowTotalTienda.font = { bold: true, color: { argb: 'FF0F172A' } };
                 rowTotalTienda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
             });
@@ -1659,105 +1757,133 @@ const crearVenta = async (req, res) => {
             }
         }
 
-        // 2. PROCESAR DEDUCCIONES DE INVENTARIO
+        // 2. PROCESAR DEDUCCIONES COMPLETAS DE INVENTARIO E INSUMOS
         if (!es_externa) {
             for (const item of items) {
-                const cant = parseFloat(item.cantidad);
+                const cant = parseFloat(item.cantidad || 1);
                 const cleanItemId = parseInt(item.id, 10);
 
-                const prodActualRes = await client.query('SELECT id, codigo, nombre FROM productos WHERE id = $1', [cleanItemId]);
+                // Obtener datos base del producto facturado
+                const prodActualRes = await client.query('SELECT id, codigo, nombre, categoria, tamano, unidad_medida FROM productos WHERE id = $1', [cleanItemId]);
                 if (prodActualRes.rows.length === 0) throw new Error(`Producto ID ${cleanItemId} no existe en el catálogo.`);
                 const prodActual = prodActualRes.rows[0];
-                const codigoProd = (prodActual.codigo || '').trim().toUpperCase();
 
-                const esCodigoPT = codigoProd.includes('-T');
+                // Detectar tamaño/volumen del perfume (ej: "30ML", "60", "100")
+                const tamanoStr = (item.tamano || prodActual.tamano || item.descripcion || prodActual.nombre || '').toString().toUpperCase();
+                let volumenML = 30; // Por defecto 30ml
+                if (tamanoStr.includes('60')) volumenML = 60;
+                else if (tamanoStr.includes('100')) volumenML = 100;
 
-                // Si viene formula_id Y NO está marcado como PT explícito -> Desglosar Insumos
-                if (item.formula_id && !item.es_pt && !esCodigoPT) {
-                    // =========================================================================
-                    // 🧪 PREPARACIÓN POR FÓRMULA: DESCUENTA ESENCIA, ALCOHOL, FIJADOR Y ENVASE
-                    // =========================================================================
+                // 🔍 BÚSQUEDA OBLIGATORIA DE FÓRMULA (Por ID recibido o por coincidencia de producto/volumen)
+                let f = null;
+                if (item.formula_id) {
                     const formulaRes = await client.query('SELECT * FROM formulas WHERE id = $1', [parseInt(item.formula_id, 10)]);
-                    if (formulaRes.rows.length === 0) throw new Error(`Fórmula ID ${item.formula_id} no encontrada.`);
-                    const f = formulaRes.rows[0];
-                    const volumen = parseInt(f.volumen_total, 10);
+                    if (formulaRes.rows.length > 0) f = formulaRes.rows[0];
+                }
 
-                    // A. Esencia Base (Gramos según fórmula * Cantidad de perfumes)
+                // Si no vino formula_id en el payload, buscar la fórmula asociada en la BD por volumen/producto
+                if (!f) {
+                    const formulaAutoRes = await client.query(`
+                        SELECT * FROM formulas 
+                        WHERE (producto_id = $1 OR volumen_total = $2)
+                        ORDER BY id DESC LIMIT 1
+                    `, [cleanItemId, volumenML]);
+                    if (formulaAutoRes.rows.length > 0) f = formulaAutoRes.rows[0];
+                }
+
+                // =========================================================================
+                // 🧪 DESCUENTO COMPLETO DE INSUMOS (ESENCIA, ALCOHOL, FIJADOR Y FRASCO)
+                // =========================================================================
+                if (f) {
+                    // A. ESENCIA (Pura o por receta)
+                    const esenciaIdUsar = f.esencia_id || cleanItemId;
                     const gramosExtra = parseFloat(item.gramos_extra) || 0;
-                    const gramosEsenciaBase = parseFloat(f.gramos_esencia) || 0;
-                    const totalEsencia = (gramosEsenciaBase + gramosExtra) * cant;
+                    const gramosEsenciaBase = parseFloat(f.gramos_esencia || f.cant_esencia_gr || 0);
                     
-                    await validarYDescontarEstante(
-                        client, 
-                        cleanItemId, 
-                        totalEsencia, 
-                        `Esencia Base (${prodActual.nombre})`, 
-                        idTiendaLocal, 
-                        confirmacion_almacen,
-                        vendedorFinalId
-                    );
-                    
-                    // B. Alcohol (mL según fórmula * Cantidad de perfumes)
-                    if (parseFloat(f.ml_alcohol) > 0) {
-                        const alcoholUnitario = item.ml_alcohol_override !== undefined && item.ml_alcohol_override !== null 
-                                                ? parseFloat(item.ml_alcohol_override) 
-                                                : parseFloat(f.ml_alcohol);
-                                                
-                        const totalAlcohol = alcoholUnitario * cant;
-                        
-                        if (totalAlcohol > 0) {
-                            const alcoholRes = await client.query(`
-                                SELECT id, nombre FROM productos 
-                                WHERE (nombre ILIKE '%ALCOHOL%' OR categoria = 'Alcohol') 
-                                  AND activo = true 
-                                  AND (stock_estante + stock_unidades) >= $1 
-                                  AND tienda_id = $2
-                                ORDER BY (stock_estante + stock_unidades) DESC LIMIT 1 FOR UPDATE
-                            `, [totalAlcohol, idTiendaLocal]); 
-                            
-                            if (alcoholRes.rows.length === 0) throw new Error(`🚫 FALTA ALCOHOL: Se requieren ${totalAlcohol.toFixed(2)}ml en esta sucursal.`);
-                            await validarYDescontarEstante(client, alcoholRes.rows[0].id, totalAlcohol, "Alcohol", idTiendaLocal, confirmacion_almacen, vendedorFinalId);
+                    // Si no hay gramos especificados en fórmula, estimar estándar según volumen (30ml = 10g, 60ml = 20g, 100ml = 30g)
+                    const gramosEstimados = gramosEsenciaBase > 0 ? gramosEsenciaBase : (volumenML / 3);
+                    const totalEsencia = (gramosEstimados + gramosExtra) * cant;
+
+                    if (totalEsencia > 0) {
+                        await validarYDescontarEstante(
+                            client, 
+                            esenciaIdUsar, 
+                            totalEsencia, 
+                            `Esencia (${prodActual.nombre})`, 
+                            idTiendaLocal, 
+                            confirmacion_almacen,
+                            vendedorFinalId
+                        );
+                    }
+
+                    // B. ALCOHOL (mL por receta * Cantidad de perfumes)
+                    const mlAlcoholFormula = parseFloat(f.ml_alcohol || f.cant_alcohol_ml || (volumenML * 0.7));
+                    const alcoholUnitario = item.ml_alcohol_override !== undefined && item.ml_alcohol_override !== null 
+                                            ? parseFloat(item.ml_alcohol_override) 
+                                            : mlAlcoholFormula;
+                                            
+                    const totalAlcohol = alcoholUnitario * cant;
+
+                    if (totalAlcohol > 0) {
+                        const alcoholRes = await client.query(`
+                            SELECT id, nombre FROM productos 
+                            WHERE (nombre ILIKE '%ALCOHOL%' OR categoria ILIKE '%Alcohol%') 
+                              AND activo = true 
+                              AND (stock_estante + stock_unidades) >= $1 
+                              AND tienda_id = $2
+                            ORDER BY (stock_estante + stock_unidades) DESC LIMIT 1 FOR UPDATE
+                        `, [totalAlcohol, idTiendaLocal]); 
+
+                        if (alcoholRes.rows.length > 0) {
+                            await validarYDescontarEstante(client, alcoholRes.rows[0].id, totalAlcohol, "Alcohol Desnaturalizado", idTiendaLocal, confirmacion_almacen, vendedorFinalId);
                         }
                     }
 
-                    // C. Fijador (Gramos según fórmula * Cantidad de perfumes)
+                    // C. FIJADOR (Gramos por receta * Cantidad de perfumes)
+                    const gramosFijadorFormula = parseFloat(f.gramos_fijador || f.cant_fijador_ml || 1.5);
                     const gramosFijadorExtra = parseFloat(item.gramos_fijador_extra) || 0;
-                    const gramosFijadorFormula = parseFloat(f.gramos_fijador) || 0;
                     const totalFijador = (gramosFijadorFormula + gramosFijadorExtra) * cant;
 
                     if (totalFijador > 0) {
                         const fijadorRes = await client.query(`
                             SELECT id, nombre FROM productos 
-                            WHERE (nombre ILIKE '%FIJADOR%' OR categoria = 'Fijador') 
+                            WHERE (nombre ILIKE '%FIJADOR%' OR categoria ILIKE '%Fijador%') 
                               AND activo = true 
                               AND (stock_estante + stock_unidades) >= $1 
                               AND tienda_id = $2
                             ORDER BY (stock_estante + stock_unidades) DESC LIMIT 1 FOR UPDATE
                         `, [totalFijador, idTiendaLocal]); 
-                        
-                        if (fijadorRes.rows.length === 0) throw new Error(`🚫 FALTA FIJADOR: Se necesitan ${totalFijador.toFixed(2)}g en esta sucursal.`);
-                        await validarYDescontarEstante(client, fijadorRes.rows[0].id, totalFijador, "Fijador", idTiendaLocal, confirmacion_almacen, vendedorFinalId);
+
+                        if (fijadorRes.rows.length > 0) {
+                            await validarYDescontarEstante(client, fijadorRes.rows[0].id, totalFijador, "Fijador Concentrado", idTiendaLocal, confirmacion_almacen, vendedorFinalId);
+                        }
                     }
 
-                    // D. Envase / Frasco
+                    // D. ENVASE / FRASCO (1 Unidad por perfume si no es recarga)
                     if (!item.es_recarga) {
-                        const envaseRes = await client.query(`
-                            SELECT id, nombre FROM productos 
-                            WHERE (categoria = 'Envases' OR categoria = 'Frascos' OR nombre ILIKE '%ENVASE%' OR nombre ILIKE '%FRASCO%')
-                              AND (nombre ILIKE $1 OR contenido_gramos = $2)
-                              AND activo = true 
-                              AND (stock_estante + stock_unidades) >= $3 
-                              AND tienda_id = $4
-                            ORDER BY (stock_estante + stock_unidades) DESC LIMIT 1 FOR UPDATE
-                        `, [`%${volumen}%`, volumen, cant, idTiendaLocal]);
+                        const frascoIdUsar = f.frasco_id;
+                        if (frascoIdUsar) {
+                            await validarYDescontarEstante(client, frascoIdUsar, cant, `Frasco ${volumenML}ml`, idTiendaLocal, confirmacion_almacen, vendedorFinalId);
+                        } else {
+                            const envaseRes = await client.query(`
+                                SELECT id, nombre FROM productos 
+                                WHERE (categoria ILIKE '%Envases%' OR categoria ILIKE '%Frascos%' OR nombre ILIKE '%ENVASE%' OR nombre ILIKE '%FRASCO%')
+                                  AND (nombre ILIKE $1 OR tamano ILIKE $1)
+                                  AND activo = true 
+                                  AND (stock_estante + stock_unidades) >= $2 
+                                  AND tienda_id = $3
+                                ORDER BY (stock_estante + stock_unidades) DESC LIMIT 1 FOR UPDATE
+                            `, [`%${volumenML}%`, cant, idTiendaLocal]);
 
-                        if (envaseRes.rows.length === 0) throw new Error(`🚫 FALTA FRASCO: No hay envases de ${volumen}ml disponibles en esta sucursal.`);
-                        await validarYDescontarEstante(client, envaseRes.rows[0].id, cant, `Frasco ${volumen}ml`, idTiendaLocal, confirmacion_almacen, vendedorFinalId);
+                            if (envaseRes.rows.length > 0) {
+                                await validarYDescontarEstante(client, envaseRes.rows[0].id, cant, `Frasco ${volumenML}ml`, idTiendaLocal, confirmacion_almacen, vendedorFinalId);
+                            }
+                        }
                     }
 
                 } else {
                     // =========================================================================
-                    // 📦 VENTA DIRECTA O PERFUME TERMINADO (PT)
+                    // 📦 VENTA DIRECTA (Si es un insumo suelto, producto terminado PT o accesorio)
                     // =========================================================================
                     await validarYDescontarEstante(
                         client, 
@@ -3143,22 +3269,21 @@ const obtenerPodioDinamico = async (req, res) => {
 
         // 🚨 SE AGREGA p.genero AL SELECT Y AL GROUP BY
         const query = `
-            SELECT 
-                COALESCE(p.nombre, dv.descripcion, 'Producto General') as nombre, 
-                COALESCE(p.categoria, 'General') as categoria, 
-                COALESCE(p.genero, 'UNISEX') as genero,
-                SUM(dv.cantidad) as total_unidades, 
-                SUM(dv.subtotal) as total_ingresos
-            FROM detalle_ventas dv
-            JOIN ventas v ON dv.venta_id = v.id
-            LEFT JOIN productos p ON dv.producto_id = p.id
-            WHERE v.tienda_id = $1
-            ${filterFecha}
-            ${filterTipo}
-            GROUP BY COALESCE(p.id, dv.producto_id), p.nombre, dv.descripcion, p.categoria, p.genero
-            ORDER BY total_unidades DESC
-            LIMIT 30
-        `;
+    SELECT 
+        COALESCE(p.nombre, dv.descripcion, 'Producto General') as nombre, 
+        COALESCE(p.categoria, 'General') as categoria, 
+        COALESCE(p.genero, 'UNISEX') as genero,
+        SUM(dv.cantidad) as total_unidades, 
+        SUM(dv.subtotal) as total_ingresos
+    FROM detalle_ventas dv
+    JOIN ventas v ON dv.venta_id = v.id
+    LEFT JOIN productos p ON dv.producto_id = p.id
+    WHERE v.tienda_id = $1
+    ${filterFecha}
+    ${filterTipo}
+    GROUP BY COALESCE(p.id, dv.producto_id), p.nombre, dv.descripcion, p.categoria, p.genero
+    ORDER BY total_unidades DESC
+`;
 
         const resultado = await client.query(query, valores);
         res.json(resultado.rows);
@@ -3184,14 +3309,21 @@ const exportarPodioExcel = async (req, res) => {
             filterFecha = `AND v.fecha::date BETWEEN $${paramCount} AND $${paramCount + 1}`;
             valores.push(start, end);
             paramCount += 2;
-        } else if (rango === '1') { filterFecha = `AND v.fecha >= NOW() - INTERVAL '1 day'`;
-        } else if (rango === '7') { filterFecha = `AND v.fecha >= NOW() - INTERVAL '7 days'`;
-        } else if (rango === '30') { filterFecha = `AND v.fecha >= NOW() - INTERVAL '30 days'`; }
+        } else if (rango === '1') { 
+            filterFecha = `AND v.fecha >= NOW() - INTERVAL '1 day'`;
+        } else if (rango === '7') { 
+            filterFecha = `AND v.fecha >= NOW() - INTERVAL '7 days'`;
+        } else if (rango === '30') { 
+            filterFecha = `AND v.fecha >= NOW() - INTERVAL '30 days'`; 
+        }
 
-        if (tipo === 'TERMINADOS') filterTipo = `AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminados%')`;
-        else if (tipo === 'ESENCIAS') filterTipo = `AND p.categoria ILIKE '%esencia%'`;
+        if (tipo === 'TERMINADOS') {
+            filterTipo = `AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminados%' OR p.categoria ILIKE '%perfume%')`;
+        } else if (tipo === 'ESENCIAS') {
+            filterTipo = `AND p.categoria ILIKE '%esencia%'`;
+        }
 
-        // 🚨 SE AGREGA p.genero AL SELECT Y AL GROUP BY
+        // 🚨 CONSULTA SQL SIN 'LIMIT 50' (Exporta el 100% de los productos con ventas)
         const query = `
             SELECT p.nombre, p.categoria, COALESCE(p.genero, 'UNISEX') as genero, SUM(dv.cantidad) as total_unidades, SUM(dv.subtotal) as total_ingresos
             FROM detalle_ventas dv
@@ -3199,25 +3331,32 @@ const exportarPodioExcel = async (req, res) => {
             JOIN productos p ON dv.producto_id = p.id
             WHERE 1=1 ${filterFecha} ${filterTipo}
             GROUP BY p.id, p.nombre, p.categoria, p.genero
-            ORDER BY total_unidades DESC LIMIT 50
+            ORDER BY total_unidades DESC
         `;
         
         const resultado = await client.query(query, valores);
 
+        // Crear Libro de Excel
         const workbook = new ExcelJS.Workbook();
-        const sheet = workbook.addWorksheet('Top Ventas');
+        const sheet = workbook.addWorksheet('Top Ventas Completo');
 
-        const headerStyle = { font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } } };
+        // Estilos de Encabezado
+        const headerStyle = { 
+            font: { bold: true, color: { argb: 'FFFFFFFF' } }, 
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } } 
+        };
 
-        sheet.addRow(['REPORTE DE TOP VENTAS (PODIO)']).font = { bold: true, size: 14 };
-        sheet.addRow([`Filtro de Producto: ${tipo}`]);
+        sheet.addRow(['REPORTE CONSOLIDADO DE TOP VENTAS (PODIO COMPLETO)']).font = { bold: true, size: 14 };
+        sheet.addRow([`Filtro de Producto: ${tipo || 'TODOS'}`]);
         sheet.addRow([`Período: ${rango === 'CUSTOM' ? `${start} al ${end}` : `Últimos ${rango} días`}`]);
+        sheet.addRow([`Total de Referencias Exportadas: ${resultado.rows.length}`]);
         sheet.addRow([]);
 
-        // 🚨 SE INCLUYE LA COLUMNA GÉNERO
-        const headers = sheet.addRow(['RANGO', 'PRODUCTO', 'CATEGORÍA', 'GÉNERO', 'UNIDADES VENDIDAS', 'INGRESOS TOTALES ($)']);
+        // Encabezados de la Tabla
+        const headers = sheet.addRow(['RANGO', 'PRODUCTO / REFERENCIA', 'CATEGORÍA', 'GÉNERO', 'UNIDADES VENDIDAS', 'INGRESOS TOTALES ($)']);
         headers.eachCell(c => { c.font = headerStyle.font; c.fill = headerStyle.fill; });
 
+        // Filas de Datos
         resultado.rows.forEach((r, idx) => {
             sheet.addRow([
                 `#${idx + 1}`,
@@ -3229,22 +3368,24 @@ const exportarPodioExcel = async (req, res) => {
             ]);
         });
 
+        // Formatos y anchos de columna
+        sheet.getColumn(5).numFmt = '#,##0.00';
         sheet.getColumn(6).numFmt = '"$"#,##0.00';
         sheet.columns.forEach(column => { column.width = 22; });
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="Podio_Ventas_${tipo}.xlsx"`);
+        res.setHeader('Content-Disposition', `attachment; filename="Podio_Ventas_Completo_${tipo || 'GENERAL'}.xlsx"`);
+        
         await workbook.xlsx.write(res);
         res.end();
 
     } catch (error) {
-        console.error("Error Exportando Podio:", error);
-        res.status(500).send("Error generando el Excel");
+        console.error("Error Exportando Podio Excel:", error);
+        res.status(500).send("Error generando el archivo Excel");
     } finally {
         client.release();
     }
 };
-
 const getFacturaPDF = async (req, res) => {
     const { id } = req.params;
     try {
