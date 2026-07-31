@@ -46,7 +46,7 @@ window.abrirModalReporte = async function(element) {
     window.productosTrazabilidadSeleccionados = [];
 
     // Consultar tiendas en vivo
-    let opcionesTiendas = '<option value="todas">Todas las Sucursales (Solo Rol Dev)</option>';
+    let opcionesTiendas = '<option value="todas">Todas las Sucursales.</option>';
     try {
         const token = localStorage.getItem('token');
         const resT = await fetch('/api/ventas/lista-tiendas', { headers: { 'Authorization': `Bearer ${token}` } });

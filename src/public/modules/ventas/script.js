@@ -66,7 +66,7 @@ async function cargarVentas() {
     // Loader
     tbody.innerHTML = `
         <tr>
-            <td colspan="7" class="text-center p-10">
+            <td colspan="8" class="text-center p-10">
                 <div class="flex flex-col items-center justify-center text-blue-500">
                     <i class="fa-solid fa-circle-notch fa-spin text-3xl mb-2"></i>
                     <span class="text-sm font-medium text-gray-500">Buscando ventas...</span>
@@ -115,7 +115,7 @@ async function cargarVentas() {
         if (tbody) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="7" class="text-center p-8 text-red-500">
+                    <td colspan="8" class="text-center p-8 text-red-500">
                         Error: ${escapeHtml(error.message)}
                         <br>
                         <button onclick="cargarVentas()" class="mt-2 text-blue-600 underline">Reintentar</button>
@@ -146,7 +146,7 @@ function renderTabla(lista) {
     if (!tbody) return; 
 
     if (lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center p-8 text-slate-400 bg-slate-50 border-2 border-dashed rounded-lg m-4">No se encontraron ventas con estos filtros.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center p-8 text-slate-400 bg-slate-50 border-2 border-dashed rounded-lg m-4">No se encontraron ventas con estos filtros.</td></tr>';
         return;
     }
 
@@ -207,6 +207,11 @@ function renderTabla(lista) {
         const usuarioLocal = JSON.parse(localStorage.getItem('usuario') || '{}');
         const esDev = usuarioLocal.rol === 'developer' || usuarioLocal.rol === 'dev';
 
+        // 🚨 AQUÍ ESTÁ LA NUEVA LÓGICA QUE PINTA EL ESTATUS DE CIERRE 🚨
+        const badgeCierre = v.esta_cerrada 
+            ? `<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700 border border-emerald-300 shadow-sm"><i class="fa-solid fa-check"></i> ✅ Cerrado</span>`
+            : `<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest bg-rose-50 text-rose-600 border border-rose-200 shadow-sm"><i class="fa-solid fa-xmark"></i> ❌ Pendiente</span>`;
+
         return `
             <tr class="hover:bg-blue-50/50 transition border-b border-slate-100 group">
                 <td class="p-4 font-mono font-bold text-slate-500 text-xs">#${v.id}</td>
@@ -222,6 +227,12 @@ function renderTabla(lista) {
                 </td>
                 <td class="p-4 text-right font-bold text-slate-800">${formatMoney(v.total)}</td>
                 <td class="p-4 text-right text-slate-500 font-mono text-xs">Bs ${montoBs}</td>
+                
+                <!-- 🚨 SECCIÓN NUEVA: ESTADO DE CAJA -->
+                <td class="p-4 text-center">
+                    ${badgeCierre}
+                </td>
+
                 <td class="p-4 text-center">
                     <div class="flex justify-center items-center gap-2">
                         <button onclick="verDetalleVenta(${v.id})" 

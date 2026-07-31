@@ -250,7 +250,7 @@ function esGerenteOAdmin() {
 }
 
 window.ventaManualGranel = async function(idProducto) {
-    // 1. Verificación
+    // 1. Verificación de Permisos
     if (!esGerenteOAdmin()) {
         if(window.beepError) window.beepError.play().catch(()=>{});
         return Swal.fire({
@@ -260,36 +260,52 @@ window.ventaManualGranel = async function(idProducto) {
             footer: '<span class="text-xs text-gray-400">Verifica la consola para ver el rol detectado</span>'
         });
     }
-    const prod = todosLosProductos.find(p => p.id === idProducto);
-    if(!prod) return;
 
-    // --- LÓGICA DE UNIDADES ---
+    // Buscar producto en la lista local
+    const prod = todosLosProductos.find(p => p.id === idProducto);
+    if (!prod) return;
+
+    // 🔥 FIX 1: Calcular Stock Total Combinado (Estante + Depósito/Almacén)
+    const stockEstante = parseFloat(prod.stock_estante || 0);
+    const stockAlmacen = parseFloat(prod.stock_real || prod.stock_unidades || 0);
+    const stockTotalDisponible = stockEstante + stockAlmacen;
+
+    // --- LÓGICA DE UNIDADES VS GRAMOS ---
     let etiquetaUnidad = "Gramos (g)";
     let stepInput = "any"; // Permite decimales para gramos
     let icono = '<i class="fa-solid fa-weight-hanging"></i>';
 
-    const nombre = prod.nombre.toUpperCase();
+    const nombre = (prod.nombre || '').toUpperCase();
     const cat = (prod.categoria || '').toUpperCase();
-    const esPerfumeTerminado = cat.includes('PERFUME');
+    const uni = (prod.unidad_medida || '').toUpperCase();
+    const esPerfumeTerminado = cat.includes('PERFUME') || (prod.codigo && prod.codigo.includes('-T'));
 
-    // 🔥 Si es FRASCO, ENVASE o PERFUME TERMINADO -> Se vende por UNIDAD
-    if (cat.includes('ENVASE') || cat.includes('FRASCO') || nombre.includes('FRASCO') || nombre.includes('ENVASE') || nombre.includes('1.1') || cat.includes('INSUMO') || esPerfumeTerminado) {
+    // 🔥 FIX 2: Detectar si es Envase/Frasco (incluyendo BALAS / PET) o Producto Terminado
+    const esEnvaseOUnidad = uni === 'UNIDAD' || uni === 'UND' || 
+                            cat.includes('ENVASE') || cat.includes('FRASCO') || 
+                            nombre.includes('FRASCO') || nombre.includes('ENVASE') || 
+                            nombre.includes('PET') || nombre.includes('BALAS') ||
+                            nombre.includes('1.1') || cat.includes('INSUMO') || esPerfumeTerminado;
+
+    if (esEnvaseOUnidad) {
         etiquetaUnidad = "Unidades (U)";
         stepInput = "1"; // Solo enteros 
         icono = '<i class="fa-solid fa-box-open"></i>';
     }
 
-    // Sugerencia automática del precio (útil si vendes 1 unidad)
+    // Sugerencia automática del precio
     const precioSugerido = parseFloat(prod.precio_venta || 0).toFixed(2);
     const valuePrecio = precioSugerido > 0 ? precioSugerido : '';
 
-    // 2. Mostrar Modal Configurado
+    // 2. Mostrar Modal
     const { value: formValues } = await Swal.fire({
         title: `<span class="text-lg font-bold text-slate-800">${prod.nombre}</span>`,
         html: `
             <div class="bg-blue-50 p-3 rounded-lg text-xs text-blue-800 mb-5 border border-blue-100 flex justify-between items-center">
-                <span>Stock Disponible:</span>
-                <span class="font-bold text-sm">${parseFloat(prod.stock_estante).toFixed(2)}</span>
+                <span>Stock Total Disponible:</span>
+                <span class="font-bold text-sm ${stockTotalDisponible > 0 ? 'text-green-700' : 'text-red-600'}">
+                    ${stockTotalDisponible.toFixed(2)}
+                </span>
             </div>
             
             <div class="space-y-4">
@@ -332,23 +348,21 @@ window.ventaManualGranel = async function(idProducto) {
     if (formValues) {
         const [cantidad, precioTotal] = formValues;
 
-        // Validación de Stock
-        if (cantidad > parseFloat(prod.stock_estante)) {
+        // Validar contra el stock total acumulado
+        if (cantidad > stockTotalDisponible) {
             if(window.beepError) window.beepError.play().catch(()=>{});
             return Swal.fire({
                 icon: 'warning',
                 title: 'Stock Insuficiente',
-                text: `Solo tienes ${parseFloat(prod.stock_estante).toFixed(2)} disponibles.`
+                text: `Solo tienes ${stockTotalDisponible.toFixed(2)} disponibles en inventario.`
             });
         }
 
-        // Cálculo del precio unitario interno
         const precioUnitario = precioTotal / cantidad;
 
-        // Agregar al carrito con la etiqueta correcta visualmente
-        const nombreDisplay = stepInput === "1" 
-            ? `${prod.nombre} (x${cantidad})` // Si son unidades
-            : `${prod.nombre} (${cantidad}g)`; // Si son gramos
+        const nombreDisplay = esEnvaseOUnidad 
+            ? `${prod.nombre} (x${cantidad})` 
+            : `${prod.nombre} (${cantidad}g)`;
 
         carrito.push({
             id: prod.id,
@@ -356,10 +370,10 @@ window.ventaManualGranel = async function(idProducto) {
             nombre: nombreDisplay,
             cantidad: cantidad,
             precio: precioUnitario,
-            stock_real: prod.stock_estante,
+            stock_real: stockTotalDisponible,
             formula_id: null,
             es_manual: true,
-            es_producto_terminado: esPerfumeTerminado, // 🔥 Marcador para PDF y Excel
+            es_producto_terminado: esPerfumeTerminado,
             tipoPrecio: 'MANUAL',
             badgeColor: 'bg-slate-100 text-slate-700 border-slate-200'
         });
@@ -367,7 +381,7 @@ window.ventaManualGranel = async function(idProducto) {
         renderCarrito();
         
         const Toast = Swal.mixin({ toast: true, position: 'bottom-end', showConfirmButton: false, timer: 1500 });
-        Toast.fire({ icon: 'success', title: 'Agregado' });
+        Toast.fire({ icon: 'success', title: 'Agregado al ticket' });
     }
 };
 

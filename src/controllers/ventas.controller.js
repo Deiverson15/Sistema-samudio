@@ -8,9 +8,8 @@ const round = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
 // =========================================================
 // 🏢 CONFIGURACIÓN EMPRESARIAL GLOBAL
 // =========================================================
-const EMPRESA_NOMBRE = 'PERFUMIX C.A.';
-const EMPRESA_RIF = 'J-50000000-0'; // Reemplaza por tu RIF real
-
+const EMPRESA_NOMBRE = 'PERFUMES C.A.';
+const EMPRESA_RIF = ''; 
 
 async function validarYDescontarEstante(client, productoId, cantidadRequerida, nombreReferencia, tiendaId, confirmacionAlmacen = false, usuarioId = null) {
     const pId = parseInt(productoId, 10);
@@ -20,9 +19,9 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
     if (isNaN(pId) || pId <= 0) throw new Error(`🚫 ERROR DE FLUJO: Se intentó procesar "${nombreReferencia}" con un ID corrupto.`);
     if (isNaN(tId) || tId <= 0) throw new Error(`🚫 ERROR DE SEGURIDAD: ID de sucursal inválido.`);
 
-    // Consultar el producto de la tienda con bloqueo de fila (FOR UPDATE)
+    // 1. Consultar el producto de la tienda con bloqueo de fila
     const prodRes = await client.query(`
-        SELECT id, nombre, categoria, stock_estante, stock_unidades, contenido_gramos 
+        SELECT id, nombre, categoria, stock_estante, stock_unidades, contenido_gramos, unidad_medida 
         FROM productos 
         WHERE id = $1 AND tienda_id = $2 FOR UPDATE
     `, [pId, tId]);
@@ -30,25 +29,26 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
     if (prodRes.rows.length === 0) throw new Error(`El producto ${nombreReferencia} no existe en la tienda ID ${tId}.`);
     const prod = prodRes.rows[0];
 
-    const ES_ALMACEN = (tId === 1); 
+    const ES_ALMACEN = (tId === 1);
+    const estanteActual = parseFloat(prod.stock_estante || 0);
+    const depositoActual = parseFloat(prod.stock_unidades || 0);
+    const totalDisponible = estanteActual + depositoActual;
+
+    // Verificar si el stock total (Estante + Almacén) alcanza
+    if (totalDisponible < (cantidad - 0.05)) {
+        throw new Error(`🚫 SIN STOCK: "${prod.nombre}" no cuenta con suficiente existencia. Total Disponible: ${totalDisponible.toFixed(2)} (Requerido: ${cantidad.toFixed(2)}).`);
+    }
 
     // =========================================================================
-    // 🚀 CASO A: ALMACÉN PRINCIPAL (SUCURSAL ID 3) -> DESCUENTO DIRECTO EN UNIDADES
+    // 🚀 CASO A: ALMACÉN PRINCIPAL (SUCURSAL 1) -> DESCUENTO DIRECTO EN DEPÓSITO
     // =========================================================================
     if (ES_ALMACEN) {
-        const disponibleGeneral = parseFloat(prod.stock_unidades || 0);
-
-        if (disponibleGeneral < (cantidad - 0.05)) {
-            throw new Error(`🚫 QUIEBRE EN ALMACÉN: "${prod.nombre}" no tiene suficiente existencia. Disponible: ${disponibleGeneral.toFixed(2)} (Requerido: ${cantidad.toFixed(2)}).`);
-        }
-
         await client.query(`
             UPDATE productos 
             SET stock_unidades = GREATEST(stock_unidades - $1, 0) 
             WHERE id = $2 AND tienda_id = $3
         `, [cantidad, pId, tId]);
 
-        // Historial de Salida en Almacén
         await client.query(`
             INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, stock_nuevo, motivo, fecha, tienda_id, usuario_id)
             VALUES ($1, 'SALIDA', $2, (SELECT stock_unidades FROM productos WHERE id=$1 AND tienda_id=$3), $4, NOW(), $3, $5)
@@ -58,16 +58,8 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
     }
 
     // =========================================================================
-    // 🏬 CASO B: MOSTRADOR -> DESCUENTO INTELIGENTE EN CASCADA (ESTANTE + UNIDADES)
+    // 🏬 CASO B: MOSTRADOR -> DESCUENTO INTELIGENTE EN CASCADA (ESTANTE + DEPÓSITO)
     // =========================================================================
-    const estanteActual = parseFloat(prod.stock_estante || 0);
-    const depositoActual = parseFloat(prod.stock_unidades || 0);
-    const totalDisponible = estanteActual + depositoActual;
-
-    if (totalDisponible < (cantidad - 0.05)) {
-        throw new Error(`🚫 SIN STOCK: "${prod.nombre}" no cuenta con suficiente existencia. Total Disponible: ${totalDisponible.toFixed(2)} (Requerido: ${cantidad.toFixed(2)}).`);
-    }
-
     let aDescontarEstante = 0;
     let aDescontarDeposito = 0;
 
@@ -78,64 +70,58 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
         aDescontarDeposito = cantidad - estanteActual;
     }
 
-    // 1. Aplicar descuento en tabla productos
-    if (aDescontarEstante > 0 && aDescontarDeposito > 0) {
-        await client.query(`
-            UPDATE productos 
-            SET stock_estante = GREATEST(stock_estante - $1, 0),
-                stock_unidades = GREATEST(stock_unidades - $2, 0)
-            WHERE id = $3 AND tienda_id = $4
-        `, [aDescontarEstante, aDescontarDeposito, pId, tId]);
-    } else if (aDescontarEstante > 0) {
-        await client.query(`
-            UPDATE productos 
-            SET stock_estante = GREATEST(stock_estante - $1, 0)
-            WHERE id = $2 AND tienda_id = $3
-        `, [aDescontarEstante, pId, tId]);
-    } else if (aDescontarDeposito > 0) {
-        await client.query(`
-            UPDATE productos 
-            SET stock_unidades = GREATEST(stock_unidades - $1, 0)
-            WHERE id = $2 AND tienda_id = $3
-        `, [aDescontarDeposito, pId, tId]);
-    }
+    // Descuento principal en la tabla productos
+    await client.query(`
+        UPDATE productos 
+        SET stock_estante = GREATEST(stock_estante - $1, 0),
+            stock_unidades = GREATEST(stock_unidades - $2, 0)
+        WHERE id = $3 AND tienda_id = $4
+    `, [aDescontarEstante, aDescontarDeposito, pId, tId]);
 
-    // 2. Descontar o eliminar botellas de mostrador (si la tabla está implementada)
-    try {
-        let pendienteBotellas = cantidad;
-        const botellasRes = await client.query(`
-            SELECT id, cantidad, estado FROM botellas_estante 
-            WHERE producto_id = $1 AND estado != 'TESTER'
-            ORDER BY CASE WHEN estado = 'ABIERTA' THEN 1 ELSE 2 END ASC, cantidad ASC
-            FOR UPDATE
-        `, [pId]);
+    // Detectar si el artículo es realmente un LÍQUIDO/INSUMO a fraccionar por gramos
+    const uni = (prod.unidad_medida || '').toUpperCase();
+    const cat = (prod.categoria || '').toUpperCase();
+    const esLiquidoFraccionado = (uni === 'GRAMOS' || uni === 'ML') && 
+                                (cat.includes('ESENCIA') || cat.includes('ALCOHOL') || cat.includes('FIJADOR'));
 
-        const capacidad = parseFloat(prod.contenido_gramos) || 1000;
+    // Solo busca y descuenta botellas físicas si es materia prima/líquido fraccionado
+    if (esLiquidoFraccionado) {
+        try {
+            let pendienteBotellas = cantidad;
+            const botellasRes = await client.query(`
+                SELECT id, cantidad, estado FROM botellas_estante 
+                WHERE producto_id = $1 AND estado != 'TESTER'
+                ORDER BY CASE WHEN estado = 'ABIERTA' THEN 1 ELSE 2 END ASC, cantidad ASC
+                FOR UPDATE
+            `, [pId]);
 
-        for (const b of botellasRes.rows) {
-            if (pendienteBotellas <= 0.001) break; 
+            const capacidad = parseFloat(prod.contenido_gramos) || 1000;
 
-            const dispB = parseFloat(b.cantidad);
-            const aRestarB = Math.min(pendienteBotellas, dispB);
-            const nuevaCantB = Math.round(dispB - aRestarB);
-            const nuevoPorcB = Math.min(100, Math.round((nuevaCantB / capacidad) * 100));
+            for (const b of botellasRes.rows) {
+                if (pendienteBotellas <= 0.001) break; 
 
-            if (nuevaCantB <= 0.01) {
-                await client.query('DELETE FROM botellas_estante WHERE id = $1', [b.id]);
-            } else {
-                await client.query(`
-                    UPDATE botellas_estante 
-                    SET cantidad = $1, porcentaje_actual = $2, estado = 'ABIERTA' 
-                    WHERE id = $3
-                `, [nuevaCantB, nuevoPorcB, b.id]);
+                const dispB = parseFloat(b.cantidad);
+                const aRestarB = Math.min(pendienteBotellas, dispB);
+                const nuevaCantB = Math.round(dispB - aRestarB);
+                const nuevoPorcB = Math.min(100, Math.round((nuevaCantB / capacidad) * 100));
+
+                if (nuevaCantB <= 0.01) {
+                    await client.query('DELETE FROM botellas_estante WHERE id = $1', [b.id]);
+                } else {
+                    await client.query(`
+                        UPDATE botellas_estante 
+                        SET cantidad = $1, porcentaje_actual = $2, estado = 'ABIERTA' 
+                        WHERE id = $3
+                    `, [nuevaCantB, nuevoPorcB, b.id]);
+                }
+                pendienteBotellas -= aRestarB;
             }
-            pendienteBotellas -= aRestarB;
+        } catch (eBotellas) {
+            // Omisión silenciosa: Si no hay botellas físicas registradas, no detiene la venta.
         }
-    } catch (eBotellas) {
-        // Omisión silenciosa si no hay registros en botellas_estante
     }
 
-    // 3. Registrar el movimiento unificado en el historial
+    // Registrar en el historial de movimientos
     await client.query(`
         INSERT INTO historial_movimientos (producto_id, tipo_movimiento, cantidad, stock_nuevo, motivo, fecha, tienda_id, usuario_id)
         VALUES ($1, 'SALIDA', $2, (SELECT (stock_estante + stock_unidades) FROM productos WHERE id=$1 AND tienda_id=$3), $4, NOW(), $3, $5)
@@ -143,6 +129,7 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
 
     return prod.nombre;
 }
+
 
 async function devolverAEstanteFisico(client, productoId, cantidadADevolver, tiendaId) {
     const pId = parseInt(productoId, 10);
@@ -524,15 +511,25 @@ const exportarReporteGeneral = async (req, res) => {
                 });
             });
 
+            // 🎯 CONSULTA SQL CORREGIDA:
+            // 1. Usa COALESCE para tomar el costo histórico o el costo actual del producto (p.costo).
+            // 2. Detecta si la unidad es GRAMOS/ML o categoría Esencia/Alcohol/Fijador para dividir el costo unitario entre 1000.
             const resData = await client.query(`
                 SELECT 
                     t.nombre as tienda_nombre,
                     COALESCE(dv.tarifa_aplicada, 'PVP TIENDA DETAL') as tarifa,
                     dv.tamano,
                     p.nombre as producto_nombre,
+                    p.categoria as producto_categoria,
+                    p.unidad_medida as producto_unidad,
                     dv.descripcion as detalle_desc,
                     dv.cantidad,
-                    COALESCE(dv.costo_unitario_historico, 0) as costo_unitario,
+                    -- Fallback inteligente de costo:
+                    CASE 
+                        WHEN (p.categoria ILIKE '%esencia%' OR p.categoria ILIKE '%alcohol%' OR p.categoria ILIKE '%fijador%' OR p.unidad_medida = 'GRAMOS' OR p.unidad_medida = 'ML') 
+                        THEN COALESCE(NULLIF(dv.costo_unitario_historico, 0), p.costo, 0) / 1000.0
+                        ELSE COALESCE(NULLIF(dv.costo_unitario_historico, 0), p.costo, 0)
+                    END as costo_unitario_calculado,
                     dv.subtotal as precio_total
                 FROM ventas v
                 JOIN detalle_ventas dv ON v.id = dv.venta_id
@@ -571,7 +568,10 @@ const exportarReporteGeneral = async (req, res) => {
                 const textStr = ((r.producto_nombre || '') + ' ' + (r.detalle_desc || '')).toUpperCase();
                 
                 const cant = parseFloat(r.cantidad || 0);
-                const costoTot = parseFloat(r.costo_unitario || 0) * cant;
+                
+                // 💰 CÁLCULO EXACTO DEL COSTO Y RENTABILIDAD
+                const costoUnit = parseFloat(r.costo_unitario_calculado || 0);
+                const costoTot = costoUnit * cant;
                 const precio = parseFloat(r.precio_total || 0);
                 const rentabilidad = precio - costoTot;
 
@@ -890,7 +890,7 @@ const exportarReporteGeneral = async (req, res) => {
             }
 
             const qRenta = `
-                SELECT p.nombre, p.categoria, SUM(dv.cantidad) as uds, SUM(dv.subtotal) as ingreso,
+                SELECT p.nombre, p.categoria, COALESCE(p.genero, 'UNISEX') as genero, SUM(dv.cantidad) as uds, SUM(dv.subtotal) as ingreso,
                        SUM(
                            dv.cantidad * (
                                CASE 
@@ -905,7 +905,7 @@ const exportarReporteGeneral = async (req, res) => {
                 JOIN productos p ON dv.producto_id = p.id
                 LEFT JOIN usuarios u ON v.usuario_id = u.id
                 WHERE v.fecha::date BETWEEN $1 AND $2 ${filtroTiendaGeneral} ${filtroVendedorStr} ${filtroCategoriaStr}
-                GROUP BY p.id, p.nombre, p.categoria
+                GROUP BY p.id, p.nombre, p.categoria, p.genero
                 ORDER BY ingreso DESC
             `;
             const resRenta = await client.query(qRenta, [start, end]);
@@ -1872,19 +1872,47 @@ const getReportes = async (req, res) => {
         // 🔥 2. CANDADO OBLIGATORIO: Aislar gráficos para la sucursal actual
         dondeFiltrar += ` AND v.tienda_id = ${idTiendaLocal}`;
 
-        // 1. Historial Financiero Localizado
+        // 1. Historial Financiero Localizado con Extracción Inteligente de Medidas
         const historialQuery = `
             SELECT 
                 ${agruparPor} as dia,
                 SUM(d.subtotal) as venta_bruta,
+                SUM(d.cantidad) as total_unidades,
                 SUM(d.cantidad * (
                     CASE 
                         WHEN p.costo >= d.precio_unitario THEN d.precio_unitario * 0.8
                         ELSE p.costo
                     END
-                )) as costo_estimado
+                )) as costo_estimado,
+
+                -- 🚨 EXTRACCIÓN DE BOTELLAS DE 30ML, 60ML Y 100ML (DESECHANDO 'N/A')
+                SUM(CASE WHEN REGEXP_REPLACE(COALESCE(NULLIF(NULLIF(UPPER(d.tamano), 'N/A'), ''), f.volumen_total::text, p.unidad_medida, ''), '[^0-9]', '', 'g') = '30' THEN d.cantidad ELSE 0 END) as u30,
+                SUM(CASE WHEN REGEXP_REPLACE(COALESCE(NULLIF(NULLIF(UPPER(d.tamano), 'N/A'), ''), f.volumen_total::text, p.unidad_medida, ''), '[^0-9]', '', 'g') = '60' THEN d.cantidad ELSE 0 END) as u60,
+                SUM(CASE WHEN REGEXP_REPLACE(COALESCE(NULLIF(NULLIF(UPPER(d.tamano), 'N/A'), ''), f.volumen_total::text, p.unidad_medida, ''), '[^0-9]', '', 'g') = '100' THEN d.cantidad ELSE 0 END) as u100,
+
+                SUM(CASE WHEN REGEXP_REPLACE(COALESCE(NULLIF(NULLIF(UPPER(d.tamano), 'N/A'), ''), f.volumen_total::text, p.unidad_medida, ''), '[^0-9]', '', 'g') = '30' THEN d.subtotal ELSE 0 END) as p30,
+                SUM(CASE WHEN REGEXP_REPLACE(COALESCE(NULLIF(NULLIF(UPPER(d.tamano), 'N/A'), ''), f.volumen_total::text, p.unidad_medida, ''), '[^0-9]', '', 'g') = '60' THEN d.subtotal ELSE 0 END) as p60,
+                SUM(CASE WHEN REGEXP_REPLACE(COALESCE(NULLIF(NULLIF(UPPER(d.tamano), 'N/A'), ''), f.volumen_total::text, p.unidad_medida, ''), '[^0-9]', '', 'g') = '100' THEN d.subtotal ELSE 0 END) as p100,
+
+                SUM(CASE WHEN REGEXP_REPLACE(COALESCE(NULLIF(NULLIF(UPPER(d.tamano), 'N/A'), ''), f.volumen_total::text, p.unidad_medida, ''), '[^0-9]', '', 'g') = '30' THEN d.cantidad * (
+                    CASE 
+                        WHEN p.costo >= d.precio_unitario THEN d.precio_unitario * 0.8
+                        ELSE p.costo
+                    END) ELSE 0 END) as c30,
+                SUM(CASE WHEN REGEXP_REPLACE(COALESCE(NULLIF(NULLIF(UPPER(d.tamano), 'N/A'), ''), f.volumen_total::text, p.unidad_medida, ''), '[^0-9]', '', 'g') = '60' THEN d.cantidad * (
+                    CASE 
+                        WHEN p.costo >= d.precio_unitario THEN d.precio_unitario * 0.8
+                        ELSE p.costo
+                    END) ELSE 0 END) as c60,
+                SUM(CASE WHEN REGEXP_REPLACE(COALESCE(NULLIF(NULLIF(UPPER(d.tamano), 'N/A'), ''), f.volumen_total::text, p.unidad_medida, ''), '[^0-9]', '', 'g') = '100' THEN d.cantidad * (
+                    CASE 
+                        WHEN p.costo >= d.precio_unitario THEN d.precio_unitario * 0.8
+                        ELSE p.costo
+                    END) ELSE 0 END) as c100
+
             FROM ventas v
             JOIN detalle_ventas d ON v.id = d.venta_id
+            LEFT JOIN formulas f ON d.formula_id = f.id
             JOIN productos p ON d.producto_id = p.id
             ${dondeFiltrar}
             GROUP BY dia
@@ -1892,18 +1920,42 @@ const getReportes = async (req, res) => {
         `;
         const historialRes = await pool.query(historialQuery, queryParams);
         
-        const financiero = historialRes.rows.map(row => {
-    const ingreso = parseFloat(row.venta_bruta || 0);
-    const costo = parseFloat(row.costo_estimado || 0);
-    const utilidad = Math.max(0, ingreso - costo);
+       const financiero = historialRes.rows.map(row => {
+            const ingreso = parseFloat(row.venta_bruta || 0);
+            const costo = parseFloat(row.costo_estimado || 0);
+            const utilidad = Math.max(0, ingreso - costo);
+            const totalUnidades = parseFloat(row.total_unidades || 0);
 
-    return {
-        dia: row.dia,
-        ingreso: ingreso,   // Ventas Totales
-        costo: costo,       // Costo Total de Insumos
-        utilidad: utilidad  // Utilidad Neta
-    };
-});
+            const u30 = parseFloat(row.u30 || 0);
+            const u60 = parseFloat(row.u60 || 0);
+            const u100 = parseFloat(row.u100 || 0);
+
+            // 🚨 CALCULA AUTOMÁTICAMENTE LAS UNIDADES RESTANTES (PT / OTROS)
+            // Para que 53 (30ml) + 1 (100ml) + 10 (Otros) = 64 Totales
+            const upt = Math.max(0, totalUnidades - (u30 + u60 + u100));
+
+            return {
+                dia: row.dia,
+                ingreso: ingreso,
+                costo: costo,
+                utilidad: utilidad,
+                total_unidades: totalUnidades,
+
+                // DESGLOSE COMPLETO DE UNIDADES
+                u30: u30,
+                u60: u60,
+                u100: u100,
+                upt: upt, // <--- AQUÍ SE CAPTURAN LAS 10 UNIDADES FALTANTES
+
+                // INGRESOS Y COSTOS DESGLOSADOS
+                p30: parseFloat(row.p30 || 0),
+                p60: parseFloat(row.p60 || 0),
+                p100: parseFloat(row.p100 || 0),
+                c30: parseFloat(row.c30 || 0),
+                c60: parseFloat(row.c60 || 0),
+                c100: parseFloat(row.c100 || 0)
+            };
+        });
 
         // 2. Categorías Locales
         const categoriasQuery = `
@@ -1954,11 +2006,10 @@ const getReportes = async (req, res) => {
             huesos: huesosRes.rows 
         });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Error reportes' });
+        console.error("Error en getReportes:", error);
+        res.status(500).json({ error: 'Error interno en reportes' });
     }
 };
-
 const getReportesConsolidadosRed = async (req, res) => {
     try {
         const { rango, start, end, tiendas } = req.query; // 'tiendas' puede ser un array de IDs, ej: [1,2]
@@ -2222,13 +2273,14 @@ const getDashboardKPIs = async (req, res) => {
             SELECT 
                 p.nombre, 
                 p.categoria, 
+                COALESCE(p.genero, 'UNISEX') as genero,
                 COALESCE(SUM(d.cantidad), 0) as cantidad_vendida, 
                 COALESCE(SUM(d.subtotal), 0) as total_generado
             FROM ventas v
             JOIN detalle_ventas d ON d.venta_id = v.id
             JOIN productos p ON d.producto_id = p.id
             WHERE ${whereRanking}
-            GROUP BY p.id, p.nombre, p.categoria
+            GROUP BY p.id, p.nombre, p.categoria, p.genero
             ORDER BY cantidad_vendida DESC
         `;
         const rankingData = await pool.query(rankingQuery, queryParams);
@@ -2271,196 +2323,6 @@ const getDashboardKPIs = async (req, res) => {
     }
 };
 
-const getFacturaPDF = async (req, res) => {
-    const { id } = req.params;
-    try {
-        // Datos Venta y Cliente
-        const ventaRes = await pool.query(`
-            SELECT v.*, c.nombre as c_nombre, c.documento as c_doc, c.direccion as c_dir, c.telefono as c_tel
-            FROM ventas v JOIN clientes c ON v.cliente_id = c.id WHERE v.id = $1
-        `, [id]);
-        if (ventaRes.rows.length === 0) return res.status(404).send('Venta no encontrada');
-        const venta = ventaRes.rows[0];
-
-        // Datos Items
-        const itemsRes = await pool.query(`
-            SELECT d.* FROM detalle_ventas d WHERE d.venta_id = $1
-        `, [id]);
-        const items = itemsRes.rows;
-
-        // Configuración PDF
-        const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename=Nota_Entrega_${id}.pdf`);
-        doc.pipe(res);
-
-        // --- ENCABEZADO ---
-        doc.font('Helvetica-Bold').fontSize(16).text('TU EMPRESA C.A.', 40, 40);
-        doc.fontSize(10).font('Helvetica').text('RIF: J-12345678-9', 40, 60);
-        doc.text('Dirección: Av. Principal, Local 1, Ciudad.', 40, 72);
-        doc.text('Teléfono: 0412-1234567', 40, 84);
-
-        // --- CAJA NOTA DE ENTREGA ---
-        doc.rect(400, 40, 170, 50).stroke();
-        doc.font('Helvetica-Bold').fontSize(12).text('NOTA DE ENTREGA', 400, 50, { width: 170, align: 'center' });
-        doc.fillColor('red').text(`N° ${String(venta.id).padStart(6, '0')}`, 400, 65, { width: 170, align: 'center' });
-        doc.fillColor('black').fontSize(9).text(`FECHA: ${new Date(venta.fecha).toLocaleDateString('es-VE')}`, 400, 80, { width: 170, align: 'center' });
-
-        // --- DATOS DEL CLIENTE ---
-        doc.moveDown(4);
-        const yCliente = 120;
-        doc.rect(40, yCliente, 530, 45).stroke();
-        
-        doc.fontSize(9).font('Helvetica-Bold');
-        doc.text('RAZÓN SOCIAL:', 45, yCliente + 10);
-        doc.text('CI / RIF:', 350, yCliente + 10);
-        doc.text('DIRECCIÓN:', 45, yCliente + 25);
-        
-        doc.font('Helvetica');
-        doc.text(venta.c_nombre.toUpperCase(), 125, yCliente + 10);
-        doc.text(venta.c_doc, 400, yCliente + 10);
-        doc.text(venta.c_dir || 'No especificada', 125, yCliente + 25);
-
-        // --- TABLA DE PRODUCTOS ---
-        const yTabla = 180;
-        doc.rect(40, yTabla, 530, 20).fill('#f0f0f0').stroke();
-        doc.fillColor('black').font('Helvetica-Bold').fontSize(9);
-        doc.text('CANT', 50, yTabla + 6);
-        doc.text('DESCRIPCIÓN DEL PRODUCTO', 100, yTabla + 6);
-        doc.text('P. UNIT (BASE)', 400, yTabla + 6, { width: 60, align: 'right' }); // Cambié etiqueta a Base
-        doc.text('TOTAL (BASE)', 480, yTabla + 6, { width: 50, align: 'right' });
-
-        let y = yTabla + 25;
-        doc.font('Helvetica').fontSize(10);
-
-        items.forEach(item => {
-            // AQUÍ ESTÁ LA SOLUCIÓN: 
-            // Tu precio guardado ($6) es el final. 
-            // Dividimos entre 1.16 para mostrar la base ($5.17) en la tabla.
-            
-            const precioFinalUnitario = parseFloat(item.precio_unitario);
-            const precioBaseUnitario = precioFinalUnitario / 1.16; 
-
-            const subtotalFinal = parseFloat(item.subtotal);
-            const subtotalBase = subtotalFinal / 1.16;
-
-            doc.text(item.cantidad, 50, y);
-            doc.text(item.descripcion, 100, y, { width: 280 }); 
-            
-            // Mostramos el precio DESGLOSADO (sin IVA)
-            doc.text(precioBaseUnitario.toFixed(2), 400, y, { width: 60, align: 'right' });
-            doc.text(subtotalBase.toFixed(2), 480, y, { width: 50, align: 'right' });
-            
-            y += 15;
-        });
-
-        doc.moveTo(40, y).lineTo(570, y).stroke();
-
-        // --- CÁLCULO DE TOTALES (INVERSO) ---
-        y += 10;
-        
-        // 1. Tomamos el total que el cliente pagó (ej: $6.00)
-        const totalPagar = parseFloat(venta.total);
-
-        // 2. Desglosamos hacia atrás
-        const baseImponible = totalPagar / 1.16; // $6.00 / 1.16 = $5.17
-        const iva = totalPagar - baseImponible;  // $6.00 - $5.17 = $0.83
-
-        // 3. Mostramos los datos
-        doc.font('Helvetica-Bold');
-        doc.text('BASE IMPONIBLE:', 350, y, { width: 100, align: 'right' });
-        doc.font('Helvetica').text(baseImponible.toFixed(2), 460, y, { width: 70, align: 'right' });
-        
-        y += 15;
-        doc.font('Helvetica-Bold');
-        doc.text('I.V.A (16%):', 350, y, { width: 100, align: 'right' });
-        doc.font('Helvetica').text(iva.toFixed(2), 460, y, { width: 70, align: 'right' });
-
-        y += 15;
-        doc.font('Helvetica-Bold').fontSize(12);
-        doc.text('TOTAL A PAGAR:', 350, y, { width: 100, align: 'right' });
-        // Aquí mostramos el precio original de tu fórmula (ej: $6.00)
-        doc.text(totalPagar.toFixed(2), 460, y, { width: 70, align: 'right' });
-
-        // Pie de página
-        doc.fontSize(8).font('Helvetica-Oblique');
-        doc.text('Sin derecho a crédito fiscal.', 40, 700, { align: 'center', width: 530 });
-
-        doc.end();
-
-    } catch (error) {
-        console.error(error);
-        if (!res.headersSent) res.status(500).send('Error generando PDF');
-    }
-};
-
-const getFacturaExcel = async (req, res) => {
-    const { id } = req.params;
-    try {
-        // A. Obtener datos de la venta y detalles (incluye el lote para la trazabilidad)
-        const ventaRes = await pool.query('SELECT * FROM ventas WHERE id = $1', [id]);
-        if (ventaRes.rows.length === 0) return res.status(404).send('Venta no encontrada');
-        const venta = ventaRes.rows[0];
-
-        const itemsRes = await pool.query(`
-            SELECT 
-                d.cantidad, 
-                p.codigo, 
-                p.nombre, 
-                p.marca, 
-                p.tamano,
-                p.categoria,
-                d.precio_unitario, 
-                d.subtotal,
-                l.codigo_lote,
-                l.fecha_vencimiento
-            FROM detalle_ventas d
-            JOIN productos p ON d.producto_id = p.id
-            JOIN lotes l ON d.lote_id = l.id
-            WHERE d.venta_id = $1
-        `, [id]);
-        const items = itemsRes.rows;
-
-        // B. Crear el contenido CSV
-        let csvContent = `Factura ID,${venta.id}\n`;
-        csvContent += `Fecha,${new Date(venta.fecha).toLocaleString('es-ES')}\n`;
-        csvContent += `Total,$${parseFloat(venta.total).toFixed(2)}\n\n`;
-        
-        // Cabeceras de la tabla
-        const headers = [
-            'Cantidad', 'Codigo Producto', 'Nombre', 'Marca', 'Tamaño', 'Categoría',
-            'Precio Unitario ($)', 'Subtotal ($)', 'Lote Venta', 'Fecha Vencimiento Lote'
-        ];
-        csvContent += headers.join(',') + '\n';
-        
-        // Filas de datos
-        items.forEach(item => {
-            const row = [
-                item.cantidad,
-                item.codigo,
-                `"${item.nombre.replace(/"/g, '""')}"`, // Escapar comillas para nombres
-                item.marca,
-                item.tamano,
-                item.categoria,
-                parseFloat(item.precio_unitario).toFixed(2),
-                parseFloat(item.subtotal).toFixed(2),
-                item.codigo_lote,
-                item.fecha_vencimiento ? new Date(item.fecha_vencimiento).toLocaleDateString('es-ES') : ''
-            ];
-            csvContent += row.join(',') + '\n';
-        });
-
-        // C. Configurar headers para la descarga como Excel/CSV
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', `attachment; filename=factura_detalle_${id}.csv`);
-        res.send(csvContent);
-
-    } catch (error) {
-        console.error("Error generando Factura Excel (CSV):", error);
-        res.status(500).send('Error generando Factura Excel/CSV');
-    }
-};
-
 const getVentas = async (req, res) => {
     try {
         const { page = 1, limit = 15, fecha, busqueda } = req.query;
@@ -2472,7 +2334,6 @@ const getVentas = async (req, res) => {
         const userId = req.user ? req.user.id : 'nulo';
 
         console.log(`[DEBUG ROL] Usuario ID: ${userId} | Rol detectado: "${rolUsuario}"`);
-
 
         const esUsuarioMaestro = rolUsuario === 'developer' || rolUsuario === 'dev' || rolUsuario === 'administrador' || rolUsuario === 'admin';
 
@@ -2486,10 +2347,8 @@ const getVentas = async (req, res) => {
             }
         }
 
-
         console.log(`[DEBUG FINAL] idTiendaLocal a usar: ${idTiendaLocal}`);
         
-
         let whereClause = "WHERE 1=1";
         whereClause += ` AND v.tienda_id = ${idTiendaLocal}`;
 
@@ -2505,11 +2364,25 @@ const getVentas = async (req, res) => {
             paramIndex++;
         }
 
+        // 🚨 AQUÍ ESTÁ LA MAGIA AGREGADA:
         const query = `
-            SELECT v.id, v.fecha, v.total, v.tienda_id, c.nombre as cliente_nombre,
+            SELECT 
+                v.id, 
+                v.fecha, 
+                v.total, 
+                v.tienda_id, 
+                c.nombre as cliente_nombre,
                 (SELECT COUNT(id) FROM pagos p WHERE p.venta_id = v.id) as cant_pagos,
                 COALESCE((SELECT p.metodo FROM pagos p WHERE p.venta_id = v.id ORDER BY p.monto DESC LIMIT 1), 'Sin Pago') as metodo_pago,
                 COALESCE((SELECT p.tasa_cambio FROM pagos p WHERE p.venta_id = v.id ORDER BY p.monto DESC LIMIT 1), 0) as tasa_cambio,
+                
+                -- ESTO LE AVISA AL FRONTEND SI ESTÁ CERRADA ✅ O PENDIENTE ❌
+                EXISTS (
+                    SELECT 1 FROM cierres_caja cc,
+                    jsonb_array_elements_text(cc.detalles_json->'ids_ventas_origen_hoy') as elem
+                    WHERE elem::int = v.id
+                ) as esta_cerrada,
+
                 COUNT(*) OVER() as total_count 
             FROM ventas v
             LEFT JOIN clientes c ON v.cliente_id = c.id
@@ -3239,7 +3112,6 @@ const exportarCierreDeHoyExcel = async (req, res) => {
     }
 };
 
-
 const obtenerPodioDinamico = async (req, res) => {
     const { tipo, rango, start, end } = req.query;
     const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;
@@ -3250,43 +3122,42 @@ const obtenerPodioDinamico = async (req, res) => {
         let valores = [idTiendaLocal];
         let paramCount = 2;
 
-        // 1. Filtro de Fechas
         if (rango === 'CUSTOM' && start && end) {
             filterFecha = `AND v.fecha::date BETWEEN $${paramCount} AND $${paramCount + 1}`;
             valores.push(start, end);
             paramCount += 2;
         } else if (rango === '1') {
-            filterFecha = `AND v.fecha >= NOW() - INTERVAL '1 day'`;
+            filterFecha = `AND v.fecha >= CURRENT_DATE`;
         } else if (rango === '7') {
             filterFecha = `AND v.fecha >= NOW() - INTERVAL '7 days'`;
         } else if (rango === '30') {
             filterFecha = `AND v.fecha >= NOW() - INTERVAL '30 days'`;
         }
 
-        // 2. Filtro de Tipo de Producto
         let filterTipo = "";
         if (tipo === 'TERMINADOS') {
-            filterTipo = `AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminados%')`;
+            filterTipo = `AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminad%' OR p.categoria ILIKE '%perfume%')`;
         } else if (tipo === 'ESENCIAS') {
-            filterTipo = `AND p.categoria ILIKE '%esencia%'`;
+            filterTipo = `AND (p.categoria ILIKE '%esencia%')`;
         }
 
-        // Consulta SQL Maestra
+        // 🚨 SE AGREGA p.genero AL SELECT Y AL GROUP BY
         const query = `
             SELECT 
-                p.nombre, 
-                p.categoria, 
+                COALESCE(p.nombre, dv.descripcion, 'Producto General') as nombre, 
+                COALESCE(p.categoria, 'General') as categoria, 
+                COALESCE(p.genero, 'UNISEX') as genero,
                 SUM(dv.cantidad) as total_unidades, 
                 SUM(dv.subtotal) as total_ingresos
             FROM detalle_ventas dv
             JOIN ventas v ON dv.venta_id = v.id
-            JOIN productos p ON dv.producto_id = p.id
+            LEFT JOIN productos p ON dv.producto_id = p.id
             WHERE v.tienda_id = $1
             ${filterFecha}
             ${filterTipo}
-            GROUP BY p.id, p.nombre, p.categoria
+            GROUP BY COALESCE(p.id, dv.producto_id), p.nombre, dv.descripcion, p.categoria, p.genero
             ORDER BY total_unidades DESC
-            LIMIT 15
+            LIMIT 30
         `;
 
         const resultado = await client.query(query, valores);
@@ -3320,23 +3191,22 @@ const exportarPodioExcel = async (req, res) => {
         if (tipo === 'TERMINADOS') filterTipo = `AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminados%')`;
         else if (tipo === 'ESENCIAS') filterTipo = `AND p.categoria ILIKE '%esencia%'`;
 
+        // 🚨 SE AGREGA p.genero AL SELECT Y AL GROUP BY
         const query = `
-            SELECT p.nombre, p.categoria, SUM(dv.cantidad) as total_unidades, SUM(dv.subtotal) as total_ingresos
+            SELECT p.nombre, p.categoria, COALESCE(p.genero, 'UNISEX') as genero, SUM(dv.cantidad) as total_unidades, SUM(dv.subtotal) as total_ingresos
             FROM detalle_ventas dv
             JOIN ventas v ON dv.venta_id = v.id
             JOIN productos p ON dv.producto_id = p.id
             WHERE 1=1 ${filterFecha} ${filterTipo}
-            GROUP BY p.id, p.nombre, p.categoria
+            GROUP BY p.id, p.nombre, p.categoria, p.genero
             ORDER BY total_unidades DESC LIMIT 50
         `;
         
         const resultado = await client.query(query, valores);
 
-        // Crear Libro Excel
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet('Top Ventas');
 
-        // Estilos
         const headerStyle = { font: { bold: true, color: { argb: 'FFFFFFFF' } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10B981' } } };
 
         sheet.addRow(['REPORTE DE TOP VENTAS (PODIO)']).font = { bold: true, size: 14 };
@@ -3344,7 +3214,8 @@ const exportarPodioExcel = async (req, res) => {
         sheet.addRow([`Período: ${rango === 'CUSTOM' ? `${start} al ${end}` : `Últimos ${rango} días`}`]);
         sheet.addRow([]);
 
-        const headers = sheet.addRow(['RANGO', 'PRODUCTO', 'CATEGORÍA', 'UNIDADES VENDIDAS', 'INGRESOS TOTALES ($)']);
+        // 🚨 SE INCLUYE LA COLUMNA GÉNERO
+        const headers = sheet.addRow(['RANGO', 'PRODUCTO', 'CATEGORÍA', 'GÉNERO', 'UNIDADES VENDIDAS', 'INGRESOS TOTALES ($)']);
         headers.eachCell(c => { c.font = headerStyle.font; c.fill = headerStyle.fill; });
 
         resultado.rows.forEach((r, idx) => {
@@ -3352,14 +3223,14 @@ const exportarPodioExcel = async (req, res) => {
                 `#${idx + 1}`,
                 r.nombre,
                 r.categoria,
+                r.genero,
                 parseFloat(r.total_unidades),
                 parseFloat(r.total_ingresos)
             ]);
         });
 
-        // Formato Moneda
-        sheet.getColumn(5).numFmt = '"$"#,##0.00';
-        sheet.columns.forEach(column => { column.width = 25; });
+        sheet.getColumn(6).numFmt = '"$"#,##0.00';
+        sheet.columns.forEach(column => { column.width = 22; });
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="Podio_Ventas_${tipo}.xlsx"`);
@@ -3374,6 +3245,179 @@ const exportarPodioExcel = async (req, res) => {
     }
 };
 
+const getFacturaPDF = async (req, res) => {
+    const { id } = req.params;
+    try {
+        // Datos Venta y Cliente
+        const ventaRes = await pool.query(`
+            SELECT v.*, c.nombre as c_nombre, c.documento as c_doc, c.direccion as c_dir, c.telefono as c_tel
+            FROM ventas v JOIN clientes c ON v.cliente_id = c.id WHERE v.id = $1
+        `, [id]);
+        if (ventaRes.rows.length === 0) return res.status(404).send('Venta no encontrada');
+        const venta = ventaRes.rows[0];
+
+        // Datos Items
+        const itemsRes = await pool.query(`
+            SELECT d.* FROM detalle_ventas d WHERE d.venta_id = $1
+        `, [id]);
+        const items = itemsRes.rows;
+
+        // Configuración PDF
+        const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Nota_Entrega_${id}.pdf`);
+        doc.pipe(res);
+
+        // --- ENCABEZADO ---
+        doc.font('Helvetica-Bold').fontSize(16).text('TU EMPRESA C.A.', 40, 40);
+        doc.fontSize(10).font('Helvetica').text('RIF: J-12345678-9', 40, 60);
+        doc.text('Dirección: Av. Principal, Local 1, Ciudad.', 40, 72);
+        doc.text('Teléfono: 0412-1234567', 40, 84);
+
+        // --- CAJA NOTA DE ENTREGA ---
+        doc.rect(400, 40, 170, 50).stroke();
+        doc.font('Helvetica-Bold').fontSize(12).text('NOTA DE ENTREGA', 400, 50, { width: 170, align: 'center' });
+        doc.fillColor('red').text(`N° ${String(venta.id).padStart(6, '0')}`, 400, 65, { width: 170, align: 'center' });
+        doc.fillColor('black').fontSize(9).text(`FECHA: ${new Date(venta.fecha).toLocaleDateString('es-VE')}`, 400, 80, { width: 170, align: 'center' });
+
+        // --- DATOS DEL CLIENTE ---
+        doc.moveDown(4);
+        const yCliente = 120;
+        doc.rect(40, yCliente, 530, 45).stroke();
+        
+        doc.fontSize(9).font('Helvetica-Bold');
+        doc.text('RAZÓN SOCIAL:', 45, yCliente + 10);
+        doc.text('CI / RIF:', 350, yCliente + 10);
+        doc.text('DIRECCIÓN:', 45, yCliente + 25);
+        
+        doc.font('Helvetica');
+        doc.text(venta.c_nombre.toUpperCase(), 125, yCliente + 10);
+        doc.text(venta.c_doc, 400, yCliente + 10);
+        doc.text(venta.c_dir || 'No especificada', 125, yCliente + 25);
+
+        // --- TABLA DE PRODUCTOS ---
+        const yTabla = 180;
+        doc.rect(40, yTabla, 530, 20).fill('#f0f0f0').stroke();
+        doc.fillColor('black').font('Helvetica-Bold').fontSize(9);
+        doc.text('CANT', 50, yTabla + 6);
+        doc.text('DESCRIPCIÓN DEL PRODUCTO', 100, yTabla + 6);
+        doc.text('P. UNIT (BASE)', 400, yTabla + 6, { width: 60, align: 'right' }); 
+        doc.text('TOTAL (BASE)', 480, yTabla + 6, { width: 50, align: 'right' });
+
+        let y = yTabla + 25;
+        doc.font('Helvetica').fontSize(10);
+
+        items.forEach(item => {
+            const precioFinalUnitario = parseFloat(item.precio_unitario);
+            const precioBaseUnitario = precioFinalUnitario / 1.16; 
+
+            const subtotalFinal = parseFloat(item.subtotal);
+            const subtotalBase = subtotalFinal / 1.16;
+
+            doc.text(item.cantidad, 50, y);
+            doc.text(item.descripcion, 100, y, { width: 280 }); 
+            
+            doc.text(precioBaseUnitario.toFixed(2), 400, y, { width: 60, align: 'right' });
+            doc.text(subtotalBase.toFixed(2), 480, y, { width: 50, align: 'right' });
+            
+            y += 15;
+        });
+
+        doc.moveTo(40, y).lineTo(570, y).stroke();
+
+        // --- CÁLCULO DE TOTALES (INVERSO) ---
+        y += 10;
+        
+        const totalPagar = parseFloat(venta.total);
+        const baseImponible = totalPagar / 1.16; 
+        const iva = totalPagar - baseImponible;  
+
+        doc.font('Helvetica-Bold');
+        doc.text('BASE IMPONIBLE:', 350, y, { width: 100, align: 'right' });
+        doc.font('Helvetica').text(baseImponible.toFixed(2), 460, y, { width: 70, align: 'right' });
+        
+        y += 15;
+        doc.font('Helvetica-Bold');
+        doc.text('I.V.A (16%):', 350, y, { width: 100, align: 'right' });
+        doc.font('Helvetica').text(iva.toFixed(2), 460, y, { width: 70, align: 'right' });
+
+        y += 15;
+        doc.font('Helvetica-Bold').fontSize(12);
+        doc.text('TOTAL A PAGAR:', 350, y, { width: 100, align: 'right' });
+        doc.text(totalPagar.toFixed(2), 460, y, { width: 70, align: 'right' });
+
+        doc.fontSize(8).font('Helvetica-Oblique');
+        doc.text('Sin derecho a crédito fiscal.', 40, 700, { align: 'center', width: 530 });
+
+        doc.end();
+
+    } catch (error) {
+        console.error(error);
+        if (!res.headersSent) res.status(500).send('Error generando PDF');
+    }
+};
+
+const getFacturaExcel = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const ventaRes = await pool.query('SELECT * FROM ventas WHERE id = $1', [id]);
+        if (ventaRes.rows.length === 0) return res.status(404).send('Venta no encontrada');
+        const venta = ventaRes.rows[0];
+
+        const itemsRes = await pool.query(`
+            SELECT 
+                d.cantidad, 
+                p.codigo, 
+                p.nombre, 
+                p.marca, 
+                p.tamano,
+                p.categoria,
+                d.precio_unitario, 
+                d.subtotal,
+                l.codigo_lote,
+                l.fecha_vencimiento
+            FROM detalle_ventas d
+            JOIN productos p ON d.producto_id = p.id
+            JOIN lotes l ON d.lote_id = l.id
+            WHERE d.venta_id = $1
+        `, [id]);
+        const items = itemsRes.rows;
+
+        let csvContent = `Factura ID,${venta.id}\n`;
+        csvContent += `Fecha,${new Date(venta.fecha).toLocaleString('es-ES')}\n`;
+        csvContent += `Total,$${parseFloat(venta.total).toFixed(2)}\n\n`;
+        
+        const headers = [
+            'Cantidad', 'Codigo Producto', 'Nombre', 'Marca', 'Tamaño', 'Categoría',
+            'Precio Unitario ($)', 'Subtotal ($)', 'Lote Venta', 'Fecha Vencimiento Lote'
+        ];
+        csvContent += headers.join(',') + '\n';
+        
+        items.forEach(item => {
+            const row = [
+                item.cantidad,
+                item.codigo,
+                `"${item.nombre.replace(/"/g, '""')}"`,
+                item.marca,
+                item.tamano,
+                item.categoria,
+                parseFloat(item.precio_unitario).toFixed(2),
+                parseFloat(item.subtotal).toFixed(2),
+                item.codigo_lote,
+                item.fecha_vencimiento ? new Date(item.fecha_vencimiento).toLocaleDateString('es-ES') : ''
+            ];
+            csvContent += row.join(',') + '\n';
+        });
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=factura_detalle_${id}.csv`);
+        res.send(csvContent);
+
+    } catch (error) {
+        console.error("Error generando Factura Excel (CSV):", error);
+        res.status(500).send('Error generando Factura Excel/CSV');
+    }
+};
 
 
 module.exports = { crearVenta, getReportes, getReportesConsolidadosRed, getFacturaPDF, getFacturaExcel, getDashboardKPIs, getVentas, getVentaById, descontarEstante,

@@ -1,9 +1,12 @@
+
 import { VentaService, ProductoService } from '../../js/api.js'; 
 
 let chartDistribucionInstance = null;
 let windowFinanzasChartInstance = null;
 let dataTopProductos = [];
 let dataCategorias = [];
+let cacheDatosFinancieros = [];
+let modoGraficoFinanzasActual = 'monto';
 
 export async function init() {
     console.log("Dashboard Profesional Cargado...");
@@ -13,10 +16,16 @@ export async function init() {
 
         // Exportar funciones globales
         window.switchChart = switchChart;
+        window.switchModoGraficoFinanzas = switchModoGraficoFinanzas;
         window.cambiarRango = cambiarRango;
         window.abrirModalCritico = abrirModalCritico;
         window.cerrarModalCritico = cerrarModalCritico;
-        
+
+        const btnMonto = document.getElementById('btnVistaFinanzas');
+        const btnUnidades = document.getElementById('btnVistaUnidades');
+        if (btnMonto) btnMonto.addEventListener('click', () => window.switchModoGraficoFinanzas('monto'));
+        if (btnUnidades) btnUnidades.addEventListener('click', () => window.switchModoGraficoFinanzas('unidades'));
+
         // ¡LISTO! Borramos la línea de "window.navegarA" de aquí 
         // para que use la original de tu router.js
 
@@ -69,23 +78,19 @@ async function cargarDatos(rango) {
     }
 }
 
-
-// --- FUNCIÓN NUEVA: RELLENAR FECHAS SIN VENTAS CON 0 ---
 function completarDatosGrafica(data, rango) {
-    const dataMap = new Map(data.map(item => [item.dia, item]));
+    if (!Array.isArray(data) || data.length === 0) return [];
+
+    // Si el backend ya nos devuelve datos reales, los usamos directamente
+    const dataMap = new Map(data.map(item => [item.dia.trim(), item]));
     const resultados = [];
     const hoy = new Date();
-    
     let iteraciones = 7;
-    let formato = 'dia'; // 'dia' (DD/MM) o 'mes' (MM/YY)
+    let formato = 'dia';
 
     if (rango === '30d') iteraciones = 30;
-    if (rango === '1y') {
-        iteraciones = 12;
-        formato = 'mes';
-    }
+    if (rango === '1y') { iteraciones = 12; formato = 'mes'; }
 
-    // Generamos las fechas hacia atrás
     for (let i = iteraciones - 1; i >= 0; i--) {
         const fecha = new Date();
         let label = '';
@@ -104,13 +109,29 @@ function completarDatosGrafica(data, rango) {
 
         if (dataMap.has(label)) {
             resultados.push(dataMap.get(label));
+            dataMap.delete(label); // Marcamos como procesado
         } else {
-            // Si no hay datos ese día, metemos 0 para que la línea continúe
-            resultados.push({ dia: label, ingreso: 0, utilidad: 0, costo: 0 });
+            resultados.push({ 
+                dia: label, 
+                ingreso: 0, 
+                utilidad: 0, 
+                costo: 0, 
+                total_unidades: 0,
+                u30: 0, u60: 0, u100: 0, upt: 0,
+                p30: 0, p60: 0, p100: 0, ppt: 0,
+                c30: 0, c60: 0, c100: 0, cpt: 0
+            });
         }
     }
+
+    // 🚀 CLAVE: Si la BD tenía fechas fuera del ciclo del bucle, las agregamos al final para que NUNCA salgan en 0
+    dataMap.forEach((valor) => {
+        resultados.push(valor);
+    });
+
     return resultados;
 }
+
 
 function renderKPIs(kpis, rango) {
     const inv = kpis.inventory || {}; 
@@ -165,7 +186,10 @@ function renderKPIs(kpis, rango) {
     }
 }
 
+
 function renderFinanzasChart(data) {
+    cacheDatosFinancieros = Array.isArray(data) ? data : [];
+
     const ctx = document.getElementById('dashFinanzasChart');
     if (!ctx) return;
 
@@ -174,44 +198,101 @@ function renderFinanzasChart(data) {
         windowFinanzasChartInstance = null;
     }
 
+    const labels = cacheDatosFinancieros.map(d => d.dia);
+    let datasets = [];
+
+    // 🎛️ CONDICIONAL DE CONMUTACIÓN DE VISTA
+    if (modoGraficoFinanzasActual === 'monto') {
+        datasets = [
+            {
+                label: 'Utilidad Neta ($)',
+                data: cacheDatosFinancieros.map(d => parseFloat(d.utilidad || 0)),
+                type: 'line',
+                borderColor: '#10b981',             
+                backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                borderWidth: 3,
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#10b981',
+                pointRadius: 4,
+                tension: 0.3,                       
+                fill: true,
+                order: 0                            
+            },
+            {
+                label: 'Ventas Totales ($)',
+                data: cacheDatosFinancieros.map(d => parseFloat(d.ingreso || 0)),
+                backgroundColor: '#3b82f6',         
+                borderRadius: 4,
+                barPercentage: 0.5,
+                order: 1
+            },
+            {
+                label: 'Costo Insumos ($)',
+                data: cacheDatosFinancieros.map(d => parseFloat(d.costo || 0)),
+                backgroundColor: '#ef4444',         
+                borderRadius: 4,
+                barPercentage: 0.5,
+                order: 2
+            }
+        ];
+    } else {
+        // 🎛️ MODO UNIDADES (Uds) CON PT / OTROS INCLUIDO
+        datasets = [
+            {
+                label: 'Total Unidades Vendidas',
+                data: cacheDatosFinancieros.map(d => parseFloat(d.total_unidades || 0)),
+                type: 'line',
+                borderColor: '#0f172a',
+                backgroundColor: 'rgba(15, 23, 42, 0.08)',
+                borderWidth: 3,
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#0f172a',
+                pointRadius: 4,
+                tension: 0.3,                       
+                fill: true,
+                order: 0                            
+            },
+            {
+                label: '30ml (Uds)',
+                data: cacheDatosFinancieros.map(d => parseFloat(d.u30 || 0)),
+                backgroundColor: '#3b82f6',
+                borderRadius: 3,
+                barPercentage: 0.6,
+                order: 1
+            },
+            {
+                label: '60ml (Uds)',
+                data: cacheDatosFinancieros.map(d => parseFloat(d.u60 || 0)),
+                backgroundColor: '#10b981',
+                borderRadius: 3,
+                barPercentage: 0.6,
+                order: 2
+            },
+            {
+                label: '100ml (Uds)',
+                data: cacheDatosFinancieros.map(d => parseFloat(d.u100 || 0)),
+                backgroundColor: '#f59e0b',
+                borderRadius: 3,
+                barPercentage: 0.6,
+                order: 3
+            },
+            // 🚨 BARRA DE PERFUMES TERMINADOS Y OTROS PRODUCTOS
+            {
+                label: 'PT / Otros (Uds)',
+                data: cacheDatosFinancieros.map(d => parseFloat(d.upt || 0)),
+                backgroundColor: '#8b5cf6', // Color Morado
+                borderRadius: 3,
+                barPercentage: 0.6,
+                order: 4
+            }
+        ];
+    }
+
     windowFinanzasChartInstance = new Chart(ctx.getContext('2d'), {
         type: 'bar',
         data: {
-            labels: data.map(d => d.dia),
-            datasets: [
-                {
-                    label: 'Utilidad Neta ($)',
-                    data: data.map(d => d.utilidad),
-                    type: 'line',
-                    borderColor: '#10b981',             // Verde Emerald
-                    backgroundColor: 'rgba(16, 185, 129, 0.12)',
-                    borderWidth: 3,
-                    pointBackgroundColor: '#ffffff',
-                    pointBorderColor: '#10b981',
-                    pointBorderWidth: 2,
-                    pointRadius: 4, 
-                    pointHoverRadius: 6,
-                    tension: 0.3,                       // Curva suavizada
-                    fill: true,
-                    order: 0                            // Queda sobre las barras
-                },
-                {
-                    label: 'Ventas Totales ($)',
-                    data: data.map(d => d.ingreso),
-                    backgroundColor: '#3b82f6',         // Azul Royal
-                    borderRadius: 4,
-                    barPercentage: 0.5,
-                    order: 1
-                },
-                {
-                    label: 'Costo Total ($)',
-                    data: data.map(d => d.costo),
-                    backgroundColor: '#ef4444',         // Rojo Coral / Advertencia
-                    borderRadius: 4,
-                    barPercentage: 0.5,
-                    order: 2
-                }
-            ]
+            labels: labels,
+            datasets: datasets
         },
         options: {
             responsive: true,
@@ -232,10 +313,13 @@ function renderFinanzasChart(data) {
                     titleFont: { size: 12, weight: 'bold' },
                     bodyFont: { size: 11 },
                     padding: 12,
-                    borderColor: '#334155',
-                    borderWidth: 1,
-                    callbacks: { 
-                        label: (ctx) => ` ${ctx.dataset.label}: $${parseFloat(ctx.raw || 0).toFixed(2)}` 
+                    callbacks: {
+                        label: (ctx) => {
+                            const val = parseFloat(ctx.raw || 0);
+                            return modoGraficoFinanzasActual === 'monto' 
+                                ? ` ${ctx.dataset.label}: $${val.toFixed(2)}`
+                                : ` ${ctx.dataset.label}: ${val.toFixed(0)} Uds`;
+                        }
                     }
                 }
             },
@@ -244,7 +328,7 @@ function renderFinanzasChart(data) {
                     beginAtZero: true, 
                     grid: { color: '#f1f5f9' },
                     ticks: { 
-                        callback: (v) => '$' + v,
+                        callback: (v) => modoGraficoFinanzasActual === 'monto' ? '$' + v : v + ' Uds',
                         font: { size: 10, weight: '600' }
                     } 
                 },
@@ -257,10 +341,32 @@ function renderFinanzasChart(data) {
     });
 }
 
+function switchModoGraficoFinanzas(modo) {
+    modoGraficoFinanzasActual = modo === 'unidades' ? 'unidades' : 'monto';
+
+    const btnMonto = document.getElementById('btnVistaFinanzas');
+    const btnUnidades = document.getElementById('btnVistaUnidades');
+
+    if (btnMonto) {
+        btnMonto.className = modoGraficoFinanzasActual === 'monto'
+            ? "px-3 py-1.5 text-[10px] font-black uppercase tracking-widest bg-neutral-950 text-white transition-colors"
+            : "px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-neutral-500 hover:text-neutral-950 transition-colors";
+    }
+
+    if (btnUnidades) {
+        btnUnidades.className = modoGraficoFinanzasActual === 'unidades'
+            ? "px-3 py-1.5 text-[10px] font-black uppercase tracking-widest bg-neutral-950 text-white transition-colors"
+            : "px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-neutral-500 hover:text-neutral-950 transition-colors";
+    }
+
+    if (cacheDatosFinancieros.length > 0) {
+        renderFinanzasChart(cacheDatosFinancieros);
+    }
+}
+
 function switchChart(type) {
     const btnTop = document.getElementById('btnChartTop');
     const btnCat = document.getElementById('btnChartCat');
-
     if (type === 'top') {
         renderDistribucionChart(dataTopProductos, 'top');
         btnTop.classList.add('bg-white', 'text-gray-800', 'shadow');
@@ -407,8 +513,6 @@ function cerrarModalCritico() {
     if(modal) modal.classList.add('hidden');
 }
 
-
-
 window.cambiarRango = async function(valor) {
     console.log("🔄 Ejecutando filtro para:", valor);
 
@@ -498,7 +602,7 @@ window.cambiarRango = async function(valor) {
         const dataReportes = await resReportes.json();
         const dataKPIs = await resKPIs.json();
 
-        // C. ENTREGA DE DATOS A TUS FUNCIONES (Graficas)
+        // C. ENTREGA DE DATOS A TUS FUNCIONES (Gráficas)
         if (resReportes.ok) {
             console.log("📊 Datos recibidos, limpiando lienzos para repintar...");
             
@@ -520,9 +624,15 @@ window.cambiarRango = async function(valor) {
             const chartDistribucionViejo = Chart.getChart("dashDistribucionChart");
             if (chartDistribucionViejo) chartDistribucionViejo.destroy();
 
-            // ALIMENTAMOS TUS FUNCIONES
+            // 🚨 SOLUCIÓN A APLICAR: RELLENAR DÍAS FALTANTES ANTES DE RENDERIZAR
+            const rangoActual = document.getElementById('rangoTiempo')?.value || valor || '7d';
+            const datosCompletos = typeof completarDatosGrafica === 'function' 
+                ? completarDatosGrafica(dataReportes.financiero || [], rangoActual)
+                : (dataReportes.financiero || []);
+
+            // ALIMENTAMOS TUS FUNCIONES CON LOS DATOS TRATADOS
             if (typeof renderFinanzasChart === 'function') {
-                renderFinanzasChart(dataReportes.financiero);
+                renderFinanzasChart(datosCompletos);
             }
             if (typeof renderDistribucionChart === 'function') {
                 renderDistribucionChart(dataReportes.categorias, dataReportes.top_productos);
@@ -618,76 +728,7 @@ let chartDistribucion = null;
 let datosDistribucionActual = { top: [], cat: [] };
 let vistaDistribucionActual = 'top'; // Controla si vemos 'top' o 'categorías'
 
-window.renderizarGraficaFinanzas = function(datos) {
-    if (chartFinanzas) {
-        chartFinanzas.destroy();
-    }
 
-    const ctx = document.getElementById('dashFinanzasChart').getContext('2d');
-    chartFinanzas = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: datos.map(item => item.dia),
-            datasets: [
-                {
-                    label: 'Utilidad Neta ($)',
-                    data: datos.map(item => item.utilidad || (item.ingreso - item.costo)),
-                    type: 'line',
-                    borderColor: '#10b981', // Verde
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    borderWidth: 3,
-                    pointBackgroundColor: '#fff',
-                    pointBorderColor: '#10b981',
-                    pointRadius: 4,
-                    tension: 0.3,
-                    fill: true,
-                    order: 0
-                },
-                {
-                    label: 'Ventas Totales ($)',
-                    data: datos.map(item => item.ingreso),
-                    backgroundColor: '#0a0a0a', // Negro corporativo / Azul
-                    borderRadius: 3,
-                    barPercentage: 0.5,
-                    order: 1
-                },
-                {
-                    label: 'Costo Total ($)',
-                    data: datos.map(item => item.costo),
-                    backgroundColor: '#ef4444', // Rojo
-                    borderRadius: 3,
-                    barPercentage: 0.5,
-                    order: 2
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            scales: {
-                y: { beginAtZero: true, grid: { color: '#f5f5f5' }, ticks: { callback: v => '$' + v } },
-                x: { grid: { display: false } }
-            },
-            plugins: {
-                legend: { 
-                    position: 'top',
-                    labels: { font: { family: 'Inter', size: 10, weight: 'bold' }, color: '#171717' } 
-                }
-            }
-        }
-    });
-};
-
-// =====================================================================
-// 2. RENDERIZADO DE GRÁFICA SECUNDARIA (Distribución - Dona)
-// =====================================================================
-window.renderizarDistribucion = function(categorias, topProductos) {
-    // Guardamos los datos en memoria para poder alternar entre botones
-    datosDistribucionActual.cat = categorias;
-    datosDistribucionActual.top = topProductos;
-    window.actualizarGraficaDistribucion();
-};
 
 window.switchChart = function(tipo) {
     vistaDistribucionActual = tipo;
@@ -705,75 +746,7 @@ window.switchChart = function(tipo) {
     window.actualizarGraficaDistribucion();
 };
 
-window.actualizarGraficaDistribucion = function() {
-    if (chartDistribucion) {
-        chartDistribucion.destroy();
-    }
 
-    const ctx = document.getElementById('dashDistribucionChart').getContext('2d');
-    const esTop = vistaDistribucionActual === 'top';
-    const dataAUsar = esTop ? datosDistribucionActual.top : datosDistribucionActual.cat;
-    
-    const labels = dataAUsar.map(d => esTop ? d.nombre : d.categoria);
-    const values = dataAUsar.map(d => parseFloat(d.total_vendido || 0));
-
-    // Paleta de colores monocromática (Gama de grises y negros)
-    const paletaMonocromatica = ['#0a0a0a', '#262626', '#525252', '#a3a3a3', '#e5e5e5'];
-
-    chartDistribucion = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: labels,
-            datasets: [{
-                data: values,
-                backgroundColor: paletaMonocromatica,
-                borderWidth: 0,
-                hoverOffset: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '75%', // Hace que la dona sea delgada y elegante
-            plugins: {
-                legend: { 
-                    position: 'right', 
-                    labels: { font: { family: 'Inter', size: 9, weight: 'bold' }, color: '#525252' } 
-                }
-            }
-        }
-    });
-};
-
-// =====================================================================
-// 3. RENDERIZADO DE TABLA DE ESTANCAMIENTO (Productos Hueso)
-// =====================================================================
-window.renderizarTablaHuesos = function(productos) {
-    const tbody = document.getElementById('tablaHuesos');
-    if (!tbody) return;
-
-    if (!productos || productos.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-neutral-500 text-xs font-bold uppercase tracking-widest">Inventario con rotación saludable. No hay estancamiento.</td></tr>`;
-        return;
-    }
-
-    tbody.innerHTML = productos.map(p => {
-        const dineroDormido = parseFloat(p.stock_unidades || 0) * parseFloat(p.precio_venta || 0);
-        return `
-            <tr class="hover:bg-neutral-50 transition-colors border-b border-neutral-100">
-                <td class="px-6 py-4 font-black text-neutral-950">${p.nombre}</td>
-                <td class="px-6 py-4 text-neutral-500 text-[10px] font-bold uppercase tracking-widest">${p.categoria}</td>
-                <td class="px-6 py-4 text-center font-bold">${parseFloat(p.stock_unidades).toFixed(0)} u</td>
-                <td class="px-6 py-4 text-center font-black text-neutral-950">$${dineroDormido.toFixed(2)}</td>
-                <td class="px-6 py-4 text-right">
-                    <span class="px-3 py-1 text-[9px] font-black bg-neutral-200 text-neutral-800 uppercase tracking-widest rounded-none border border-neutral-300">
-                        Dormido
-                    </span>
-                </td>
-            </tr>
-        `;
-    }).join('');
-};
 
 // =====================================================================
 // 4. MANEJO DEL MODAL DE STOCK CRÍTICO
@@ -939,38 +912,43 @@ window.manejarFiltroTiempoPodio = () => {
     }
 };
 
-// 2. Traer la data al HTML
+// Cargar el Podio dinámico garantizando refresco
 window.cargarPodioDinamico = async () => {
-    const tipo = document.getElementById('filtroTipoPodio').value;
-    const tiempo = document.getElementById('filtroTiempoPodio').value;
+    const tipoEl = document.getElementById('filtroTipoPodio');
+    const tiempoEl = document.getElementById('filtroTiempoPodio');
+    if (!tipoEl || !tiempoEl) return;
+
+    const tipo = tipoEl.value;
+    const tiempo = tiempoEl.value;
     let start = '', end = '';
 
     if (tiempo === 'CUSTOM') {
         start = document.getElementById('podioFechaStart').value;
         end = document.getElementById('podioFechaEnd').value;
-        if (!start || !end) return; // Si no hay fechas puestas, no buscar aún
+        if (!start || !end) return; // Esperar a que seleccione ambas fechas
     }
 
     const contenedor = document.getElementById('contenedorPodioResultados');
-    contenedor.innerHTML = '<div class="text-center p-6 text-neutral-400 uppercase font-black text-xs"><i class="fa-solid fa-circle-notch fa-spin"></i> Analizando métricas...</div>';
+    if (!contenedor) return;
+
+    contenedor.innerHTML = '<div class="text-center p-6 text-neutral-400 uppercase font-black text-xs"><i class="fa-solid fa-circle-notch fa-spin"></i> Analizando todas las ventas...</div>';
 
     try {
         const token = localStorage.getItem('token');
-        // Construimos la URL con los parámetros
         const url = `/api/ventas/podio?tipo=${tipo}&rango=${tiempo}&start=${start}&end=${end}`;
         
         const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
         if (!res.ok) throw new Error("Error obteniendo podio");
         const data = await res.json();
 
-        if (data.length === 0) {
-            contenedor.innerHTML = '<div class="text-center p-6 text-neutral-500 uppercase font-bold text-xs bg-white border border-neutral-200">No hay registros de ventas para estos filtros.</div>';
+        if (!data || data.length === 0) {
+            contenedor.innerHTML = '<div class="text-center p-6 text-neutral-500 uppercase font-bold text-xs bg-white border border-neutral-200">No hay ventas registradas para este filtro.</div>';
             return;
         }
 
-        // Dibujamos las barras del podio
+        // Renderizado de la lista
         contenedor.innerHTML = data.map((item, index) => {
-            const colorPos = index === 0 ? 'text-amber-500' : (index === 1 ? 'text-neutral-400' : 'text-amber-700');
+            const colorPos = index === 0 ? 'text-amber-500' : (index === 1 ? 'text-neutral-400' : (index === 2 ? 'text-amber-700' : 'text-neutral-600'));
             return `
                 <div class="flex items-center justify-between p-4 bg-white border border-neutral-200 shadow-sm hover:border-neutral-400 transition-colors">
                     <div class="flex items-center gap-4 w-2/3">
@@ -989,7 +967,8 @@ window.cargarPodioDinamico = async () => {
         }).join('');
 
     } catch (error) {
-        contenedor.innerHTML = '<div class="text-center text-red-500 uppercase font-black text-xs p-6">Error de red</div>';
+        console.error("Error en Podio:", error);
+        contenedor.innerHTML = '<div class="text-center text-red-500 uppercase font-black text-xs p-6">Error al cargar datos del podio</div>';
     }
 };
 
@@ -1140,3 +1119,6 @@ window.exportarEstancamientoExcel = () => {
 
 // Cargar al iniciar
 document.addEventListener('DOMContentLoaded', cargarAuditoriaEstancamiento);
+
+
+

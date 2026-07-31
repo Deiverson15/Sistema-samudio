@@ -77,6 +77,8 @@
                         <th class="p-5 px-6 text-center">Método</th>
                         <th class="p-5 px-6 text-right">Monto ($)</th>
                         <th class="p-5 px-6 text-right">Monto (Bs)</th>
+                        <!-- 🚨 AQUÍ ESTÁ LA NUEVA COLUMNA DE ESTADO 🚨 -->
+                        <th class="p-5 px-6 text-center">Estado</th>
                         <th class="p-5 px-6 text-center">Documento</th>
                     </tr>
                 </thead>
@@ -125,7 +127,7 @@
                 </div>
             </div>
 
-            <!-- NUEVO: Botones para alternar moneda -->
+            <!-- Botones para alternar moneda -->
             <div class="flex justify-end gap-2 mb-4">
                 <button id="btnVerUSD" class="print:hidden px-4 py-2 bg-neutral-950 text-white text-[10px] font-black uppercase tracking-widest transition-colors border border-neutral-950" onclick="cambiarMonedaDetalle('USD')">
                     Ver en USD ($)
@@ -134,7 +136,6 @@
                     Ver en BS (Bs)
                 </button>
             </div>
-            <!-- FIN NUEVO -->
 
             <table class="w-full text-sm mb-8 font-mono">
                 <thead>
@@ -228,7 +229,7 @@
 
         </div>
 
-        <div class="px-6 py-4 bg-neutral-100 border-t border-neutral-300 flex justify-end gap-3">
+        z<div class="px-6 py-4 bg-neutral-100 border-t border-neutral-300 flex justify-end gap-3">
             <button onclick="cerrarModalExterna()" class="px-6 py-3 bg-white border border-neutral-300 text-neutral-900 font-black uppercase tracking-widest text-[10px] hover:bg-neutral-50 transition-colors">Cancelar</button>
             <button onclick="guardarVentaExterna()" class="px-6 py-3 bg-purple-800 text-white font-black uppercase tracking-widest text-[10px] hover:bg-purple-900 transition-colors">Registrar en Sistema</button>
         </div>

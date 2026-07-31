@@ -54,7 +54,7 @@
         </div>
 
         <!-- Tarjeta: Stock Crítico -->
-        <div class="bg-neutral-950 p-6 border border-neutral-950 hover:bg-neutral-900 transition-colors relative group cursor-pointer rounded-none" onclick="abrirModalCritico()">
+        <div class="bg-neutral-950 p-6 border border-neutral-950 hover:bg-neutral-900 transition-colors relative group cursor-pointer rounded-none" onclick="window.abrirModalCritico()">
             <div class="flex justify-between items-start mb-4">
                 <div>
                     <p class="text-[10px] text-neutral-400 font-bold tracking-widest uppercase">Stock Crítico</p>
@@ -71,24 +71,40 @@
     </div>
         
     <!-- ========================================================== -->
-    <!-- FILA 2: GRÁFICO DE DESEMPEÑO FINANCIERO (ANCHO COMPLETO)   -->
+    <!-- FILA 2: GRÁFICO DE DESEMPEÑO FINANCIERO / UNIDADES          -->
     <!-- ========================================================== -->
     <div class="grid grid-cols-1 gap-6 mt-6">
         
         <div class="bg-white p-8 border border-neutral-300 rounded-none border-t-4 border-t-neutral-950">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                 <div>
-                    <h3 class="font-black text-neutral-950 text-sm uppercase tracking-widest flex items-center">
-                        <i class="fa-solid fa-chart-area mr-3 text-neutral-400"></i> Desempeño Financiero Semanal
+                    <h3 class="font-black text-neutral-950 text-sm uppercase tracking-widest flex items-center" id="tituloGraficoFinanzas">
+                        <i class="fa-solid fa-chart-area mr-3 text-neutral-400"></i> Desempeño Financiero
                     </h3>
-                    <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Ingresos de caja vs costos estimados de insumos</p>
+                    <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1" id="subtituloGraficoFinanzas">
+                        Ingresos de caja vs costos estimados de insumos
+                    </p>
                 </div>
-                <select id="rangoTiempo" onchange="cambiarRango(this.value)" class="text-xs font-bold border border-neutral-300 rounded-none px-4 py-2 text-neutral-900 outline-none bg-neutral-50 cursor-pointer focus:border-neutral-950 focus:ring-1 focus:ring-neutral-950 uppercase tracking-wider">
-                    <option value="7d">Últimos 7 días</option>
-                    <option value="30d">Últimos 30 días</option>
-                    <option value="1y">Este Año (Mes a Mes)</option>
-                    <option value="custom">Rango Personalizado</option>
-                </select>
+
+                <!-- 🎛️ CONTROLES: CONMUTADOR DE MODO ($ VS UDS) + SELECTOR DE FECHAS -->
+                <div class="flex items-center gap-3">
+    <div class="inline-flex border border-neutral-300 bg-neutral-100 p-0.5">
+        <button id="btnVistaFinanzas" class="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest bg-neutral-950 text-white transition-colors">
+            Ver $ (Monto)
+        </button>
+        <button id="btnVistaUnidades" class="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-neutral-500 hover:text-neutral-950 transition-colors">
+            Ver Uds (Volumen)
+        </button>
+    </div>
+</div>
+
+                    <select id="rangoTiempo" onchange="window.cambiarRango(this.value)" class="text-xs font-bold border border-neutral-300 rounded-none px-4 py-2 text-neutral-900 outline-none bg-neutral-50 cursor-pointer focus:border-neutral-950 uppercase tracking-wider">
+                        <option value="7d">Últimos 7 días</option>
+                        <option value="30d">Últimos 30 días</option>
+                        <option value="1y">Este Año (Mes a Mes)</option>
+                        <option value="custom">Rango Personalizado</option>
+                    </select>
+                </div>
             </div>
             
             <div class="w-full overflow-x-auto overflow-y-hidden p-0 m-0">
@@ -97,6 +113,7 @@
                 </div>
             </div>
         </div>
+
     </div>
 
     <!-- ========================================================== -->
@@ -104,7 +121,7 @@
     <!-- ========================================================== -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
         
-        <!-- 🔥 NUEVO BLOQUE IZQUIERDO (7/12): PANEL TOP VENTAS (PODIO) AVANZADO -->
+        <!-- PANEL PODIO MÁS VENDIDOS (7/12) -->
         <div class="lg:col-span-7 bg-white border border-neutral-300 rounded-none flex flex-col h-full border-t-4 border-t-neutral-950 animate-fade-in">
             
             <!-- ENCABEZADO Y CONTROLES -->
@@ -119,50 +136,46 @@
                 <div class="flex flex-wrap items-center gap-3 w-full xl:w-auto">
                     
                     <!-- Selector de Tipo -->
-                    <select id="filtroTipoPodio" onchange="cargarPodioDinamico()" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
+                    <select id="filtroTipoPodio" onchange="window.cargarPodioDinamico()" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
                         <option value="TODOS">Todas las Categorías</option>
                         <option value="TERMINADOS">Perfumes Terminados</option>
                         <option value="ESENCIAS">Esencias (Puras/Granel)</option>
                     </select>
 
                     <!-- Selector de Tiempo -->
-                    <select id="filtroTiempoPodio" onchange="manejarFiltroTiempoPodio()" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
+                    <select id="filtroTiempoPodio" onchange="window.manejarFiltroTiempoPodio()" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
                         <option value="7">Últimos 7 Días</option>
                         <option value="1">Hoy (24 Horas)</option>
                         <option value="30">Últimos 30 Días</option>
                         <option value="CUSTOM">Rango Manual...</option>
                     </select>
 
-                    <!-- Rango Personalizado (Oculto por defecto) -->
+                    <!-- Rango Personalizado -->
                     <div id="cajaFechasPodio" class="hidden items-center gap-2">
                         <input type="date" id="podioFechaStart" class="bg-neutral-800 text-white border border-neutral-600 p-1.5 text-[10px] font-bold outline-none uppercase">
                         <span class="text-neutral-500 font-bold">-</span>
                         <input type="date" id="podioFechaEnd" class="bg-neutral-800 text-white border border-neutral-600 p-1.5 text-[10px] font-bold outline-none uppercase">
-                        <button onclick="cargarPodioDinamico()" class="bg-white text-neutral-950 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 transition-colors">
+                        <button onclick="window.cargarPodioDinamico()" class="bg-white text-neutral-950 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 transition-colors">
                             <i class="fa-solid fa-check"></i>
                         </button>
                     </div>
 
                     <!-- Botón Excel -->
-                    <button onclick="exportarPodioExcel()" class="bg-green-600 hover:bg-green-500 text-white border border-green-700 p-2 text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2">
+                    <button onclick="window.exportarPodioExcel()" class="bg-green-600 hover:bg-green-500 text-white border border-green-700 p-2 text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2">
                         <i class="fa-solid fa-file-excel"></i> Exportar
                     </button>
                 </div>
             </div>
 
-            <!-- CONTENEDOR DONDE SE INYECTAN LOS RESULTADOS -->
+            <!-- CONTENEDOR RESULTADOS PODIO -->
             <div id="contenedorPodioResultados" class="p-6 bg-neutral-50 flex-1 overflow-y-auto space-y-3 min-h-[300px]">
-                <!-- El JS llenará esto -->
+                <!-- El JS llenará esto automáticamente -->
             </div>
         </div>
 
-        <!-- Bloque Derecho (5/12): Despachos, Distribución y Acciones Rápidas -->
+        <!-- BLOQUE DERECHO: ACCESOS RÁPIDOS Y MÓDULOS (5/12) -->
         <div class="lg:col-span-5 flex flex-col gap-6 h-full">
             
-            <!-- Componente Reinyectado: Métricas de Distribución Antigua -->
-            
-
-            <!-- Panel de Accesos Rápidos Modulares -->
             <div class="bg-white p-6 border border-neutral-300 rounded-none space-y-3">
                 <h3 class="font-black text-neutral-950 text-xs uppercase tracking-widest mb-4 border-b border-neutral-200 pb-3">Enlaces del Sistema</h3>
                 
@@ -184,110 +197,108 @@
     <!-- FILA 4: TABLA DE ANÁLISIS DE ESTANCAMIENTO (HUESOS)        -->
     <!-- ========================================================== -->
     <div class="grid grid-cols-1 gap-6 mt-6 animate-fade-in">
-    <div class="bg-white p-8 border-t-4 border-neutral-950 border-l border-r border-b border-neutral-300 rounded-none shadow-sm">
-        
-        <!-- ENCABEZADO Y FILTROS TÁCTICOS -->
-        <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 gap-4">
-            <div>
-                <h3 class="font-black text-neutral-950 flex items-center text-sm uppercase tracking-widest">
-                    <i class="fa-solid fa-box-archive mr-3 text-amber-600"></i> Auditoría de Inventario Inmovilizado (Huesos)
-                </h3>
-                <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Detección de capital atrapado sin rotación en punto de venta o almacén</p>
-            </div>
-
-            <!-- CONTROLES DE AUDITORÍA -->
-            <div class="flex flex-wrap items-center gap-3 w-full xl:w-auto">
-                <!-- Umbral de Inactividad -->
-                <select id="filtroInactividadHuesos" onchange="cargarAuditoriaEstancamiento()" class="bg-neutral-900 text-white border border-neutral-700 p-2.5 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
-                    <option value="30">Sin movimiento >= 30 Días (1 Mes)</option>
-                    <option value="60">Sin movimiento >= 60 Días (2 Meses)</option>
-                    <option value="90">Sin movimiento >= 90 Días (3 Meses)</option>
-                    <option value="180">Sin movimiento >= 180 Días (6 Meses)</option>
-                    <option value="LOTES_NUEVOS">Lotes Recientes Sin Vender</option>
-                    <option value="CUSTOM">Rango de Fechas Personalizado...</option>
-                </select>
-
-                <div id="cajaFechasHuesos" class="hidden items-center gap-2">
-                    <input type="date" id="huesosFechaStart" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-bold outline-none uppercase">
-                    <span class="text-neutral-500 font-bold">-</span>
-                    <input type="date" id="huesosFechaEnd" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-bold outline-none uppercase">
-                    <button onclick="cargarAuditoriaEstancamiento()" class="bg-white text-neutral-950 px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 transition-colors">
-                        <i class="fa-solid fa-check"></i>
-                    </button>
+        <div class="bg-white p-8 border-t-4 border-neutral-950 border-l border-r border-b border-neutral-300 rounded-none shadow-sm">
+            
+            <!-- ENCABEZADO Y FILTROS -->
+            <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 gap-4">
+                <div>
+                    <h3 class="font-black text-neutral-950 flex items-center text-sm uppercase tracking-widest">
+                        <i class="fa-solid fa-box-archive mr-3 text-amber-600"></i> Auditoría de Inventario Inmovilizado (Huesos)
+                    </h3>
+                    <p class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Detección de capital atrapado sin rotación en punto de venta o almacén</p>
                 </div>
 
-                <!-- Categoría -->
-                <select id="filtroCatHuesos" onchange="cargarAuditoriaEstancamiento()" class="bg-neutral-900 text-white border border-neutral-700 p-2.5 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
-                    <option value="TODOS">Todas las Categorías</option>
-                    <option value="ESENCIAS">Esencias Puras</option>
-                    <option value="TERMINADOS">Perfumes Terminados</option>
-                    <option value="INSUMOS">Materias Primas / Envases</option>
-                </select>
+                <!-- CONTROLES DE AUDITORÍA -->
+                <div class="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+                    
+                    <select id="filtroInactividadHuesos" onchange="window.manejarFiltroTiempoHuesos()" class="bg-neutral-900 text-white border border-neutral-700 p-2.5 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
+                        <option value="30">Sin movimiento >= 30 Días (1 Mes)</option>
+                        <option value="60">Sin movimiento >= 60 Días (2 Meses)</option>
+                        <option value="90">Sin movimiento >= 90 Días (3 Meses)</option>
+                        <option value="180">Sin movimiento >= 180 Días (6 Meses)</option>
+                        <option value="LOTES_NUEVOS">Lotes Recientes Sin Vender</option>
+                        <option value="CUSTOM">Rango de Fechas Personalizado...</option>
+                    </select>
 
-                <!-- Botón Excel Contable -->
-                <button onclick="exportarEstancamientoExcel()" class="bg-green-600 hover:bg-green-500 text-white border border-green-700 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2">
-                    <i class="fa-solid fa-file-excel"></i> Exportar Audit
-                </button>
-            </div>
-        </div>
+                    <div id="cajaFechasHuesos" class="hidden items-center gap-2">
+                        <input type="date" id="huesosFechaStart" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-bold outline-none uppercase">
+                        <span class="text-neutral-500 font-bold">-</span>
+                        <input type="date" id="huesosFechaEnd" class="bg-neutral-800 text-white border border-neutral-600 p-2 text-[10px] font-bold outline-none uppercase">
+                        <button onclick="window.cargarAuditoriaEstancamiento()" class="bg-white text-neutral-950 px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 transition-colors">
+                            <i class="fa-solid fa-check"></i>
+                        </button>
+                    </div>
 
-        <!-- RESUMEN DE IMPACTO FINANCIERO -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-neutral-100 p-4 border border-neutral-300">
-            <div class="border-r border-neutral-300 pr-4">
-                <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">Capital Inmovilizado:</span>
-                <span id="txtCapitalInmovilizado" class="text-lg font-black text-red-600">$0.00</span>
-            </div>
-            <div class="border-r border-neutral-300 pr-4">
-                <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">SKUs Estancados:</span>
-                <span id="txtSkusEstancados" class="text-lg font-black text-neutral-950">0 Productos</span>
-            </div>
-            <div>
-                <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">Riesgo Financiero:</span>
-                <span id="txtRiesgoEstancamiento" class="text-xs font-black text-amber-600 uppercase tracking-wider">Bajo</span>
-            </div>
-        </div>
+                    <select id="filtroCatHuesos" onchange="window.cargarAuditoriaEstancamiento()" class="bg-neutral-900 text-white border border-neutral-700 p-2.5 text-[10px] font-black uppercase tracking-widest outline-none focus:border-white cursor-pointer">
+                        <option value="TODOS">Todas las Categorías</option>
+                        <option value="ESENCIAS">Esencias Puras</option>
+                        <option value="TERMINADOS">Perfumes Terminados</option>
+                        <option value="INSUMOS">Materias Primas / Envases</option>
+                    </select>
 
-        <!-- TABLA RESUMIDA -->
-        <div class="overflow-x-auto border border-neutral-200 bg-neutral-50">
-            <table class="min-w-full text-sm text-left border-collapse">
-                <thead class="text-[10px] text-neutral-950 font-black uppercase tracking-widest bg-neutral-100 border-b border-neutral-300">
-                    <tr>
-                        <th class="px-6 py-4">Producto / Insumo</th>
-                        <th class="px-6 py-4">Categoría</th>
-                        <th class="px-6 py-4 text-center">Último Movimiento / Carga</th>
-                        <th class="px-6 py-4 text-center">Stock Atrapado</th>
-                        <th class="px-6 py-4 text-center">Costo Atrapado ($)</th>
-                        <th class="px-6 py-4 text-right pr-6">Acción</th>
-                    </tr>
-                </thead>
-                <tbody id="tablaHuesos" class="text-neutral-700 font-medium divide-y divide-neutral-200 bg-white">
-                    <tr><td colspan="6" class="text-center py-8 text-neutral-400 font-bold text-xs uppercase tracking-widest">Calculando vectores de inactividad...</td></tr>
-                </tbody>
-            </table>
+                    <button onclick="window.exportarEstancamientoExcel()" class="bg-green-600 hover:bg-green-500 text-white border border-green-700 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2">
+                        <i class="fa-solid fa-file-excel"></i> Exportar Audit
+                    </button>
+                </div>
+            </div>
+
+            <!-- IMPACTO FINANCIERO -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-neutral-100 p-4 border border-neutral-300">
+                <div class="border-r border-neutral-300 pr-4">
+                    <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">Capital Inmovilizado:</span>
+                    <span id="txtCapitalInmovilizado" class="text-lg font-black text-red-600">$0.00</span>
+                </div>
+                <div class="border-r border-neutral-300 pr-4">
+                    <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">SKUs Estancados:</span>
+                    <span id="txtSkusEstancados" class="text-lg font-black text-neutral-950">0 Productos</span>
+                </div>
+                <div>
+                    <span class="text-[9px] font-black text-neutral-500 uppercase tracking-widest block">Riesgo Financiero:</span>
+                    <span id="txtRiesgoEstancamiento" class="text-xs font-black text-amber-600 uppercase tracking-wider">Bajo</span>
+                </div>
+            </div>
+
+            <!-- TABLA RESUMIDA -->
+            <div class="overflow-x-auto border border-neutral-200 bg-neutral-50">
+                <table class="min-w-full text-sm text-left border-collapse">
+                    <thead class="text-[10px] text-neutral-950 font-black uppercase tracking-widest bg-neutral-100 border-b border-neutral-300">
+                        <tr>
+                            <th class="px-6 py-4">Producto / Insumo</th>
+                            <th class="px-6 py-4">Categoría</th>
+                            <th class="px-6 py-4 text-center">Último Movimiento / Carga</th>
+                            <th class="px-6 py-4 text-center">Stock Atrapado</th>
+                            <th class="px-6 py-4 text-center">Costo Atrapado ($)</th>
+                            <th class="px-6 py-4 text-right pr-6">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaHuesos" class="text-neutral-700 font-medium divide-y divide-neutral-200 bg-white">
+                        <tr><td colspan="6" class="text-center py-8 text-neutral-400 font-bold text-xs uppercase tracking-widest">Calculando vectores de inactividad...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
-    </div>
 
-<!-- MODAL DE DETALLE DE LOTE ESTANCADO -->
-<div id="modalDetalleEstancado" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-modal="true">
-    <div class="flex items-center justify-center min-h-screen p-4">
-        <div class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm" onclick="cerrarModalEstancado()"></div>
-        <div class="relative bg-white w-full max-w-2xl border border-neutral-400 shadow-2xl rounded-none">
-            <div class="bg-neutral-950 px-6 py-4 border-b border-neutral-800 flex justify-between items-center text-white">
-                <h3 class="text-xs font-black uppercase tracking-widest flex items-center gap-2">
-                    <i class="fa-solid fa-magnifying-glass-dollar text-amber-400"></i> Auditoría de Trazabilidad de SKU
-                </h3>
-                <button onclick="cerrarModalEstancado()" class="text-neutral-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
-            </div>
-            <div id="contenidoModalEstancado" class="p-6 space-y-4 bg-neutral-50">
-                <!-- JS Inyectará la auditoría completa del lote -->
-            </div>
-            <div class="p-4 bg-neutral-100 border-t border-neutral-300 flex justify-end">
-                <button onclick="cerrarModalEstancado()" class="px-6 py-2.5 bg-neutral-950 text-white font-black text-[10px] uppercase tracking-widest">Cerrar</button>
+    <!-- MODAL DE DETALLE DE LOTE ESTANCADO -->
+    <div id="modalDetalleEstancado" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-modal="true">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm" onclick="window.cerrarModalEstancado()"></div>
+            <div class="relative bg-white w-full max-w-2xl border border-neutral-400 shadow-2xl rounded-none">
+                <div class="bg-neutral-950 px-6 py-4 border-b border-neutral-800 flex justify-between items-center text-white">
+                    <h3 class="text-xs font-black uppercase tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-magnifying-glass-dollar text-amber-400"></i> Auditoría de Trazabilidad de SKU
+                    </h3>
+                    <button onclick="window.cerrarModalEstancado()" class="text-neutral-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                <div id="contenidoModalEstancado" class="p-6 space-y-4 bg-neutral-50">
+                    <!-- JS Inyecta el detalle -->
+                </div>
+                <div class="p-4 bg-neutral-100 border-t border-neutral-300 flex justify-end">
+                    <button onclick="window.cerrarModalEstancado()" class="px-6 py-2.5 bg-neutral-950 text-white font-black text-[10px] uppercase tracking-widest">Cerrar</button>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
     <!-- ========================================================== -->
     <!-- ZONA DE MODALES GLOBALES                                   -->
@@ -296,7 +307,7 @@
     <!-- Modal 1: Alerta de Stock Crítico -->
     <div id="modalCritico" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm transition-opacity" aria-hidden="true" onclick="cerrarModalCritico()"></div>
+            <div class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm transition-opacity" aria-hidden="true" onclick="window.cerrarModalCritico()"></div>
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
             <div class="inline-block align-bottom bg-white text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full border border-neutral-400 rounded-none">
@@ -304,7 +315,7 @@
                     <h3 class="text-sm font-black text-white uppercase tracking-widest flex items-center" id="modal-title">
                         <i class="fa-solid fa-triangle-exclamation mr-3 text-white"></i> Reporte: Déficit de Inventario
                     </h3>
-                    <button type="button" class="text-neutral-400 hover:text-white transition-colors focus:outline-none" onclick="cerrarModalCritico()">
+                    <button type="button" class="text-neutral-400 hover:text-white transition-colors focus:outline-none" onclick="window.cerrarModalCritico()">
                         <i class="fa-solid fa-times text-xl"></i>
                     </button>
                 </div>
@@ -328,7 +339,7 @@
                 </div>
 
                 <div class="bg-neutral-100 px-6 py-4 border-t border-neutral-300 flex justify-end">
-                    <button type="button" class="bg-neutral-950 hover:bg-neutral-800 text-white font-bold py-3 px-8 text-xs uppercase tracking-widest transition-colors rounded-none" onclick="cerrarModalCritico()">
+                    <button type="button" class="bg-neutral-950 hover:bg-neutral-800 text-white font-bold py-3 px-8 text-xs uppercase tracking-widest transition-colors rounded-none" onclick="window.cerrarModalCritico()">
                         Entendido
                     </button>
                 </div>
@@ -339,7 +350,7 @@
     <!-- Modal 2: Tabla General de Ranking de Ventas -->
     <div id="modalRanking" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm transition-opacity" aria-hidden="true" onclick="cerrarModalRanking()"></div>
+            <div class="fixed inset-0 bg-neutral-950/80 backdrop-blur-sm transition-opacity" aria-hidden="true" onclick="window.cerrarModalRanking()"></div>
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
             <div class="inline-block align-bottom bg-white text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full border border-neutral-400 rounded-none">
                 
@@ -347,7 +358,7 @@
                     <h3 class="text-sm font-black text-white uppercase tracking-widest flex items-center">
                         <i class="fa-solid fa-ranking-star mr-3 text-emerald-400"></i> Tabla General de Distribución
                     </h3>
-                    <button type="button" class="text-neutral-400 hover:text-white transition-colors focus:outline-none" onclick="cerrarModalRanking()">
+                    <button type="button" class="text-neutral-400 hover:text-white transition-colors focus:outline-none" onclick="window.cerrarModalRanking()">
                         <i class="fa-solid fa-times text-xl"></i>
                     </button>
                 </div>

@@ -1442,15 +1442,15 @@ const distribuirProducto = async (req, res) => {
     } finally { client.release(); }
 };
 
-const EMPRESA_NOMBRE = 'PERFUMIX C.A.';
-const EMPRESA_RIF = 'J-50000000-0';
+const EMPRESA_NOMBRE = 'PERFUMES C.A.';
+const EMPRESA_RIF = '';
 
 const exportarExcel = async (req, res) => {
     console.log("--- [DEBUG] Entrando a exportarExcel de productos.controller ---");
     console.log("Filtro recibido:", req.query.filtro);
 
     try {
-        const { filtro, start, end } = req.query; // Extraemos start y end de la URL
+        const { filtro, start, end } = req.query; 
         
         // 🛡️ DETECCIÓN INTELIGENTE DE SUCURSAL
         let idTiendaLocal = 1;
@@ -1497,24 +1497,24 @@ const exportarExcel = async (req, res) => {
             sheetInv.addRow(['Libro de Movimiento de Inventarios (Art. 177 Ley de ISLR)']).font = { bold: true, size: 11 };
             sheetInv.addRow([]);
 
-            // 2. Encabezados Agrupados (Fila 6)
+            // 2. Encabezados Agrupados (Fila 6) - 🚨 SE AGREGA 'GÉNERO'
             const rowCategorias = sheetInv.addRow([
-                'Código', 'Referencia', 'Descripción', 'Departamento', 'Sección', 'Marca', 'Costo Unitario',
+                'Código', 'Referencia', 'Descripción', 'Departamento', 'Sección', 'Marca', 'Género', 'Costo Unitario',
                 'EXISTENCIA INICIAL', '', 'ENTRADAS', '', 'SALIDAS', '', 'AUTOCONSUMO', '', 'INVENTARIO ACTUAL', ''
             ]);
 
-            // Combinar celdas HORIZONTALES (Para Cantidad y Monto)
-            sheetInv.mergeCells('H6:I6'); sheetInv.mergeCells('J6:K6');
-            sheetInv.mergeCells('L6:M6'); sheetInv.mergeCells('N6:O6'); sheetInv.mergeCells('P6:Q6');
+            // Combinar celdas HORIZONTALES (Desplazadas 1 columna a la derecha)
+            sheetInv.mergeCells('I6:J6'); sheetInv.mergeCells('K6:L6');
+            sheetInv.mergeCells('M6:N6'); sheetInv.mergeCells('O6:P6'); sheetInv.mergeCells('Q6:R6');
 
             // 3. Encabezados Detallados (Fila 7)
             const rowDetalle = sheetInv.addRow([
-                '', '', '', '', '', '', '',
+                '', '', '', '', '', '', '', '',
                 'Cant', 'Monto', 'Cant', 'Monto', 'Cant', 'Monto', 'Cant', 'Monto', 'Cant', 'Monto'
             ]);
 
-            // Combinar celdas VERTICALES
-            const columnasVerticales = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+            // Combinar celdas VERTICALES (De A a H)
+            const columnasVerticales = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
             columnasVerticales.forEach(col => {
                 sheetInv.mergeCells(`${col}6:${col}7`);
             });
@@ -1526,13 +1526,14 @@ const exportarExcel = async (req, res) => {
                 row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
             });
 
-            // 4. Lógica de Consulta Agregada: Consolida las Entradas, Salidas y Mermas por cada producto activo
+            // 4. Lógica de Consulta Agregada - 🚨 SE AGREGA p.genero
             let queryConsolidado = `
                 SELECT 
                     p.id, 
                     COALESCE(p.codigo, 'S/C') as codigo, 
                     p.nombre, 
                     p.marca, 
+                    COALESCE(p.genero, 'UNISEX') as genero,
                     p.costo, 
                     p.categoria, 
                     p.unidad_medida,
@@ -1552,7 +1553,6 @@ const exportarExcel = async (req, res) => {
                 paramsConsolidado.push(start, end);
             }
 
-            // 🛡️ Filtro de Categoría (PT, Insumos, Frascos...)
             const catQuery = req.query.categoria;
             if (catQuery && catQuery !== 'todos') {
                 const paramIdx = paramsConsolidado.length + 1;
@@ -1569,11 +1569,11 @@ const exportarExcel = async (req, res) => {
                 }
             }
 
-            queryConsolidado += ` GROUP BY p.id, p.codigo, p.nombre, p.marca, p.costo, p.categoria, p.unidad_medida, p.es_producto_terminado, p.stock_unidades, p.stock_estante ORDER BY p.nombre ASC`;
+            queryConsolidado += ` GROUP BY p.id, p.codigo, p.nombre, p.marca, p.genero, p.costo, p.categoria, p.unidad_medida, p.es_producto_terminado, p.stock_unidades, p.stock_estante ORDER BY p.nombre ASC`;
 
             const resConsolidado = await client.query(queryConsolidado, paramsConsolidado);
 
-            // 5. Rellenar con Información consolidada (1 Fila por Producto)
+            // 5. Rellenar con Información consolidada
             resConsolidado.rows.forEach(p => {
                 const costoUnit = parseFloat(p.costo || 0);
                 const uni = (p.unidad_medida || '').toUpperCase();
@@ -1585,10 +1585,7 @@ const exportarExcel = async (req, res) => {
                 const sal = parseFloat(p.total_salidas) / divisor;
                 const auto = parseFloat(p.total_autoconsumo) / divisor;
                 
-                // Stock total actual en sistema
                 const stockActual = (parseFloat(p.stock_unidades) + parseFloat(p.stock_estante)) / divisor;
-                
-                // Reconstrucción matemática de Existencia Inicial
                 const stockInicial = Math.max(0, stockActual - ent + sal + auto);
 
                 let dpto = 'GENERAL', seccion = 'OTROS';
@@ -1600,6 +1597,7 @@ const exportarExcel = async (req, res) => {
                     seccion = 'MATERIA PRIMA';
                 }
 
+                // 🚨 SE INCLUYE p.genero EN LA FILA EN LA POSICIÓN CORRECTA
                 const fila = sheetInv.addRow([
                     p.id,
                     p.codigo,
@@ -1607,6 +1605,7 @@ const exportarExcel = async (req, res) => {
                     dpto,
                     seccion,
                     p.marca || 'N/A',
+                    (p.genero || 'UNISEX').toUpperCase(),
                     costoUnit,
                     stockInicial,
                     stockInicial * costoUnit,
@@ -1620,34 +1619,35 @@ const exportarExcel = async (req, res) => {
                     stockActual * costoUnit
                 ]);
 
-                // FORMATOS VISUALES PARA EXCEL
+                // FORMATOS VISUALES PARA EXCEL (Ajustados por el desplazamiento de +1 columna)
                 const fmtStock = isLiquid ? '#,##0.000' : '#,##0';
                 
-                fila.getCell(7).numFmt = '"$"#,##0.00'; // Costo Unitario
+                fila.getCell(8).numFmt = '"$"#,##0.00'; // Costo Unitario
                 
-                fila.getCell(8).numFmt = fmtStock;   // Cantidad Inicial
-                fila.getCell(9).numFmt = '"$"#,##0.00';
+                fila.getCell(9).numFmt = fmtStock;   // Cantidad Inicial
+                fila.getCell(10).numFmt = '"$"#,##0.00';
                 
-                fila.getCell(10).numFmt = fmtStock;  // Cantidad Entrada
-                fila.getCell(11).numFmt = '"$"#,##0.00';
+                fila.getCell(11).numFmt = fmtStock;  // Cantidad Entrada
+                fila.getCell(12).numFmt = '"$"#,##0.00';
                 
-                fila.getCell(12).numFmt = fmtStock;  // Cantidad Salida
-                fila.getCell(13).numFmt = '"$"#,##0.00';
+                fila.getCell(13).numFmt = fmtStock;  // Cantidad Salida
+                fila.getCell(14).numFmt = '"$"#,##0.00';
                 
-                fila.getCell(14).numFmt = fmtStock;  // Cantidad Autoconsumo
-                fila.getCell(15).numFmt = '"$"#,##0.00';
+                fila.getCell(15).numFmt = fmtStock;  // Cantidad Autoconsumo
+                fila.getCell(16).numFmt = '"$"#,##0.00';
                 
-                fila.getCell(16).numFmt = fmtStock;  // Cantidad Actual
-                fila.getCell(17).numFmt = '"$"#,##0.00';
+                fila.getCell(17).numFmt = fmtStock;  // Cantidad Actual
+                fila.getCell(18).numFmt = '"$"#,##0.00';
             });
 
             const ultimaFilaNum = sheetInv.lastRow ? sheetInv.lastRow.number : 7;
             sheetInv.autoFilter = {
                 from: { row: 6, column: 1 },
-                to: { row: ultimaFilaNum, column: 17 }
+                to: { row: ultimaFilaNum, column: 18 }
             };
 
-            sheetInv.getColumn('C').width = 35; 
+            sheetInv.getColumn('C').width = 35; // Descripción
+            sheetInv.getColumn('G').width = 15; // Género
         }
 
         // -------------------------------------------------------------------------
@@ -1684,45 +1684,43 @@ const exportarExcel = async (req, res) => {
             });
 
             let queryTraz = `
-        SELECT h.id, h.fecha, p.codigo, p.nombre, p.marca, p.costo, h.tipo_movimiento, h.cantidad, h.motivo, p.categoria, p.unidad_medida
-        FROM historial_movimientos h
-        JOIN productos p ON h.producto_id = p.id
-        WHERE p.tienda_id = $1
-    `;
+                SELECT h.id, h.fecha, p.codigo, p.nombre, p.marca, p.costo, h.tipo_movimiento, h.cantidad, h.motivo, p.categoria, p.unidad_medida
+                FROM historial_movimientos h
+                JOIN productos p ON h.producto_id = p.id
+                WHERE p.tienda_id = $1
+            `;
             let paramsTraz = [idTiendaLocal];
             let pIdxTraz = 2;
 
             if (start && end) {
-        queryTraz += ` AND h.fecha::date BETWEEN $${pIdxTraz} AND $${pIdxTraz + 1}`;
-        paramsTraz.push(start, end);
-        pIdxTraz += 2;
-    }
+                queryTraz += ` AND h.fecha::date BETWEEN $${pIdxTraz} AND $${pIdxTraz + 1}`;
+                paramsTraz.push(start, end);
+                pIdxTraz += 2;
+            }
 
             const refFilter = req.query.producto || req.query.referencia;
-    if (refFilter && refFilter.trim() !== '') {
-        const listaRefs = refFilter.split(',').map(r => r.trim()).filter(r => r !== '');
-        if (listaRefs.length > 0) {
-            queryTraz += ` AND (p.codigo = ANY($${pIdxTraz}) OR p.id::text = ANY($${pIdxTraz}) OR p.nombre ILIKE ANY($${pIdxTraz}))`;
-            // Pasamos el array mapeado como un solo parámetro PostgreSQL
-            paramsTraz.push(listaRefs.map(r => `%${r}%`)); 
-            pIdxTraz++;
-        }
-    } else {
-        // Filtro opcional por categoría si no eligió referencias específicas
-        const catQuery = req.query.categoria;
-        if (catQuery && catQuery !== 'todos') {
-            const catUpper = catQuery.toUpperCase();
-            if (catUpper === 'PT' || catUpper === 'TERMINADOS') {
-                queryTraz += ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
-            } else if (catUpper === 'INSUMOS') {
-                queryTraz += ` AND (p.categoria ILIKE '%esencia%' OR p.categoria ILIKE '%fijador%' OR p.categoria ILIKE '%alcohol%' OR p.categoria ILIKE '%frasco%' OR p.categoria ILIKE '%envase%')`;
+            if (refFilter && refFilter.trim() !== '') {
+                const listaRefs = refFilter.split(',').map(r => r.trim()).filter(r => r !== '');
+                if (listaRefs.length > 0) {
+                    queryTraz += ` AND (p.codigo = ANY($${pIdxTraz}) OR p.id::text = ANY($${pIdxTraz}) OR p.nombre ILIKE ANY($${pIdxTraz}))`;
+                    paramsTraz.push(listaRefs.map(r => `%${r}%`)); 
+                    pIdxTraz++;
+                }
             } else {
-                queryTraz += ` AND p.categoria ILIKE $${pIdxTraz}`;
-                paramsTraz.push(`%${catQuery.trim()}%`);
-                pIdxTraz++;
+                const catQuery = req.query.categoria;
+                if (catQuery && catQuery !== 'todos') {
+                    const catUpper = catQuery.toUpperCase();
+                    if (catUpper === 'PT' || catUpper === 'TERMINADOS') {
+                        queryTraz += ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
+                    } else if (catUpper === 'INSUMOS') {
+                        queryTraz += ` AND (p.categoria ILIKE '%esencia%' OR p.categoria ILIKE '%fijador%' OR p.categoria ILIKE '%alcohol%' OR p.categoria ILIKE '%frasco%' OR p.categoria ILIKE '%envase%')`;
+                    } else {
+                        queryTraz += ` AND p.categoria ILIKE $${pIdxTraz}`;
+                        paramsTraz.push(`%${catQuery.trim()}%`);
+                        pIdxTraz++;
+                    }
+                }
             }
-        }
-    }
 
             queryTraz += ` ORDER BY p.codigo ASC, h.fecha ASC`;
 
@@ -2021,6 +2019,7 @@ const exportarExcel = async (req, res) => {
         res.status(500).send('Error generando el reporte Excel.');
     }
 };
+
 
 const gestionarMovimientoEstante = async (req, res) => {
     const { idBotella } = req.params;
@@ -2462,7 +2461,6 @@ const getReporteListaPrecios = async (req, res) => {
             paramIdx++;
         }
 
-        // Filtro por sección/categoría (incluyendo la corrección de Perfumes Terminados)
         if (seccion && seccion !== 'todos' && seccion !== 'TODOS') {
             if (seccion === 'TERMINADOS') {
                 whereClause += ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
@@ -2483,14 +2481,15 @@ const getReporteListaPrecios = async (req, res) => {
             SELECT 
                 p.id,
                 COALESCE(p.codigo, 'S/C') as referencia,
-                COALESCE(p.categoria, 'GENERAL') as seccion,
                 p.nombre as descripcion,
-                COALESCE(p.marca, 'N/A') as marca,
                 COALESCE(p.genero, 'UNISEX') as genero,
+                COALESCE(p.categoria, 'GENERAL') as seccion,
+                COALESCE(p.marca, 'N/A') as marca,
                 COALESCE(p.unidad_medida, 'GRAMOS') as presentacion,
                 p.precio_venta as precio,
                 p.stock_unidades,
                 p.stock_estante,
+                (COALESCE(p.stock_unidades, 0) + COALESCE(p.stock_estante, 0)) as stock_total,
                 COALESCE(t.nombre, 'SUCURSAL GENERAL') as tienda_nombre
             FROM productos p
             LEFT JOIN tiendas t ON p.tienda_id = t.id
@@ -2529,7 +2528,6 @@ const exportarListaPreciosExcel = async (req, res) => {
             paramIdx++;
         }
 
-        // Filtro por sección/categoría
         if (seccion && seccion !== 'todos' && seccion !== 'TODOS') {
             if (seccion === 'TERMINADOS') {
                 whereClause += ` AND (p.es_producto_terminado = true OR p.categoria ILIKE '%terminado%' OR p.categoria ILIKE '%perfume%')`;
@@ -2543,12 +2541,13 @@ const exportarListaPreciosExcel = async (req, res) => {
         const query = `
             SELECT 
                 COALESCE(p.codigo, 'S/C') as referencia,
-                COALESCE(p.categoria, 'GENERAL') as seccion,
                 p.nombre as descripcion,
-                COALESCE(p.marca, 'N/A') as marca,
                 COALESCE(p.genero, 'UNISEX') as genero,
+                COALESCE(p.categoria, 'GENERAL') as seccion,
+                COALESCE(p.marca, 'N/A') as marca,
                 COALESCE(p.unidad_medida, 'GRAMOS') as presentacion,
                 p.precio_venta as precio,
+                (COALESCE(p.stock_unidades, 0) + COALESCE(p.stock_estante, 0)) as stock_total,
                 COALESCE(t.nombre, 'SUCURSAL GENERAL') as tienda_nombre
             FROM productos p
             LEFT JOIN tiendas t ON p.tienda_id = t.id
@@ -2559,14 +2558,24 @@ const exportarListaPreciosExcel = async (req, res) => {
         const result = await pool.query(query, params);
 
         const workbook = new ExcelJS.Workbook();
-        const sheet = workbook.addWorksheet('Lista de Precios');
+        const sheet = workbook.addWorksheet('Inventario y Lista Precios');
 
-        sheet.addRow(['PERFUMIX C.A. - LISTA DE PRECIOS OFICIAL']).font = { bold: true, size: 14 };
+        sheet.addRow(['PERFUMIX C.A. - INVENTARIO Y CATÁLOGO DE PRECIOS']).font = { bold: true, size: 14 };
         sheet.addRow([`Sucursal: ${result.rows[0]?.tienda_nombre || 'Todas las Sucursales'}`]);
         sheet.addRow([`Fecha de Generación: ${new Date().toLocaleDateString('es-VE')}`]);
         sheet.addRow([]);
 
-        const headerRow = sheet.addRow(['REFERENCIA', 'SECCIÓN', 'DESCRIPCIÓN', 'MARCA', 'GÉNERO', 'PRESENTACIÓN', 'PRECIO DE VENTA ($)']);
+        // Encabezados ajustados solo a Referencia, Descripción, Género, Inventario/Precios
+        const headerRow = sheet.addRow([
+            'REFERENCIA', 
+            'DESCRIPCIÓN', 
+            'GÉNERO', 
+            'INVENTARIO TOTAL', 
+            'SECCIÓN / CATEGORÍA', 
+            'MARCA', 
+            'PRECIO ($)'
+        ]);
+
         headerRow.eachCell((cell) => {
             cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
@@ -2575,28 +2584,29 @@ const exportarListaPreciosExcel = async (req, res) => {
 
         result.rows.forEach(r => {
             sheet.addRow([
-                r.referencia,
-                r.seccion.toUpperCase(),
+                r.referencia.toUpperCase(),
                 r.descripcion.toUpperCase(),
-                r.marca.toUpperCase(),
                 r.genero.toUpperCase(),
-                r.presentacion.toUpperCase(),
+                parseFloat(r.stock_total || 0),
+                r.seccion.toUpperCase(),
+                r.marca.toUpperCase(),
                 parseFloat(r.precio || 0)
             ]);
         });
 
         sheet.getColumn(7).numFmt = '"$"#,##0.00';
+        sheet.getColumn(4).numFmt = '#,##0.00';
         
         sheet.getColumn(1).width = 16;
-        sheet.getColumn(2).width = 18;
-        sheet.getColumn(3).width = 45;
-        sheet.getColumn(4).width = 22;
-        sheet.getColumn(5).width = 16;
-        sheet.getColumn(6).width = 18;
-        sheet.getColumn(7).width = 20;
+        sheet.getColumn(2).width = 45;
+        sheet.getColumn(3).width = 16;
+        sheet.getColumn(4).width = 18;
+        sheet.getColumn(5).width = 22;
+        sheet.getColumn(6).width = 20;
+        sheet.getColumn(7).width = 16;
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="Lista_Precios_${new Date().toISOString().slice(0,10)}.xlsx"`);
+        res.setHeader('Content-Disposition', `attachment; filename="Inventario_Lista_Precios_${new Date().toISOString().slice(0,10)}.xlsx"`);
 
         await workbook.xlsx.write(res);
         res.end();
