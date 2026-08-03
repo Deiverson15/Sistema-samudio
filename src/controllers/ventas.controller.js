@@ -78,14 +78,17 @@ async function validarYDescontarEstante(client, productoId, cantidadRequerida, n
         WHERE id = $3 AND tienda_id = $4
     `, [aDescontarEstante, aDescontarDeposito, pId, tId]);
 
-    // Detectar si el artículo es realmente un LÍQUIDO/INSUMO a fraccionar por gramos
+    // Detectar si el artículo es realmente un LÍQUIDO/INSUMO a fraccionar por gramos o un Perfume Terminado
     const uni = (prod.unidad_medida || '').toUpperCase();
     const cat = (prod.categoria || '').toUpperCase();
-    const esLiquidoFraccionado = (uni === 'GRAMOS' || uni === 'ML') && 
-                                (cat.includes('ESENCIA') || cat.includes('ALCOHOL') || cat.includes('FIJADOR'));
+    
+    // 🚨 ADAPTACIÓN TSU/UNIFICACIÓN: Reconocimiento correcto si es líquido fraccionado o código terminado en -t30/-t60
+    const esCodigoTerminado = (prod.codigo || '').toUpperCase().includes('-T');
+    const esLiquidoFraccionado = (uni === 'GRAMOS' || uni === 'ML' || esCodigoTerminado) && 
+                                (cat.includes('ESENCIA') || cat.includes('ALCOHOL') || cat.includes('FIJADOR') || cat.includes('PERFUME') || esCodigoTerminado);
 
-    // Solo busca y descuenta botellas físicas si es materia prima/líquido fraccionado
-    if (esLiquidoFraccionado) {
+    // Solo busca y descuenta botellas físicas si es materia prima/líquido fraccionado o unidad terminada en estante
+    if (esLiquidoFraccionado && !esCodigoTerminado) {
         try {
             let pendienteBotellas = cantidad;
             const botellasRes = await client.query(`
@@ -1082,7 +1085,7 @@ const exportarReporteGeneral = async (req, res) => {
         // REPORTE H: MAESTRO ESTRUCTURAL DE FORMULAS Y COSTOS (PLANTILLA)
         // =========================================================
         if (filtro === 'formulas') {
-            const sheet = workbook.addWorksheet('Costos Perfumes');
+            const sheet = workbook.addWorksheet('Costos Perfumix');
             
             // 1. Configuramos el ancho exacto de las columnas como en tu Excel
             sheet.columns = [
@@ -1742,7 +1745,7 @@ const crearVenta = async (req, res) => {
 
         await client.query('BEGIN'); 
 
-        // 1. SEGURIDAD ANTI-FRAUDE (Validación de referencias únicas)
+        // 1. SEGURIDAD ANTI-FRAUDE (Consulta corregida: SOLO consulta 'id' en la tabla pagos)
         if (pagos && pagos.length > 0) {
             for (const pago of pagos) {
                 const metodo = (pago.metodo || '').toUpperCase();
@@ -1764,43 +1767,45 @@ const crearVenta = async (req, res) => {
                 const cleanItemId = parseInt(item.id, 10);
 
                 // Obtener datos base del producto facturado
-                const prodActualRes = await client.query('SELECT id, codigo, nombre, categoria, tamano, unidad_medida FROM productos WHERE id = $1', [cleanItemId]);
-                if (prodActualRes.rows.length === 0) throw new Error(`Producto ID ${cleanItemId} no existe en el catálogo.`);
+                const prodActualRes = await client.query('SELECT id, codigo, nombre, categoria, tamano, unidad_medida FROM productos WHERE id = $1 AND tienda_id = $2', [cleanItemId, idTiendaLocal]);
+                if (prodActualRes.rows.length === 0) throw new Error(`Producto ID ${cleanItemId} no existe en el catálogo de esta sucursal.`);
                 const prodActual = prodActualRes.rows[0];
+
+                const codigoUpper = (prodActual.codigo || '').toUpperCase();
+                const esUnidadTerminada = codigoUpper.includes('-T') || item.es_pt === true;
 
                 // Detectar tamaño/volumen del perfume (ej: "30ML", "60", "100")
                 const tamanoStr = (item.tamano || prodActual.tamano || item.descripcion || prodActual.nombre || '').toString().toUpperCase();
-                let volumenML = 30; // Por defecto 30ml
+                let volumenML = 30; 
                 if (tamanoStr.includes('60')) volumenML = 60;
                 else if (tamanoStr.includes('100')) volumenML = 100;
 
-                // 🔍 BÚSQUEDA OBLIGATORIA DE FÓRMULA (Por ID recibido o por coincidencia de producto/volumen)
+                // 🔍 BÚSQUEDA DE FÓRMULA (Solo si NO es una unidad terminada -T30 direct)
                 let f = null;
-                if (item.formula_id) {
-                    const formulaRes = await client.query('SELECT * FROM formulas WHERE id = $1', [parseInt(item.formula_id, 10)]);
-                    if (formulaRes.rows.length > 0) f = formulaRes.rows[0];
-                }
+                if (!esUnidadTerminada) {
+                    if (item.formula_id) {
+                        const formulaRes = await client.query('SELECT * FROM formulas WHERE id = $1', [parseInt(item.formula_id, 10)]);
+                        if (formulaRes.rows.length > 0) f = formulaRes.rows[0];
+                    }
 
-                // Si no vino formula_id en el payload, buscar la fórmula asociada en la BD por volumen/producto
-                if (!f) {
-                    const formulaAutoRes = await client.query(`
-                        SELECT * FROM formulas 
-                        WHERE (producto_id = $1 OR volumen_total = $2)
-                        ORDER BY id DESC LIMIT 1
-                    `, [cleanItemId, volumenML]);
-                    if (formulaAutoRes.rows.length > 0) f = formulaAutoRes.rows[0];
+                    if (!f) {
+                        const formulaAutoRes = await client.query(`
+                            SELECT * FROM formulas 
+                            WHERE (producto_id = $1 OR volumen_total = $2)
+                            ORDER BY id DESC LIMIT 1
+                        `, [cleanItemId, volumenML]);
+                        if (formulaAutoRes.rows.length > 0) f = formulaAutoRes.rows[0];
+                    }
                 }
 
                 // =========================================================================
-                // 🧪 DESCUENTO COMPLETO DE INSUMOS (ESENCIA, ALCOHOL, FIJADOR Y FRASCO)
+                // 🧪 DESCUENTO DE INSUMOS (Si viene por fórmula preparada)
                 // =========================================================================
-                if (f) {
-                    // A. ESENCIA (Pura o por receta)
+                if (f && !esUnidadTerminada) {
+                    // A. ESENCIA
                     const esenciaIdUsar = f.esencia_id || cleanItemId;
                     const gramosExtra = parseFloat(item.gramos_extra) || 0;
                     const gramosEsenciaBase = parseFloat(f.gramos_esencia || f.cant_esencia_gr || 0);
-                    
-                    // Si no hay gramos especificados en fórmula, estimar estándar según volumen (30ml = 10g, 60ml = 20g, 100ml = 30g)
                     const gramosEstimados = gramosEsenciaBase > 0 ? gramosEsenciaBase : (volumenML / 3);
                     const totalEsencia = (gramosEstimados + gramosExtra) * cant;
 
@@ -1816,7 +1821,7 @@ const crearVenta = async (req, res) => {
                         );
                     }
 
-                    // B. ALCOHOL (mL por receta * Cantidad de perfumes)
+                    // B. ALCOHOL
                     const mlAlcoholFormula = parseFloat(f.ml_alcohol || f.cant_alcohol_ml || (volumenML * 0.7));
                     const alcoholUnitario = item.ml_alcohol_override !== undefined && item.ml_alcohol_override !== null 
                                             ? parseFloat(item.ml_alcohol_override) 
@@ -1839,7 +1844,7 @@ const crearVenta = async (req, res) => {
                         }
                     }
 
-                    // C. FIJADOR (Gramos por receta * Cantidad de perfumes)
+                    // C. FIJADOR
                     const gramosFijadorFormula = parseFloat(f.gramos_fijador || f.cant_fijador_ml || 1.5);
                     const gramosFijadorExtra = parseFloat(item.gramos_fijador_extra) || 0;
                     const totalFijador = (gramosFijadorFormula + gramosFijadorExtra) * cant;
@@ -1859,7 +1864,7 @@ const crearVenta = async (req, res) => {
                         }
                     }
 
-                    // D. ENVASE / FRASCO (1 Unidad por perfume si no es recarga)
+                    // D. ENVASE / FRASCO
                     if (!item.es_recarga) {
                         const frascoIdUsar = f.frasco_id;
                         if (frascoIdUsar) {
@@ -1883,7 +1888,7 @@ const crearVenta = async (req, res) => {
 
                 } else {
                     // =========================================================================
-                    // 📦 VENTA DIRECTA (Si es un insumo suelto, producto terminado PT o accesorio)
+                    // 📦 VENTA DIRECTA O UNIDAD TERMINADA (-T30)
                     // =========================================================================
                     await validarYDescontarEstante(
                         client, 
@@ -1906,7 +1911,7 @@ const crearVenta = async (req, res) => {
 
         const ventaId = ventaRes.rows[0].id;
 
-        // 4. INSERTAR DETALLES
+        // 4. INSERTAR DETALLES EN LA TABLA detalle_ventas
         if (!es_externa && items && items.length > 0) {
             const values = [];
             const placeholders = items.map((item, i) => {
@@ -1941,7 +1946,7 @@ const crearVenta = async (req, res) => {
             `, [ventaId, total, total, descripcion_externa || 'Venta Externa Registrada', 'N/A']); 
         }
 
-        // 5. REGISTRAR PAGOS
+        // 5. REGISTRAR PAGOS (Solo columnas pertenecientes a la tabla 'pagos')
         if (pagos && pagos.length > 0) {
             for (const pago of pagos) {
                 await client.query(
@@ -1963,6 +1968,7 @@ const crearVenta = async (req, res) => {
         client.release();
     }
 };
+
 
 const getReportes = async (req, res) => {
     try {
