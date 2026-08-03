@@ -2049,13 +2049,13 @@ window.agregarEsenciaEnLote = function() {
     if (itemExistente) {
         itemExistente.cantidad += cantidadAAgregar;
     } else {
-        loteEsenciasPromo.push({
-            id: esenciaId,
-            nombre: esenciaNombre,
-            cantidad: cantidadAAgregar,
-            gramos_extra: gramosExtra,
-            precio_gramo_extra: precioExtra
-        });
+        loteEsenciasPromo.unshift({
+    id: esenciaId,
+    nombre: esenciaNombre,
+    cantidad: cantidadAAgregar,
+    gramos_extra: gramosExtra,
+    precio_gramo_extra: precioExtra
+});
     }
 
     promoPerfumesAgregados += cantidadAAgregar;
@@ -2103,17 +2103,18 @@ window.agregarEsenciaALotePromo = function() {
 
     // Verificar si ya existe en el lote actual para acumular o agregar nuevo
     const existeEnLote = loteEsenciasPromo.find(item => item.id === idProd);
-    if (existeEnLote) {
-        existeEnLote.cantidad += cantidad;
-    } else {
-        loteEsenciasPromo.push({
-            id: prod.id,
-            nombre: prod.nombre,
-            cantidad: cantidad,
-            gramos_extra: gExtra,
-            gramos_fijador_extra: gFijExtra
-        });
-    }
+if (existeEnLote) {
+    existeEnLote.cantidad += cantidad;
+} else {
+
+    loteEsenciasPromo.unshift({
+        id: prod.id,
+        nombre: prod.nombre,
+        cantidad: cantidad,
+        gramos_extra: gExtra,
+        gramos_fijador_extra: gFijExtra
+    });
+}
 
     // Actualizar contador total de botellas en lote
     promoPerfumesAgregados = loteEsenciasPromo.reduce((acc, item) => acc + item.cantidad, 0);
@@ -2755,14 +2756,14 @@ window.iniciarEstandarLoteUI = async function(idFormula) {
     const gFijExtra = inputExtraFijador && inputExtraFijador.value ? parseFloat(inputExtraFijador.value) : 0;
 
     if (productoPendiente) {
-        loteEsenciasPromo.push({
-            id: productoPendiente.id,
-            nombre: productoPendiente.nombre,
-            cantidad: 1,
-            gramos_extra: gExtra,
-            gramos_fijador_extra: gFijExtra // 🔥 SE GUARDA CORRECTAMENTE
-        });
-        promoPerfumesAgregados = 1;
+        loteEsenciasPromo.unshift({
+        id: productoPendiente.id,
+        nombre: productoPendiente.nombre,
+        cantidad: 1,
+        gramos_extra: gExtra,
+        gramos_fijador_extra: gFijExtra
+    });
+    promoPerfumesAgregados = 1;
     }
 
     document.getElementById('promoContadorActual').innerText = promoPerfumesAgregados;
