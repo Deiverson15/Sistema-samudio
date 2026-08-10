@@ -290,27 +290,26 @@ const exportarReporteGeneral = async (req, res) => {
                 const metodosNombres = [];
 
                 desglose.forEach(d => {
-                    const met = (d.metodo || 'OTROS').toUpperCase();
-                    const montoUSD = parseFloat(d.total_usd || d.usd || 0);
-                    
-                    if (!metodosNombres.includes(met) && montoUSD > 0) metodosNombres.push(met);
+    let m = (d.metodo || 'OTROS').toUpperCase();
+    let key = 'OTROS';
 
-                    if (metodo && metodo !== 'todos' && met.includes(metodo.toUpperCase())) {
-                        hasMethod = true;
-                    }
+    // 1. Evaluar canales reales de dinero entrante primero
+    if (m.includes('EFECTIVO USD') || m.includes('DIVISA') || m.includes('DOLAR')) key = 'EFECTIVO USD';
+    else if (m.includes('EFECTIVO BS') || m === 'EFECTIVO') key = 'EFECTIVO BS';
+    else if (m.includes('PUNTO')) key = 'PUNTO DE VENTA';
+    else if (m.includes('MOVIL') || m.includes('P. MOVIL')) key = 'PAGO MOVIL';
+    else if (m.includes('TRANS')) key = 'TRANSFERENCIA';
+    else if (m.includes('ZELLE')) key = 'ZELLE';
+    else if (m.includes('BIO') || m.includes('BIOPAGO')) key = 'BIOPAGO';
+    else if (m.includes('BINANCE')) key = 'BINANCE';
+    else if (m.includes('CXC') || m.includes('CREDITO')) key = 'CXC (CRÉDITO)';
+    // 2. Solo si no coincide con ningún canal tradicional y es estrictamente el crédito/cuotas
+    else if (m.includes('CASHEA')) key = 'CASHEA';
 
-                    if (met.includes('EFECTIVO USD') || met.includes('DIVISA') || met.includes('DOLAR')) filaData.divisas += montoUSD;
-                    else if (met.includes('EFECTIVO BS') || met === 'EFECTIVO') filaData.bs += montoUSD;
-                    else if (met.includes('PUNTO')) filaData.punto += montoUSD;
-                    else if (met.includes('MOVIL') || met.includes('P. MOVIL')) filaData.pmovil += montoUSD;
-                    else if (met.includes('TRANS')) filaData.trans += montoUSD;
-                    else if (met.includes('BIO') || met.includes('BIOPAGO')) filaData.biopago += montoUSD;
-                    else if (met.includes('ZELLE')) filaData.zelle += montoUSD;
-                    else if (met.includes('BINANCE')) filaData.binance += montoUSD;
-                    else if (met.includes('CASHEA')) filaData.cashea += montoUSD;
-                    else if (met.includes('CXC') || met.includes('CREDITO')) filaData.cxc += montoUSD;
-                    else filaData.otros += montoUSD; 
-                });
+    metodosEstandar[key].usd += parseFloat(d.total_usd || d.usd || 0);
+    metodosEstandar[key].bs += parseFloat(d.total_bs || d.bs || 0);
+    metodosEstandar[key].trx += parseInt(d.transacciones || d.cantidad_transacciones || 0);
+});
 
                 if (metodo && metodo !== 'todos' && !hasMethod && desglose.length > 0) return;
 
@@ -1606,24 +1605,27 @@ const descargarCierreExcel = async (req, res) => {
         };
 
         // Ya no lanzará error porque garantizamos que desglose sea un Array
-        desglose.forEach(d => {
-            let m = (d.metodo || 'OTROS').toUpperCase();
-            let key = 'OTROS';
-            if (m.includes('EFECTIVO USD') || m.includes('DIVISA') || m.includes('DOLAR')) key = 'EFECTIVO USD';
-            else if (m.includes('EFECTIVO BS') || m === 'EFECTIVO') key = 'EFECTIVO BS';
-            else if (m.includes('PUNTO')) key = 'PUNTO DE VENTA';
-            else if (m.includes('MOVIL') || m.includes('P. MOVIL')) key = 'PAGO MOVIL';
-            else if (m.includes('TRANS')) key = 'TRANSFERENCIA';
-            else if (m.includes('ZELLE')) key = 'ZELLE';
-            else if (m.includes('BIO') || m.includes('BIOPAGO')) key = 'BIOPAGO';
-            else if (m.includes('BINANCE')) key = 'BINANCE';
-            else if (m.includes('CASHEA')) key = 'CASHEA';
-            else if (m.includes('CXC') || m.includes('CREDITO')) key = 'CXC (CRÉDITO)';
+desglose.forEach(d => {
+    let m = (d.metodo || 'OTROS').toUpperCase();
+    let key = 'OTROS';
 
-            metodosEstandar[key].usd += parseFloat(d.total_usd || d.usd || 0);
-            metodosEstandar[key].bs += parseFloat(d.total_bs || d.bs || 0);
-            metodosEstandar[key].trx += parseInt(d.transacciones || d.cantidad_transacciones || 0);
-        });
+    // 1. Evaluar canales reales de dinero entrante primero
+    if (m.includes('EFECTIVO USD') || m.includes('DIVISA') || m.includes('DOLAR')) key = 'EFECTIVO USD';
+    else if (m.includes('EFECTIVO BS') || m === 'EFECTIVO') key = 'EFECTIVO BS';
+    else if (m.includes('PUNTO')) key = 'PUNTO DE VENTA';
+    else if (m.includes('MOVIL') || m.includes('P. MOVIL')) key = 'PAGO MOVIL';
+    else if (m.includes('TRANS')) key = 'TRANSFERENCIA';
+    else if (m.includes('ZELLE')) key = 'ZELLE';
+    else if (m.includes('BIO') || m.includes('BIOPAGO')) key = 'BIOPAGO';
+    else if (m.includes('BINANCE')) key = 'BINANCE';
+    else if (m.includes('CXC') || m.includes('CREDITO')) key = 'CXC (CRÉDITO)';
+    // 2. Solo si no coincide con ningún canal tradicional y es estrictamente el crédito/cuotas
+    else if (m.includes('CASHEA')) key = 'CASHEA';
+
+    metodosEstandar[key].usd += parseFloat(d.total_usd || d.usd || 0);
+    metodosEstandar[key].bs += parseFloat(d.total_bs || d.bs || 0);
+    metodosEstandar[key].trx += parseInt(d.transacciones || d.cantidad_transacciones || 0);
+});
 
         const rowHead = sheet.addRow(['MÉTODO DE PAGO', 'CANT. OPERACIONES', 'TOTAL INGRESOS (USD)', 'TOTAL INGRESOS (BS)']);
         rowHead.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };

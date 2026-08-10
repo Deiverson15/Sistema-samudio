@@ -251,50 +251,52 @@
 
                 <!-- Grid Agrupado de Botones de Pago Reales -->
                 <div class="space-y-4 mb-4">
-                    <!-- Grupo Divisas -->
-                    <div>
-                        <span class="block text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-2">Formas de Pago USD</span>
-                        <div class="grid grid-cols-3 gap-2">
-                            <button onclick="agregarPago('Efectivo USD')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-dollar-sign text-emerald-600"></i> Efec. USD
-                            </button>
-                            <button onclick="agregarPago('Zelle')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-bolt text-purple-600"></i> Zelle
-                            </button>
-                            <button onclick="agregarPago('Binance')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-coins text-amber-500"></i> Binance
-                            </button>
-                        </div>
-                    </div>
+    <!-- Grupo Divisas -->
+    <div>
+        <span class="block text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-2">Formas de Pago USD</span>
+        <div class="grid grid-cols-3 gap-2">
+            <button onclick="agregarPago('Efectivo USD')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                <i class="fa-solid fa-dollar-sign text-emerald-600"></i> Efec. USD
+            </button>
+            <button onclick="agregarPago('Zelle')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                <i class="fa-solid fa-bolt text-purple-600"></i> Zelle
+            </button>
+            <button onclick="agregarPago('Binance')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                <i class="fa-solid fa-coins text-amber-500"></i> Binance
+            </button>
+        </div>
+    </div>
 
-                    <!-- Grupo Bolívares -->
-                    <div>
-                        <span class="block text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-2">Formas de Pago Bolívares</span>
-                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                            <button onclick="agregarPago('Efectivo Bs')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-money-bill-wave text-blue-600"></i> Efec. Bs
-                            </button>
-                            <button onclick="agregarPago('P. Movil')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-mobile-screen text-indigo-600"></i> P. Móvil
-                            </button>
-                            <button onclick="agregarPago('Punto')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-credit-card text-slate-600"></i> Punto
-                            </button>
-                            <button onclick="agregarPago('Transferencia')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-building-columns text-teal-600"></i> Transf. Bs
-                            </button>
-                            <button onclick="agregarPago('Bio Pago')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2 col-span-2 sm:col-span-2 md:col-span-2 lg:col-span-2">
-                                <i class="fa-solid fa-fingerprint text-red-600"></i> Bio Pago
-                            </button>
-                            <div class="mt-4">
-    <span class="block text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-2">Financiamiento</span>
-    <button onclick="abrirModalCashea()" type="button" class="w-full p-3 border border-amber-500 bg-amber-50 hover:bg-amber-950 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest text-amber-700 rounded-none flex items-center justify-center gap-2">
-        <i class="fa-solid fa-mobile-retro text-amber-600"></i> Cashea (Cobro Inicial + Cuotas)
-    </button>
+    <!-- Grupo Bolívares -->
+    <div>
+        <span class="block text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-2">Formas de Pago Bolívares</span>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            <button onclick="agregarPago('Efectivo Bs')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                <i class="fa-solid fa-money-bill-wave text-blue-600"></i> Efec. Bs
+            </button>
+            <button onclick="agregarPago('P. Movil')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                <i class="fa-solid fa-mobile-screen text-indigo-600"></i> P. Móvil
+            </button>
+            <button onclick="agregarPago('Punto')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                <i class="fa-solid fa-credit-card text-slate-600"></i> Punto
+            </button>
+            <button onclick="agregarPago('Transferencia')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2">
+                <i class="fa-solid fa-building-columns text-teal-600"></i> Transf. Bs
+            </button>
+            <button onclick="agregarPago('Bio Pago')" type="button" class="p-3 border border-neutral-300 bg-white hover:bg-neutral-950 hover:text-white transition-colors text-[9px] font-black uppercase tracking-widest text-neutral-600 rounded-none flex items-center justify-center gap-2 col-span-2 sm:col-span-1 md:col-span-2 lg:col-span-1">
+                <i class="fa-solid fa-fingerprint text-red-600"></i> Bio Pago
+            </button>
+        </div>
+    </div>
+
+    <!-- Grupo Financiamiento (Separado independientemente) -->
+    <div>
+        <span class="block text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-2">Financiamiento</span>
+        <button onclick="abrirModalCashea()" type="button" class="w-full p-3 border border-amber-500 bg-amber-50 hover:bg-amber-950 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest text-amber-700 rounded-none flex items-center justify-center gap-2">
+            <i class="fa-solid fa-mobile-retro text-amber-600"></i> Cashea (Cobro Inicial + Cuotas)
+        </button>
+    </div>
 </div>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <!-- COLUMNA DERECHA: RESUMEN DE COMPRA Y ASIENTOS -->

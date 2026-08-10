@@ -3689,15 +3689,36 @@ window.seleccionarPorcentajeInicial = function(pct) {
 window.seleccionarMetodoInicialCashea = function(metodo) {
     metodoInicialCasheaSeleccionado = metodo;
 
-    document.querySelectorAll('.btn-metodo-inicial').forEach(btn => {
+    // 1. Mapeo de equivalencias para garantizar que cualquier variación de texto encuentre el botón correcto
+    const mapaMetodos = {
+        'EFECTIVO USD': 'EFEC. USD',
+        'EFECTIVO BS': 'EFEC. BS',
+        'PAGO MÓVIL': 'P. MÓVIL',
+        'PAGO MOVIL': 'P. MÓVIL',
+        'P. MÓVIL': 'P. MÓVIL',
+        'PUNTO': 'PUNTO',
+        'ZELLE': 'ZELLE',
+        'BINANCE': 'BINANCE',
+        'TRANSFERENCIA': 'TRANSF. BS',
+        'BIO PAGO': 'BIO PAGO',
+        'BIOPAGO': 'BIO PAGO'
+    };
+
+    const textoBuscado = mapaMetodos[metodo.toUpperCase()] || metodo.toUpperCase();
+    const botones = document.querySelectorAll('.btn-metodo-inicial');
+
+    // 2. Resetear el estado visual de TODOS los botones de la inicial
+    botones.forEach(btn => {
         btn.classList.remove('bg-neutral-950', 'text-white', 'border-neutral-950');
         btn.classList.add('bg-white', 'text-neutral-600', 'border-neutral-300');
     });
 
-    // Resaltar botón seleccionado
-    const botones = document.querySelectorAll('.btn-metodo-inicial');
+    // 3. Activar únicamente el botón seleccionado comparando el texto limpio
     botones.forEach(btn => {
-        if (btn.innerText.toUpperCase().includes(metodo.toUpperCase())) {
+        // Limpiamos saltos de línea y espacios extra del texto del botón
+        const textoBoton = btn.innerText.replace(/\s+/g, ' ').trim().toUpperCase();
+
+        if (textoBoton.includes(textoBuscado) || textoBuscado.includes(textoBoton)) {
             btn.classList.remove('bg-white', 'text-neutral-600', 'border-neutral-300');
             btn.classList.add('bg-neutral-950', 'text-white', 'border-neutral-950');
         }
@@ -3705,46 +3726,82 @@ window.seleccionarMetodoInicialCashea = function(metodo) {
 };
 
 window.confirmarPagoCashea = function() {
-    const refInicial = document.getElementById('refInicialCashea').value.trim();
+    const refInicialInput = document.getElementById('refInicialCashea');
+    const refInicial = refInicialInput ? refInicialInput.value.trim() : '';
 
-    if (!refInicial) {
-        return Swal.fire('Atención', 'Ingresa la referencia o aprobación de Cashea.', 'warning');
+    // 1. Clasificación estricta de métodos que REQUIEREN número de referencia obligatoria
+    const metodosConReferenciaObligatoria = [
+        'PAGO MÓVIL', 
+        'P. MÓVIL', 
+        'TRANSFERENCIA', 
+        'ZELLE'
+    ];
+
+    const metodoUpper = metodoInicialCasheaSeleccionado.toUpperCase();
+    const requiereReferencia = metodosConReferenciaObligatoria.some(m => metodoUpper.includes(m));
+
+    // 2. Validar referencia SOLO si el método seleccionado la necesita
+    if (requiereReferencia && !refInicial) {
+        return Swal.fire({
+            icon: 'warning',
+            title: 'Referencia Requerida',
+            text: `El método ${metodoInicialCasheaSeleccionado} requiere ingresar el número de referencia o aprobación.`,
+            confirmButtonColor: '#0a0a0a'
+        });
     }
 
+    // Validación de formato para Pago Móvil (8 dígitos)
+    if (metodoUpper.includes('MÓVIL') || metodoUpper.includes('MOVIL')) {
+        if (!/^\d{8}$/.test(refInicial)) {
+            return Swal.fire({
+                icon: 'error',
+                title: 'Referencia Inválida',
+                text: 'La referencia para Pago Móvil debe tener exactamente 8 dígitos numéricos.',
+                confirmButtonColor: '#0a0a0a'
+            });
+        }
+    }
+
+    // 3. Cálculos de montos y financiamiento
     const totalVentaUSD = carrito.reduce((acc, i) => acc + (i.precio * i.cantidad), 0);
     const montoInicialUSD = totalVentaUSD * (pctInicialCashea / 100);
     const montoFinanciadoUSD = totalVentaUSD - montoInicialUSD;
 
-    // Determinar la moneda
-    const metodosBs = ['Efectivo Bs', 'Pago Móvil', 'P. Móvil', 'Punto', 'Bio Pago', 'Transferencia'];
-    const esBs = metodosBs.includes(metodoInicialCasheaSeleccionado);
+    // Determinar moneda del pago inicial
+    const metodosBs = ['EFECTIVO BS', 'PAGO MÓVIL', 'P. MÓVIL', 'PUNTO', 'BIO PAGO', 'TRANSFERENCIA'];
+    const esBs = metodosBs.some(m => metodoUpper.includes(m));
     const montoInicialRegistrar = esBs ? (montoInicialUSD * tasaCambio) : montoInicialUSD;
 
-    // 1. Pago de la Inicial Real
+    // Asignar referencia limpia según la entrada
+    const refFinalPagoInicial = refInicial !== '' ? refInicial : 'S/N';
+
+    // 4. Registro del Pago 1 (Inicial Limpia para que el reporte no la confunda con Cashea pura)
     pagosRealizados.push({
-        metodo: `${metodoInicialCasheaSeleccionado.toUpperCase()} (INICIAL CASHEA ${pctInicialCashea}%)`,
+        metodo: metodoInicialCasheaSeleccionado.toUpperCase(),
         moneda: esBs ? 'BS' : 'USD',
         monto: parseFloat(montoInicialRegistrar.toFixed(2)),
         tasa: tasaCambio,
-        referencia: refInicial
+        referencia: `INICIAL CASHEA (${pctInicialCashea}%) - Ref: ${refFinalPagoInicial}`
     });
 
-    // 2. Registro del Crédito Cashea (Total 100% de la venta asegurado)
+    // 5. Registro del Pago 2 (Monto financiado por Cashea)
     pagosRealizados.push({
-        metodo: 'CASHEA (CUOTAS)',
+        metodo: 'CASHEA',
         moneda: 'USD',
         monto: parseFloat(montoFinanciadoUSD.toFixed(2)),
         tasa: tasaCambio,
-        referencia: `CASHEA-${refInicial}`
+        referencia: `CUOTAS CASHEA - Ref: ${refFinalPagoInicial}`
     });
 
+    // 6. Limpieza y refresco de interfaz
+    if (refInicialInput) refInicialInput.value = '';
     cerrarModalCashea();
     actualizarResumenCobro();
 
     Swal.fire({
         icon: 'success',
-        title: 'Cashea Aplicado',
-        text: `Inicial del ${pctInicialCashea}% registrada con ${metodoInicialCasheaSeleccionado}. Venta completada para facturar.`,
+        title: 'Cashea Procesado',
+        text: `Inicial (${pctInicialCashea}%) asentada con ${metodoInicialCasheaSeleccionado}. Saldo restante enviado a financiamiento Cashea.`,
         timer: 2000,
         showConfirmButton: false
     });
