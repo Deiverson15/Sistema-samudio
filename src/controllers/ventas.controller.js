@@ -1233,12 +1233,8 @@ const descontarEstante = async (client, productoId, cantidad) => {
 const previsualizarCierre = async (req, res) => {
     try {
         const { fecha } = req.query; 
-        
         const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;
-        const rolUsuario = req.user && req.user.rol ? req.user.rol.toLowerCase().trim() : '';
-        const esUsuarioMaestro = rolUsuario === 'developer' || rolUsuario === 'dev';
 
-        // Modificamos el check inicial para que busque el arqueo de esta sucursal específica
         const checkQuery = fecha 
             ? "SELECT id FROM cierres_caja WHERE DATE(fecha_cierre) = $1::date AND detalles_json->>'tienda_origen' = $2"
             : "SELECT id FROM cierres_caja WHERE DATE(fecha_cierre) = CURRENT_DATE AND detalles_json->>'tienda_origen' = $1";
@@ -1255,9 +1251,10 @@ const previsualizarCierre = async (req, res) => {
                 });
             }
 
-            // 🔥 CORRECCIÓN: Filtramos las ventas estrictamente por la tienda del operador
-            let whereFecha = fecha ? "1=1" : "DATE(v.fecha) = CURRENT_DATE";
+            let whereFecha = fecha ? "DATE(v.fecha) = $1::date" : "DATE(v.fecha) = CURRENT_DATE";
             whereFecha += ` AND v.tienda_id = ${idTiendaLocal}`;
+
+            const paramsQuery = fecha ? [fecha] : [];
 
             const queryRaw = `
                 SELECT p.metodo, p.moneda, COALESCE(p.monto::numeric, 0) as monto, 
@@ -1272,7 +1269,7 @@ const previsualizarCierre = async (req, res) => {
                   )
             `;
             
-            const resRaw = await client.query(queryRaw);
+            const resRaw = await client.query(queryRaw, paramsQuery);
             
             if (resRaw.rows.length === 0) {
                 return res.json({
@@ -1307,13 +1304,38 @@ const previsualizarCierre = async (req, res) => {
                 granTotalUSD += montoUsdConvertido;
                 granTotalBs += montoBsConvertido;
 
-                const metodo = row.metodo || 'Otros';
-                if (!resumenMap[metodo]) {
-                    resumenMap[metodo] = { metodo, transacciones: 0, total_usd: 0, total_bs: 0 };
+                // Estandarización de método de pago
+                let metodo = (row.metodo || 'Otros').trim();
+                const mUpper = metodo.toUpperCase();
+
+                if (mUpper.includes('MOVIL') || mUpper.includes('MÓVIL')) metodo = 'PAGO MOVIL';
+                else if (mUpper.includes('PUNTO')) metodo = 'PUNTO';
+                else if (mUpper.includes('CASHEA')) metodo = 'CASHEA';
+                else if (mUpper.includes('EFECTIVO BS') || mUpper.includes('EFEC. BS')) metodo = 'Efectivo Bs';
+                else if (mUpper.includes('EFECTIVO USD') || mUpper.includes('EFEC. USD')) metodo = 'Efectivo USD';
+
+                // Clave única por combinación Método + Moneda
+                const key = `${metodo}_${moneda}`;
+
+                if (!resumenMap[key]) {
+                    resumenMap[key] = { 
+                        metodo: metodo, 
+                        moneda: moneda, // Inclusión explícita de la moneda para evitar null en JSON
+                        transacciones: 0, 
+                        total_usd: 0, 
+                        total_bs: 0 
+                    };
                 }
-                resumenMap[metodo].transacciones += 1;
-                resumenMap[metodo].total_usd += montoUsdConvertido;
-                resumenMap[metodo].total_bs += montoBsConvertido;
+
+                resumenMap[key].transacciones += 1;
+                resumenMap[key].total_usd += montoUsdConvertido;
+                resumenMap[key].total_bs += montoBsConvertido;
+            });
+
+            // Redondeo de totales
+            Object.values(resumenMap).forEach(item => {
+                item.total_usd = Math.round((item.total_usd + Number.EPSILON) * 100) / 100;
+                item.total_bs = Math.round((item.total_bs + Number.EPSILON) * 100) / 100;
             });
 
             const queryDetalle = `
@@ -1330,7 +1352,7 @@ const previsualizarCierre = async (req, res) => {
                   )
                 ORDER BY v.fecha DESC
             `;
-            const resDetalles = await client.query(queryDetalle);
+            const resDetalles = await client.query(queryDetalle, paramsQuery);
 
             const historialLimpio = resDetalles.rows.map(d => {
                 const monto = parseFloat(d.monto);

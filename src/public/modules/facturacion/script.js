@@ -3729,19 +3729,12 @@ window.confirmarPagoCashea = function() {
     const refInicialInput = document.getElementById('refInicialCashea');
     const refInicial = refInicialInput ? refInicialInput.value.trim() : '';
 
-    // 1. Clasificación estricta de métodos que REQUIEREN número de referencia obligatoria
-    const metodosConReferenciaObligatoria = [
-        'PAGO MÓVIL', 
-        'P. MÓVIL', 
-        'TRANSFERENCIA', 
-        'ZELLE'
-    ];
+    // Métodos que requieren referencia numérica obligatoria
+    const metodosConRefObligatoria = ['PAGO MÓVIL', 'P. MÓVIL', 'PAGO MOVIL', 'TRANSFERENCIA', 'ZELLE'];
+    const mUpperInicial = metodoInicialCasheaSeleccionado.toUpperCase();
+    const requiereRef = metodosConRefObligatoria.some(m => mUpperInicial.includes(m));
 
-    const metodoUpper = metodoInicialCasheaSeleccionado.toUpperCase();
-    const requiereReferencia = metodosConReferenciaObligatoria.some(m => metodoUpper.includes(m));
-
-    // 2. Validar referencia SOLO si el método seleccionado la necesita
-    if (requiereReferencia && !refInicial) {
+    if (requiereRef && !refInicial) {
         return Swal.fire({
             icon: 'warning',
             title: 'Referencia Requerida',
@@ -3750,50 +3743,45 @@ window.confirmarPagoCashea = function() {
         });
     }
 
-    // Validación de formato para Pago Móvil (8 dígitos)
-    if (metodoUpper.includes('MÓVIL') || metodoUpper.includes('MOVIL')) {
-        if (!/^\d{8}$/.test(refInicial)) {
-            return Swal.fire({
-                icon: 'error',
-                title: 'Referencia Inválida',
-                text: 'La referencia para Pago Móvil debe tener exactamente 8 dígitos numéricos.',
-                confirmButtonColor: '#0a0a0a'
-            });
-        }
-    }
+    // Normalización estricta del nombre del método para la base de datos
+    let metodoLimpio = 'PAGO MOVIL';
+    if (mUpperInicial.includes('MOVIL') || mUpperInicial.includes('MÓVIL')) metodoLimpio = 'PAGO MOVIL';
+    else if (mUpperInicial.includes('PUNTO')) metodoLimpio = 'PUNTO';
+    else if (mUpperInicial.includes('EFECTIVO BS') || mUpperInicial.includes('EFEC. BS')) metodoLimpio = 'Efectivo Bs';
+    else if (mUpperInicial.includes('EFECTIVO USD') || mUpperInicial.includes('EFEC. USD')) metodoLimpio = 'Efectivo USD';
+    else if (mUpperInicial.includes('ZELLE')) metodoLimpio = 'ZELLE';
+    else if (mUpperInicial.includes('BINANCE')) metodoLimpio = 'BINANCE';
+    else if (mUpperInicial.includes('TRANS')) metodoLimpio = 'TRANSFERENCIA';
+    else if (mUpperInicial.includes('BIO')) metodoLimpio = 'BIO PAGO';
 
-    // 3. Cálculos de montos y financiamiento
     const totalVentaUSD = carrito.reduce((acc, i) => acc + (i.precio * i.cantidad), 0);
     const montoInicialUSD = totalVentaUSD * (pctInicialCashea / 100);
     const montoFinanciadoUSD = totalVentaUSD - montoInicialUSD;
 
-    // Determinar moneda del pago inicial
-    const metodosBs = ['EFECTIVO BS', 'PAGO MÓVIL', 'P. MÓVIL', 'PUNTO', 'BIO PAGO', 'TRANSFERENCIA'];
-    const esBs = metodosBs.some(m => metodoUpper.includes(m));
+    const metodosBs = ['Efectivo Bs', 'Pago Móvil', 'P. Móvil', 'Punto', 'Bio Pago', 'Transferencia'];
+    const esBs = metodosBs.some(m => mUpperInicial.includes(m.toUpperCase()));
     const montoInicialRegistrar = esBs ? (montoInicialUSD * tasaCambio) : montoInicialUSD;
 
-    // Asignar referencia limpia según la entrada
-    const refFinalPagoInicial = refInicial !== '' ? refInicial : 'S/N';
+    const refTexto = refInicial ? `Ref: ${refInicial}` : 'S/N';
 
-    // 4. Registro del Pago 1 (Inicial Limpia para que el reporte no la confunda con Cashea pura)
+    // 1. Pago de la Inicial Real (Método banco limpio)
     pagosRealizados.push({
-        metodo: metodoInicialCasheaSeleccionado.toUpperCase(),
+        metodo: metodoLimpio,
         moneda: esBs ? 'BS' : 'USD',
         monto: parseFloat(montoInicialRegistrar.toFixed(2)),
         tasa: tasaCambio,
-        referencia: `INICIAL CASHEA (${pctInicialCashea}%) - Ref: ${refFinalPagoInicial}`
+        referencia: `INICIAL CASHEA (${pctInicialCashea}%) - ${refTexto}`
     });
 
-    // 5. Registro del Pago 2 (Monto financiado por Cashea)
+    // 2. Registro del Crédito Cashea
     pagosRealizados.push({
         metodo: 'CASHEA',
         moneda: 'USD',
         monto: parseFloat(montoFinanciadoUSD.toFixed(2)),
         tasa: tasaCambio,
-        referencia: `CUOTAS CASHEA - Ref: ${refFinalPagoInicial}`
+        referencia: `CUOTAS CASHEA - ${refTexto}`
     });
 
-    // 6. Limpieza y refresco de interfaz
     if (refInicialInput) refInicialInput.value = '';
     cerrarModalCashea();
     actualizarResumenCobro();
@@ -3801,7 +3789,7 @@ window.confirmarPagoCashea = function() {
     Swal.fire({
         icon: 'success',
         title: 'Cashea Procesado',
-        text: `Inicial (${pctInicialCashea}%) asentada con ${metodoInicialCasheaSeleccionado}. Saldo restante enviado a financiamiento Cashea.`,
+        text: `Inicial (${pctInicialCashea}%) asentada con ${metodoLimpio}. Saldo restante enviado a Cashea.`,
         timer: 2000,
         showConfirmButton: false
     });
