@@ -289,26 +289,32 @@ const exportarReporteGeneral = async (req, res) => {
                 const filaData = { divisas: 0, bs: 0, punto: 0, trans: 0, pmovil: 0, cashea: 0, zelle: 0, biopago: 0, binance: 0, cxc: 0, otros: 0 };
                 const metodosNombres = [];
 
-                desglose.forEach(d => {
+            desglose.forEach(d => {
     let m = (d.metodo || 'OTROS').toUpperCase();
-    let key = 'OTROS';
+    let usd = parseFloat(d.total_usd || d.usd || 0);
 
-    // 1. Evaluar canales reales de dinero entrante primero
-    if (m.includes('EFECTIVO USD') || m.includes('DIVISA') || m.includes('DOLAR')) key = 'EFECTIVO USD';
-    else if (m.includes('EFECTIVO BS') || m === 'EFECTIVO') key = 'EFECTIVO BS';
-    else if (m.includes('PUNTO')) key = 'PUNTO DE VENTA';
-    else if (m.includes('MOVIL') || m.includes('P. MOVIL')) key = 'PAGO MOVIL';
-    else if (m.includes('TRANS')) key = 'TRANSFERENCIA';
-    else if (m.includes('ZELLE')) key = 'ZELLE';
-    else if (m.includes('BIO') || m.includes('BIOPAGO')) key = 'BIOPAGO';
-    else if (m.includes('BINANCE')) key = 'BINANCE';
-    else if (m.includes('CXC') || m.includes('CREDITO')) key = 'CXC (CRÉDITO)';
-    // 2. Solo si no coincide con ningún canal tradicional y es estrictamente el crédito/cuotas
-    else if (m.includes('CASHEA')) key = 'CASHEA';
+    // Mapeo directo a las propiedades de 'filaData'
+    if (m.includes('EFECTIVO USD') || m.includes('DIVISA') || m.includes('DOLAR')) filaData.divisas += usd;
+    else if (m.includes('EFECTIVO BS') || m === 'EFECTIVO') filaData.bs += usd;
+    else if (m.includes('PUNTO')) filaData.punto += usd;
+    else if (m.includes('MOVIL') || m.includes('P. MOVIL')) filaData.pmovil += usd;
+    else if (m.includes('TRANS')) filaData.trans += usd;
+    else if (m.includes('ZELLE')) filaData.zelle += usd;
+    else if (m.includes('BIO') || m.includes('BIOPAGO')) filaData.biopago += usd;
+    else if (m.includes('BINANCE')) filaData.binance += usd;
+    else if (m.includes('CXC') || m.includes('CREDITO')) filaData.cxc += usd;
+    else if (m.includes('CASHEA')) filaData.cashea += usd;
+    else filaData.otros += usd;
 
-    metodosEstandar[key].usd += parseFloat(d.total_usd || d.usd || 0);
-    metodosEstandar[key].bs += parseFloat(d.total_bs || d.bs || 0);
-    metodosEstandar[key].trx += parseInt(d.transacciones || d.cantidad_transacciones || 0);
+    // Registrar nombres de métodos para la columna 'MÉTODOS USADOS'
+    if (!metodosNombres.includes(m)) {
+        metodosNombres.push(m);
+    }
+    
+    // Validación para el filtro por método específico
+    if (metodo && metodo !== 'todos' && m.includes(metodo.toUpperCase())) {
+        hasMethod = true;
+    }
 });
 
                 if (metodo && metodo !== 'todos' && !hasMethod && desglose.length > 0) return;
