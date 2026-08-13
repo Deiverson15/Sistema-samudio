@@ -773,14 +773,21 @@ function recalcularPreciosDinamicos() {
             colorBadge = 'bg-purple-100 text-purple-700 border-purple-200';
         }
 
-        // --- D. ADICIONALES (GRAMOS EXTRA DE ESENCIA) ---
+        // --- D. ADICIONALES (GRAMOS EXTRA DE ESENCIA Y FIJADOR) ---
         let costoGramosExtra = 0;
+        let costoFijadorExtra = 0;
+        
         if (item.gramos_extra && item.precio_gramo_extra) {
             costoGramosExtra = parseFloat(item.gramos_extra) * parseFloat(item.precio_gramo_extra);
         }
+        
+        // 🔥 AÑADIR CÁLCULO DEL FIJADOR
+        if (item.gramos_fijador_extra && item.precio_fijador_extra) {
+            costoFijadorExtra = parseFloat(item.gramos_fijador_extra) * parseFloat(item.precio_fijador_extra);
+        }
 
-        // Asignación final al objeto del carrito
-        item.precio = precioBase + costoGramosExtra;
+        // Asignación final al objeto del carrito sumando ambos extras
+        item.precio = precioBase + costoGramosExtra + costoFijadorExtra;
         item.tipoPrecio = etiqueta;
         item.badgeColor = colorBadge;
     });
@@ -1543,6 +1550,7 @@ window.finalizarVentaBackend = async function(confirmacionAlmacen = false) {
             formula_id: i.formula_id ? parseInt(i.formula_id, 10) : null,
             descripcion: i.nombre ? i.nombre.toUpperCase() : 'PRODUCTO FRAGANZA',
             gramos_extra: parseFloat(i.gramos_extra || 0),
+            gramos_fijador_extra: parseFloat(i.gramos_fijador_extra || 0), // 🔥 INYECCIÓN OBLIGATORIA DEL FIJADOR
             ml_alcohol_override: i.ml_alcohol_override !== undefined ? parseFloat(i.ml_alcohol_override) : null,
             es_recarga: i.es_recarga || false,
             es_pt: i.es_pt || false
@@ -2556,18 +2564,20 @@ window.seleccionarFormula = async (idFormula, esPromo = false) => {
     const catProd = (productoPendiente.categoria || '').toUpperCase();
     const esInsumoDirecto = modoVista === 'insumos' || catProd.includes('PERFUME') || catProd.includes('INSUMO');
 
+    // 🔥 AQUÍ ESTÁ LA CORRECCIÓN: Inyección de los precios unitarios de la BD al objeto del carrito
     carrito.push({
         id: productoPendiente.id, 
         unique_id: `${productoPendiente.id}_F${idFormula}_INS_${Date.now()}`, 
         nombre: nombreFactura, 
         precio: precioFinalUnitario, 
         cantidad: 1, 
-        // 🔥 Si es insumo o P.T., no se vincula a fórmula para descontar sólo la unidad física
         formula_id: esInsumoDirecto ? null : idFormula, 
         es_recarga: modoRecargaActual,
         es_pt: false,
         gramos_extra: esInsumoDirecto ? 0 : gramosExtra,
         gramos_fijador_extra: esInsumoDirecto ? 0 : gramosFijadorExtra, 
+        precio_gramo_extra: precioGramoExtraDB,     // <--- AÑADIDO
+        precio_fijador_extra: precioFijadorExtraDB, // <--- AÑADIDO
         ml_alcohol_override: mlAlcoholTotal,
         monedaElegida: monedaElegida,
         isLocked: monedaElegida === 'BS'
@@ -3729,12 +3739,19 @@ window.confirmarPagoCashea = function() {
     const refInicialInput = document.getElementById('refInicialCashea');
     const refInicial = refInicialInput ? refInicialInput.value.trim() : '';
 
-    // Métodos que requieren referencia numérica obligatoria
-    const metodosConRefObligatoria = ['PAGO MÓVIL', 'P. MÓVIL', 'PAGO MOVIL', 'TRANSFERENCIA', 'ZELLE'];
-    const mUpperInicial = metodoInicialCasheaSeleccionado.toUpperCase();
-    const requiereRef = metodosConRefObligatoria.some(m => mUpperInicial.includes(m));
+    // 1. Clasificación estricta de métodos que REQUIEREN número de referencia obligatoria
+    const metodosConReferenciaObligatoria = [
+        'PAGO MÓVIL', 
+        'P. MÓVIL', 
+        'TRANSFERENCIA', 
+        'ZELLE'
+    ];
 
-    if (requiereRef && !refInicial) {
+    const metodoUpper = metodoInicialCasheaSeleccionado.toUpperCase();
+    const requiereReferencia = metodosConReferenciaObligatoria.some(m => metodoUpper.includes(m));
+
+    // 2. Validar referencia SOLO si el método seleccionado la necesita
+    if (requiereReferencia && !refInicial) {
         return Swal.fire({
             icon: 'warning',
             title: 'Referencia Requerida',
@@ -3743,45 +3760,50 @@ window.confirmarPagoCashea = function() {
         });
     }
 
-    // Normalización estricta del nombre del método para la base de datos
-    let metodoLimpio = 'PAGO MOVIL';
-    if (mUpperInicial.includes('MOVIL') || mUpperInicial.includes('MÓVIL')) metodoLimpio = 'PAGO MOVIL';
-    else if (mUpperInicial.includes('PUNTO')) metodoLimpio = 'PUNTO';
-    else if (mUpperInicial.includes('EFECTIVO BS') || mUpperInicial.includes('EFEC. BS')) metodoLimpio = 'Efectivo Bs';
-    else if (mUpperInicial.includes('EFECTIVO USD') || mUpperInicial.includes('EFEC. USD')) metodoLimpio = 'Efectivo USD';
-    else if (mUpperInicial.includes('ZELLE')) metodoLimpio = 'ZELLE';
-    else if (mUpperInicial.includes('BINANCE')) metodoLimpio = 'BINANCE';
-    else if (mUpperInicial.includes('TRANS')) metodoLimpio = 'TRANSFERENCIA';
-    else if (mUpperInicial.includes('BIO')) metodoLimpio = 'BIO PAGO';
+    // Validación de formato para Pago Móvil (8 dígitos)
+    if (metodoUpper.includes('MÓVIL') || metodoUpper.includes('MOVIL')) {
+        if (!/^\d{8}$/.test(refInicial)) {
+            return Swal.fire({
+                icon: 'error',
+                title: 'Referencia Inválida',
+                text: 'La referencia para Pago Móvil debe tener exactamente 8 dígitos numéricos.',
+                confirmButtonColor: '#0a0a0a'
+            });
+        }
+    }
 
+    // 3. Cálculos de montos y financiamiento
     const totalVentaUSD = carrito.reduce((acc, i) => acc + (i.precio * i.cantidad), 0);
     const montoInicialUSD = totalVentaUSD * (pctInicialCashea / 100);
     const montoFinanciadoUSD = totalVentaUSD - montoInicialUSD;
 
-    const metodosBs = ['Efectivo Bs', 'Pago Móvil', 'P. Móvil', 'Punto', 'Bio Pago', 'Transferencia'];
-    const esBs = metodosBs.some(m => mUpperInicial.includes(m.toUpperCase()));
+    // Determinar moneda del pago inicial
+    const metodosBs = ['EFECTIVO BS', 'PAGO MÓVIL', 'P. MÓVIL', 'PUNTO', 'BIO PAGO', 'TRANSFERENCIA'];
+    const esBs = metodosBs.some(m => metodoUpper.includes(m));
     const montoInicialRegistrar = esBs ? (montoInicialUSD * tasaCambio) : montoInicialUSD;
 
-    const refTexto = refInicial ? `Ref: ${refInicial}` : 'S/N';
+    // Asignar referencia limpia según la entrada
+    const refFinalPagoInicial = refInicial !== '' ? refInicial : 'S/N';
 
-    // 1. Pago de la Inicial Real (Método banco limpio)
+    // 4. Registro del Pago 1 (Inicial Limpia para que el reporte no la confunda con Cashea pura)
     pagosRealizados.push({
-        metodo: metodoLimpio,
+        metodo: metodoInicialCasheaSeleccionado.toUpperCase(),
         moneda: esBs ? 'BS' : 'USD',
         monto: parseFloat(montoInicialRegistrar.toFixed(2)),
         tasa: tasaCambio,
-        referencia: `INICIAL CASHEA (${pctInicialCashea}%) - ${refTexto}`
+        referencia: `INICIAL CASHEA (${pctInicialCashea}%) - Ref: ${refFinalPagoInicial}`
     });
 
-    // 2. Registro del Crédito Cashea
+    // 5. Registro del Pago 2 (Monto financiado por Cashea)
     pagosRealizados.push({
         metodo: 'CASHEA',
         moneda: 'USD',
         monto: parseFloat(montoFinanciadoUSD.toFixed(2)),
         tasa: tasaCambio,
-        referencia: `CUOTAS CASHEA - ${refTexto}`
+        referencia: `CUOTAS CASHEA - Ref: ${refFinalPagoInicial}`
     });
 
+    // 6. Limpieza y refresco de interfaz
     if (refInicialInput) refInicialInput.value = '';
     cerrarModalCashea();
     actualizarResumenCobro();
@@ -3789,7 +3811,7 @@ window.confirmarPagoCashea = function() {
     Swal.fire({
         icon: 'success',
         title: 'Cashea Procesado',
-        text: `Inicial (${pctInicialCashea}%) asentada con ${metodoLimpio}. Saldo restante enviado a Cashea.`,
+        text: `Inicial (${pctInicialCashea}%) asentada con ${metodoInicialCasheaSeleccionado}. Saldo restante enviado a financiamiento Cashea.`,
         timer: 2000,
         showConfirmButton: false
     });

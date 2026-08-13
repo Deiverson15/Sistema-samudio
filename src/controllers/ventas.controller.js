@@ -501,7 +501,7 @@ const exportarReporteGeneral = async (req, res) => {
         }
 
        // =========================================================
-        // REPORTE C: VENTAS CONSOLIDADAS POR TIENDA (FÓRMULAS DINÁMICAS SÍN ERROR)
+        // REPORTE C: VENTAS CONSOLIDADAS POR TIENDA (CON SEPARACIÓN Y COSTOS DE EXTRAS)
         // =========================================================
         if (filtro === 'tiendas') {
             const sheet = workbook.addWorksheet('Consolidado Tiendas');
@@ -527,11 +527,33 @@ const exportarReporteGeneral = async (req, res) => {
             rowCostosValores.getCell(4).numFmt = '"$"#,##0.00';
 
             // Coordenadas absolutas EXACTAS donde están los números puros
-            const refCosto30 = '$B$7';  // Celda B7 = 0.69
-            const refCosto60 = '$C$7';  // Celda C7 = 1.19
-            const refCosto100 = '$D$7'; // Celda D7 = 2.08
+            const refCosto30 = '$B$7';  
+            const refCosto60 = '$C$7';  
+            const refCosto100 = '$D$7'; 
 
             sheet.addRow([]); // Fila 8 espaciadora
+
+            // 🔥 3. NUEVO: OBTENER EL COSTO DEL KILO DE ESENCIA Y FIJADOR PARA CALCULAR EL COSTO DEL GRAMO EXTRA
+            const resCostosDB = await client.query(`
+                SELECT codigo, categoria, costo FROM productos
+                WHERE (codigo IN ('FIJADOR') OR categoria ILIKE '%esencia%')
+                AND activo = true AND tienda_id = $1
+            `, [idTiendaLocal]);
+            
+            let costoKgEse = 37; // valor referencial por defecto
+            let costoKgFij = 7;  // valor referencial por defecto
+            
+            resCostosDB.rows.forEach(r => {
+                const cod = (r.codigo || '').toUpperCase();
+                const cat = (r.categoria || '').toUpperCase();
+                const c = parseFloat(r.costo || 0);
+                if (cod.includes('FIJADOR')) costoKgFij = c;
+                else if (cat.includes('ESENCIA')) costoKgEse = c; 
+            });
+
+            // Convertir Kilos a Gramos
+            const costoGramoEse = costoKgEse / 1000;
+            const costoGramoFij = costoKgFij / 1000;
 
             const tiendasParam = req.query.tiendas; 
             let arrTiendas = [];
@@ -570,6 +592,7 @@ const exportarReporteGeneral = async (req, res) => {
                 });
             });
 
+            // 🔥 4. CONSULTA SQL CON LA EXTRACCIÓN Y JOIN A FÓRMULAS
             const resData = await client.query(`
                 SELECT 
                     t.nombre as tienda_nombre,
@@ -581,14 +604,23 @@ const exportarReporteGeneral = async (req, res) => {
                     dv.descripcion as detalle_desc,
                     dv.cantidad,
                     COALESCE(NULLIF(dv.costo_unitario_historico, 0), p.costo, 0) as costo_historico,
-                    dv.subtotal as precio_total
+                    dv.subtotal as precio_total,
+                    
+                    -- EXTRACCIÓN MATEMÁTICA DE LOS EXTRAS
+                    COALESCE(SUBSTRING(UPPER(dv.descripcion) FROM '\\+([0-9\\.]+)G EXT')::NUMERIC, 0) as g_ext,
+                    COALESCE(SUBSTRING(UPPER(dv.descripcion) FROM '\\+([0-9\\.]+)G FIJ')::NUMERIC, 0) as g_fij,
+                    COALESCE(f.precio_gramo_extra, 0) as p_g_ext,
+                    COALESCE(f.precio_fijador_extra, 0) as p_g_fij
+                    
                 FROM ventas v
                 JOIN detalle_ventas dv ON v.id = dv.venta_id
                 JOIN tiendas t ON v.tienda_id = t.id
                 LEFT JOIN productos p ON dv.producto_id = p.id
+                LEFT JOIN formulas f ON dv.formula_id = f.id
                 WHERE v.fecha::date BETWEEN $1 AND $2 ${filtroTiendaQuery}
             `, params);
 
+            // 🔥 5. BUCLE CON SEPARACIÓN DE INGRESOS Y COSTOS
             resData.rows.forEach(r => {
                 const tName = r.tienda_nombre;
                 if (!report[tName]) return;
@@ -621,17 +653,41 @@ const exportarReporteGeneral = async (req, res) => {
                 const precio = parseFloat(r.precio_total || 0);
                 const costoHist = parseFloat(r.costo_historico || 0) * cant;
 
+                // --- MAGIA: SEPARACIÓN DE LA VENTA BASE Y LOS EXTRAS ---
+                const gExt = parseFloat(r.g_ext || 0) * cant;
+                const gFij = parseFloat(r.g_fij || 0) * cant;
+                const totalGramosExtra = gExt + gFij;
+                
+                // 1. Ingresos por los extras
+                const precioExtraCalculado = (gExt * parseFloat(r.p_g_ext || 0)) + (gFij * parseFloat(r.p_g_fij || 0));
+                
+                // 🔥 NUEVO: 2. Calculamos EL COSTO de esos gramos extra (Gramos * Costo del gramo)
+                const costoExtraCalculado = (gExt * costoGramoEse) + (gFij * costoGramoFij);
+                
+                // 3. Le restamos ese dinero al precio del perfume para no duplicar los ingresos
+                let precioPerfumeBase = precio - precioExtraCalculado;
+                if (precioPerfumeBase < 0) precioPerfumeBase = 0;
+
+                // 4. Mandamos el perfume limpio a su columna correspondiente (30/60/100)
                 if (tamStr === '30' || tamStr === '30ML' || textStr.includes('30ML') || textStr.includes('30 ML')) {
-                    cat.u30 += cant; cat.p30 += precio;
+                    cat.u30 += cant; cat.p30 += precioPerfumeBase;
                 } else if (tamStr === '60' || tamStr === '60ML' || textStr.includes('60ML') || textStr.includes('60 ML')) {
-                    cat.u60 += cant; cat.p60 += precio;
+                    cat.u60 += cant; cat.p60 += precioPerfumeBase;
                 } else if (tamStr === '100' || tamStr === '100ML' || textStr.includes('100ML') || textStr.includes('100 ML')) {
-                    cat.u100 += cant; cat.p100 += precio;
+                    cat.u100 += cant; cat.p100 += precioPerfumeBase;
                 } else { 
-                    cat.ue += cant; cat.ce += costoHist; cat.pe += precio;
+                    cat.ue += cant; cat.ce += costoHist; cat.pe += precioPerfumeBase;
+                }
+                
+                // 5. Inyectamos los gramos extra, su precio Y SU COSTO en la columna EXTRAS
+                if (totalGramosExtra > 0) {
+                    cat.ue += totalGramosExtra;
+                    cat.pe += precioExtraCalculado;
+                    cat.ce += costoExtraCalculado; // 🔥 SE SUMA EL COSTO PARA QUE CALCULE LA RENTABILIDAD EXACTA
                 }
             });
 
+            // 6. RENDERIZADO EN EL EXCEL
             Object.keys(report).forEach(tName => {
                 const tiendaData = report[tName];
                 sheet.addRow([]);
@@ -1233,8 +1289,12 @@ const descontarEstante = async (client, productoId, cantidad) => {
 const previsualizarCierre = async (req, res) => {
     try {
         const { fecha } = req.query; 
+        
         const idTiendaLocal = req.user && req.user.tienda_id ? parseInt(req.user.tienda_id, 10) : 1;
+        const rolUsuario = req.user && req.user.rol ? req.user.rol.toLowerCase().trim() : '';
+        const esUsuarioMaestro = rolUsuario === 'developer' || rolUsuario === 'dev';
 
+        // Modificamos el check inicial para que busque el arqueo de esta sucursal específica
         const checkQuery = fecha 
             ? "SELECT id FROM cierres_caja WHERE DATE(fecha_cierre) = $1::date AND detalles_json->>'tienda_origen' = $2"
             : "SELECT id FROM cierres_caja WHERE DATE(fecha_cierre) = CURRENT_DATE AND detalles_json->>'tienda_origen' = $1";
@@ -1251,10 +1311,9 @@ const previsualizarCierre = async (req, res) => {
                 });
             }
 
-            let whereFecha = fecha ? "DATE(v.fecha) = $1::date" : "DATE(v.fecha) = CURRENT_DATE";
+            // 🔥 CORRECCIÓN: Filtramos las ventas estrictamente por la tienda del operador
+            let whereFecha = fecha ? "1=1" : "DATE(v.fecha) = CURRENT_DATE";
             whereFecha += ` AND v.tienda_id = ${idTiendaLocal}`;
-
-            const paramsQuery = fecha ? [fecha] : [];
 
             const queryRaw = `
                 SELECT p.metodo, p.moneda, COALESCE(p.monto::numeric, 0) as monto, 
@@ -1269,7 +1328,7 @@ const previsualizarCierre = async (req, res) => {
                   )
             `;
             
-            const resRaw = await client.query(queryRaw, paramsQuery);
+            const resRaw = await client.query(queryRaw);
             
             if (resRaw.rows.length === 0) {
                 return res.json({
@@ -1304,38 +1363,13 @@ const previsualizarCierre = async (req, res) => {
                 granTotalUSD += montoUsdConvertido;
                 granTotalBs += montoBsConvertido;
 
-                // Estandarización de método de pago
-                let metodo = (row.metodo || 'Otros').trim();
-                const mUpper = metodo.toUpperCase();
-
-                if (mUpper.includes('MOVIL') || mUpper.includes('MÓVIL')) metodo = 'PAGO MOVIL';
-                else if (mUpper.includes('PUNTO')) metodo = 'PUNTO';
-                else if (mUpper.includes('CASHEA')) metodo = 'CASHEA';
-                else if (mUpper.includes('EFECTIVO BS') || mUpper.includes('EFEC. BS')) metodo = 'Efectivo Bs';
-                else if (mUpper.includes('EFECTIVO USD') || mUpper.includes('EFEC. USD')) metodo = 'Efectivo USD';
-
-                // Clave única por combinación Método + Moneda
-                const key = `${metodo}_${moneda}`;
-
-                if (!resumenMap[key]) {
-                    resumenMap[key] = { 
-                        metodo: metodo, 
-                        moneda: moneda, // Inclusión explícita de la moneda para evitar null en JSON
-                        transacciones: 0, 
-                        total_usd: 0, 
-                        total_bs: 0 
-                    };
+                const metodo = row.metodo || 'Otros';
+                if (!resumenMap[metodo]) {
+                    resumenMap[metodo] = { metodo, transacciones: 0, total_usd: 0, total_bs: 0 };
                 }
-
-                resumenMap[key].transacciones += 1;
-                resumenMap[key].total_usd += montoUsdConvertido;
-                resumenMap[key].total_bs += montoBsConvertido;
-            });
-
-            // Redondeo de totales
-            Object.values(resumenMap).forEach(item => {
-                item.total_usd = Math.round((item.total_usd + Number.EPSILON) * 100) / 100;
-                item.total_bs = Math.round((item.total_bs + Number.EPSILON) * 100) / 100;
+                resumenMap[metodo].transacciones += 1;
+                resumenMap[metodo].total_usd += montoUsdConvertido;
+                resumenMap[metodo].total_bs += montoBsConvertido;
             });
 
             const queryDetalle = `
@@ -1352,7 +1386,7 @@ const previsualizarCierre = async (req, res) => {
                   )
                 ORDER BY v.fecha DESC
             `;
-            const resDetalles = await client.query(queryDetalle, paramsQuery);
+            const resDetalles = await client.query(queryDetalle);
 
             const historialLimpio = resDetalles.rows.map(d => {
                 const monto = parseFloat(d.monto);
@@ -2866,16 +2900,24 @@ const anularVentaDefinitiva = async (req, res) => {
                 if (fRes.rows.length === 0) continue;
                 const f = fRes.rows[0];
                 const esRecarga = desc.includes('REC');
+                
+                // 🔥 NUEVA LÓGICA DE EXTRACCIÓN DUAL
                 let gramosExtra = 0;
+                let gramosFijExtra = 0;
                 
-                const extraMatch = desc.match(/\(\+(\d+(?:\.\d+)?)g Ext\)/);
+                const extraMatch = desc.match(/\+([\d\.]+)g Ext/);
+                const fijMatch = desc.match(/\+([\d\.]+)g Fij/);
+                
                 if (extraMatch) gramosExtra = parseFloat(extraMatch[1]);
-                const totalEsencia = (parseFloat(f.gramos_esencia) + gramosExtra) * cant;
+                if (fijMatch) gramosFijExtra = parseFloat(fijMatch[1]);
                 
+                // 1. Devolver Esencia (Base + Extra)
+                const totalEsencia = (parseFloat(f.gramos_esencia) + gramosExtra) * cant;
                 await devolverAEstanteFisico(client, item.producto_id, totalEsencia, idTiendaFactura);
                 
+                // 2. Devolver Alcohol (restando AMBOS extras para cuadrar el volumen)
                 if (f.ml_alcohol > 0) {
-                    const totalAlcohol = Math.max(0, parseFloat(f.ml_alcohol) - gramosExtra) * cant;
+                    const totalAlcohol = Math.max(0, parseFloat(f.ml_alcohol) - gramosExtra - gramosFijExtra) * cant;
                     if (totalAlcohol > 0) {
                         const alcRes = await client.query(`
                             SELECT id FROM productos 
@@ -2890,17 +2932,20 @@ const anularVentaDefinitiva = async (req, res) => {
                     }
                 }
                 
-                if (f.gramos_fijador > 0) {
-                    const totalFijador = parseFloat(f.gramos_fijador) * cant;
-                    const fijRes = await client.query(`
-                        SELECT id FROM productos 
-                        WHERE (nombre ILIKE '%FIJADOR%' OR categoria = 'Fijador') 
-                          AND activo = true AND tienda_id = $1
-                        ORDER BY stock_estante DESC LIMIT 1
-                    `, [idTiendaFactura]);
-                    
-                    if (fijRes.rows.length > 0) {
-                        await devolverAEstanteFisico(client, fijRes.rows[0].id, totalFijador, idTiendaFactura);
+                // 3. Devolver Fijador (Base + Extra)
+                if (f.gramos_fijador > 0 || gramosFijExtra > 0) {
+                    const totalFijador = (parseFloat(f.gramos_fijador) + gramosFijExtra) * cant;
+                    if (totalFijador > 0) {
+                        const fijRes = await client.query(`
+                            SELECT id FROM productos 
+                            WHERE (nombre ILIKE '%FIJADOR%' OR categoria = 'Fijador') 
+                              AND activo = true AND tienda_id = $1
+                            ORDER BY stock_estante DESC LIMIT 1
+                        `, [idTiendaFactura]);
+                        
+                        if (fijRes.rows.length > 0) {
+                            await devolverAEstanteFisico(client, fijRes.rows[0].id, totalFijador, idTiendaFactura);
+                        }
                     }
                 }
                 
@@ -2998,16 +3043,20 @@ const restaurarVentaAnulada = async (req, res) => {
         // 🔒 Capturamos la tienda origen de la factura guardada en el JSON
         const idTiendaFactura = parseInt(ventaData.tienda_id, 10) || 1;
 
+        // BUCLE 1: VALIDACIÓN DE STOCK
         for (const item of detalles) {
             const cant = parseFloat(item.cantidad);
             if (item.formula_id) {
                 const fRes = await client.query('SELECT * FROM formulas WHERE id = $1', [item.formula_id]);
                 if (fRes.rows.length === 0) throw new Error(`Fórmula base descontinuada o eliminada.`);
                 const f = fRes.rows[0];
+                const desc = item.descripcion || '';
                 
+                // 🔥 NUEVA LÓGICA DE EXTRACCIÓN
                 let gramosExtra = 0;
-                const extraMatch = item.descripcion.match(/\(\+(\d+(?:\.\d+)?)g Ext\)/);
+                const extraMatch = desc.match(/\+([\d\.]+)g Ext/);
                 if (extraMatch) gramosExtra = parseFloat(extraMatch[1]);
+                
                 const totalEsencia = (parseFloat(f.gramos_esencia) + gramosExtra) * cant;
                 
                 const stockCheck = await client.query('SELECT stock_estante, nombre FROM productos WHERE id = $1 AND tienda_id = $2', [item.producto_id, idTiendaFactura]);
@@ -3022,6 +3071,7 @@ const restaurarVentaAnulada = async (req, res) => {
             VALUES ($1, $2, $3, $4, $5, $6)
         `, [vault.venta_original_id, vault.total_venta, ventaData.cliente_id || 1, vault.fecha_venta, ventaData.usuario_id || 1, idTiendaFactura]);
         
+        // BUCLE 2: EJECUCIÓN DEL DESCUENTO
         for (const item of detalles) {
             const cant = parseFloat(item.cantidad);
             const desc = item.descripcion || '';
@@ -3030,32 +3080,51 @@ const restaurarVentaAnulada = async (req, res) => {
                 const fRes = await client.query('SELECT * FROM formulas WHERE id = $1', [item.formula_id]);
                 const f = fRes.rows[0];
                 const esRecarga = desc.includes('REC');
+                
+                // 🔥 NUEVA LÓGICA DE EXTRACCIÓN DUAL
                 let gramosExtra = 0;
-                const extraMatch = desc.match(/\(\+(\d+(?:\.\d+)?)g Ext\)/);
+                let gramosFijExtra = 0;
+                
+                const extraMatch = desc.match(/\+([\d\.]+)g Ext/);
+                const fijMatch = desc.match(/\+([\d\.]+)g Fij/);
+                
                 if (extraMatch) gramosExtra = parseFloat(extraMatch[1]);
+                if (fijMatch) gramosFijExtra = parseFloat(fijMatch[1]);
                 
-                // 🔥 CORRECCIÓN DEL BUG: Ahora pasamos idTiendaFactura como 5to parámetro
-                await validarYDescontarEstante(client, item.producto_id, (parseFloat(f.gramos_esencia) + gramosExtra) * cant, "Esencia", idTiendaFactura);
+                // 1. Descontar Esencia
+                const totalEsencia = (parseFloat(f.gramos_esencia) + gramosExtra) * cant;
+                await validarYDescontarEstante(client, item.producto_id, totalEsencia, "Esencia", idTiendaFactura);
                 
+                // 2. Descontar Alcohol
                 if (f.ml_alcohol > 0) {
-                    const alc = Math.max(0, parseFloat(f.ml_alcohol) - gramosExtra) * cant;
+                    const alc = Math.max(0, parseFloat(f.ml_alcohol) - gramosExtra - gramosFijExtra) * cant;
                     if (alc > 0) {
                         const alcRes = await client.query(`SELECT id FROM productos WHERE (categoria = 'Alcohol' OR nombre ILIKE '%ALCOHOL%') AND activo = true AND tienda_id = $1 ORDER BY stock_estante DESC LIMIT 1`, [idTiendaFactura]);
-                        await validarYDescontarEstante(client, alcRes.rows[0].id, alc, "Alcohol", idTiendaFactura);
+                        if(alcRes.rows.length > 0) {
+                            await validarYDescontarEstante(client, alcRes.rows[0].id, alc, "Alcohol", idTiendaFactura);
+                        }
                     }
                 }
                 
-                if (f.gramos_fijador > 0) {
-                    const fijRes = await client.query(`SELECT id FROM productos WHERE (categoria = 'Fijador' OR nombre ILIKE '%FIJADOR%') AND activo = true AND tienda_id = $1 ORDER BY stock_estante DESC LIMIT 1`, [idTiendaFactura]);
-                    await validarYDescontarEstante(client, fijRes.rows[0].id, parseFloat(f.gramos_fijador) * cant, "Fijador", idTiendaFactura);
+                // 3. Descontar Fijador
+                if (f.gramos_fijador > 0 || gramosFijExtra > 0) {
+                    const totalFijador = (parseFloat(f.gramos_fijador) + gramosFijExtra) * cant;
+                    if (totalFijador > 0) {
+                        const fijRes = await client.query(`SELECT id FROM productos WHERE (categoria = 'Fijador' OR nombre ILIKE '%FIJADOR%') AND activo = true AND tienda_id = $1 ORDER BY stock_estante DESC LIMIT 1`, [idTiendaFactura]);
+                        if(fijRes.rows.length > 0) {
+                            await validarYDescontarEstante(client, fijRes.rows[0].id, totalFijador, "Fijador", idTiendaFactura);
+                        }
+                    }
                 }
                 
+                // 4. Descontar Envase
                 if (!esRecarga) {
                     const envRes = await client.query(`SELECT id FROM productos WHERE (categoria IN ('Envases', 'Frascos') OR categoria ILIKE '%Envase%') AND (nombre ILIKE $1 OR contenido_gramos = $2) AND activo = true AND tienda_id = $3 ORDER BY stock_estante DESC LIMIT 1`, [`%${f.volumen_total}%`, f.volumen_total, idTiendaFactura]);
-                    await validarYDescontarEstante(client, envRes.rows[0].id, cant, "Envase", idTiendaFactura);
+                    if(envRes.rows.length > 0) {
+                        await validarYDescontarEstante(client, envRes.rows[0].id, cant, "Envase", idTiendaFactura);
+                    }
                 }
             } else if (item.producto_id) {
-                // 🔥 CORRECCIÓN DEL BUG
                 await validarYDescontarEstante(client, item.producto_id, cant, "Producto", idTiendaFactura);
             }
             
