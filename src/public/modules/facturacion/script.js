@@ -2026,22 +2026,24 @@ window.agregarEsenciaEnLote = function() {
     const inputCantidad = document.getElementById('cantidadEsenciaPromo');
     
     const inputGramosExtra = document.getElementById('extraGramosEsencia');
-    const inputPrecioExtra = document.getElementById('precioGramoExtra');
-    
+    const inputGramosFijador = document.getElementById('extraGramosFijador'); // 🔥 AÑADIDO
+
     const esenciaId = idInput.value;
     const esenciaNombre = nombreInput.value;
     const cantidadAAgregar = parseInt(inputCantidad.value, 10);
     
     const gramosExtra = parseFloat(inputGramosExtra ? inputGramosExtra.value : 0) || 0;
-    const precioExtra = parseFloat(inputPrecioExtra ? inputPrecioExtra.value : 0) || 0;
+    const gramosFijadorExtra = parseFloat(inputGramosFijador ? inputGramosFijador.value : 0) || 0; // 🔥 AÑADIDO
+
+    // 🔥 LA SOLUCIÓN: Leer los precios de la base de datos de la fórmula cargada
+    const precioExtra = promoDataActual && promoDataActual.formula ? parseFloat(promoDataActual.formula.precio_gramo_extra) || 0 : 0;
+    const precioFijExtra = promoDataActual && promoDataActual.formula ? parseFloat(promoDataActual.formula.precio_fijador_extra) || 0 : 0;
 
     if (!esenciaId) return Swal.fire('Atención', 'Por favor busca y selecciona una esencia de la lista inferior.', 'warning');
     if (isNaN(cantidadAAgregar) || cantidadAAgregar <= 0) return Swal.fire('Error', 'Cantidad inválida.', 'error');
 
     const esLibre = promoDataActual && promoDataActual.esEstandarLibre;
 
-    // 🎯 CORRECCIÓN DEL BUG DE LÍMITE:
-    // Solo bloquea si NO es libre, hay un límite asignado (>0) y la suma excede la promo
     if (!esLibre && promoMaxPerfumes > 0 && (promoPerfumesAgregados + cantidadAAgregar) > promoMaxPerfumes) {
         const disponibles = promoMaxPerfumes - promoPerfumesAgregados;
         return Swal.fire({
@@ -2052,24 +2054,27 @@ window.agregarEsenciaEnLote = function() {
         });
     }
 
-    // Buscar si ya existe la fragancia en el lote actual
     const itemExistente = loteEsenciasPromo.find(i => i.id == esenciaId);
     if (itemExistente) {
         itemExistente.cantidad += cantidadAAgregar;
     } else {
         loteEsenciasPromo.unshift({
-    id: esenciaId,
-    nombre: esenciaNombre,
-    cantidad: cantidadAAgregar,
-    gramos_extra: gramosExtra,
-    precio_gramo_extra: precioExtra
-});
+            id: esenciaId,
+            nombre: esenciaNombre,
+            cantidad: cantidadAAgregar,
+            gramos_extra: gramosExtra,
+            gramos_fijador_extra: gramosFijadorExtra, // 🔥 AÑADIDO
+            precio_gramo_extra: precioExtra,          // 🔥 AÑADIDO
+            precio_fijador_extra: precioFijExtra      // 🔥 AÑADIDO
+        });
     }
 
     promoPerfumesAgregados += cantidadAAgregar;
     if (inputCantidad) inputCantidad.value = 1; 
     
     if (inputGramosExtra) inputGramosExtra.value = ''; 
+    if (inputGramosFijador) inputGramosFijador.value = ''; // Limpiar
+    
     idInput.value = '';
     nombreInput.value = '';
 
@@ -2081,7 +2086,6 @@ window.agregarEsenciaALotePromo = function() {
 
     const esLibre = promoDataActual.esEstandarLibre || promoMaxPerfumes === 0;
 
-    // 🎯 VALIDACIÓN CORREGIDA: Solo frena si NO es libre y ya alcanzó el límite estricto
     if (!esLibre && promoMaxPerfumes > 0 && promoPerfumesAgregados >= promoMaxPerfumes) {
         const restantes = promoMaxPerfumes - promoPerfumesAgregados;
         return Swal.fire(
@@ -2103,39 +2107,39 @@ window.agregarEsenciaALotePromo = function() {
     const prod = todosLosProductos.find(p => p.id === idProd);
     if (!prod) return;
 
-    // Capturar gramos extra si existen
     const inputExtraG = document.getElementById('extraGramosEsencia');
     const inputExtraFijador = document.getElementById('extraGramosFijador');
     const gExtra = inputExtraG && inputExtraG.value ? parseFloat(inputExtraG.value) : 0;
     const gFijExtra = inputExtraFijador && inputExtraFijador.value ? parseFloat(inputExtraFijador.value) : 0;
 
-    // Verificar si ya existe en el lote actual para acumular o agregar nuevo
+    // 🔥 LA SOLUCIÓN: Leer los precios de la base de datos
+    const precioExtra = promoDataActual && promoDataActual.formula ? parseFloat(promoDataActual.formula.precio_gramo_extra) || 0 : 0;
+    const precioFijExtra = promoDataActual && promoDataActual.formula ? parseFloat(promoDataActual.formula.precio_fijador_extra) || 0 : 0;
+
     const existeEnLote = loteEsenciasPromo.find(item => item.id === idProd);
-if (existeEnLote) {
-    existeEnLote.cantidad += cantidad;
-} else {
+    if (existeEnLote) {
+        existeEnLote.cantidad += cantidad;
+    } else {
+        loteEsenciasPromo.unshift({
+            id: prod.id,
+            nombre: prod.nombre,
+            cantidad: cantidad,
+            gramos_extra: gExtra,
+            gramos_fijador_extra: gFijExtra,
+            precio_gramo_extra: precioExtra,      // 🔥 AÑADIDO
+            precio_fijador_extra: precioFijExtra  // 🔥 AÑADIDO
+        });
+    }
 
-    loteEsenciasPromo.unshift({
-        id: prod.id,
-        nombre: prod.nombre,
-        cantidad: cantidad,
-        gramos_extra: gExtra,
-        gramos_fijador_extra: gFijExtra
-    });
-}
-
-    // Actualizar contador total de botellas en lote
     promoPerfumesAgregados = loteEsenciasPromo.reduce((acc, item) => acc + item.cantidad, 0);
 
     const elemActual = document.getElementById('promoContadorActual');
     if (elemActual) elemActual.innerText = promoPerfumesAgregados;
 
-    // Limpiar inputs de selección
     const inputBusqueda = document.getElementById('inputBusquedaEsenciaPromo');
     if (inputBusqueda) inputBusqueda.value = '';
     if (inputId) inputId.value = '';
 
-    // Re-renderizar la lista
     if (typeof renderizarListaEsenciasLote === 'function') {
         renderizarListaEsenciasLote();
     } else if (typeof renderizarPanelLotePromo === 'function') {
@@ -2163,15 +2167,21 @@ function renderizarListaEsenciasLote() {
 
     // Pintar elementos agregados
     container.innerHTML = loteEsenciasPromo.map((item, index) => {
-        const tagExtra = item.gramos_extra > 0 
-            ? `<span class="bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-[9px] ml-2 font-bold">(+${item.gramos_extra}g a $${item.precio_gramo_extra})</span>` 
-            : '';
+        // 🔥 NUEVA ETIQUETA QUE MUESTRA AMBOS EXTRAS (SI EXISTEN)
+        let tagExtraStr = '';
+        if (item.gramos_extra > 0 && item.gramos_fijador_extra > 0) {
+            tagExtraStr = `<span class="bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-[9px] ml-2 font-bold">(+${item.gramos_extra}g Ese a $${item.precio_gramo_extra} | +${item.gramos_fijador_extra}g Fij a $${item.precio_fijador_extra})</span>`;
+        } else if (item.gramos_extra > 0) {
+            tagExtraStr = `<span class="bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-[9px] ml-2 font-bold">(+${item.gramos_extra}g Ese a $${item.precio_gramo_extra})</span>`;
+        } else if (item.gramos_fijador_extra > 0) {
+            tagExtraStr = `<span class="bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-[9px] ml-2 font-bold">(+${item.gramos_fijador_extra}g Fij a $${item.precio_fijador_extra})</span>`;
+        }
 
         return `
         <div class="flex justify-between items-center bg-white border border-neutral-200 p-3 shadow-sm mb-1">
             <span class="text-xs font-black text-neutral-950 uppercase tracking-widest flex items-center gap-2">
                 <span class="bg-neutral-950 text-white px-2 py-1">${item.cantidad}x</span> 
-                ${item.nombre} ${tagExtra}
+                ${item.nombre} ${tagExtraStr}
             </span>
             <button type="button" onclick="eliminarLote(${index})" class="text-neutral-400 hover:text-red-600 transition-colors" title="Borrar">
                 <i class="fa-solid fa-trash-can text-lg"></i>
@@ -2182,9 +2192,6 @@ function renderizarListaEsenciasLote() {
 
     const esLibre = promoDataActual && promoDataActual.esEstandarLibre;
 
-    // 🎯 DESBLOQUEO DEL BOTÓN INYECTAR:
-    // Si es estándar libre, basta con tener al menos 1 perfume agregado.
-    // Si es promo cerrada, exige completar el total exacto.
     const puedeInyectar = esLibre ? (promoPerfumesAgregados > 0) : (promoPerfumesAgregados === promoMaxPerfumes);
 
     if (btnConfirmar) {
@@ -2767,13 +2774,15 @@ window.iniciarEstandarLoteUI = async function(idFormula) {
 
     if (productoPendiente) {
         loteEsenciasPromo.unshift({
-        id: productoPendiente.id,
-        nombre: productoPendiente.nombre,
-        cantidad: 1,
-        gramos_extra: gExtra,
-        gramos_fijador_extra: gFijExtra
-    });
-    promoPerfumesAgregados = 1;
+            id: productoPendiente.id,
+            nombre: productoPendiente.nombre,
+            cantidad: 1,
+            gramos_extra: gExtra,
+            gramos_fijador_extra: gFijExtra,
+            precio_gramo_extra: parseFloat(formula.precio_gramo_extra) || 0,     // 🔥 AÑADIDO
+            precio_fijador_extra: parseFloat(formula.precio_fijador_extra) || 0  // 🔥 AÑADIDO
+        });
+        promoPerfumesAgregados = 1;
     }
 
     document.getElementById('promoContadorActual').innerText = promoPerfumesAgregados;
