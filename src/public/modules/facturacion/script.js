@@ -138,6 +138,56 @@ function configurarBuscadorClientes() {
     });
 }
 
+window.cargarClientesModal = async function(pagina = 1, busqueda = "") {
+    busquedaClienteActual = busqueda;
+    paginaClienteActual = pagina;
+    
+    const divResultados = document.getElementById('listaResultadosClientes');
+    if (divResultados) {
+        divResultados.innerHTML = '<div class="text-center py-8 text-neutral-400 text-[10px] font-bold uppercase tracking-widest"><i class="fa-solid fa-circle-notch fa-spin text-2xl mb-2"></i><br>Buscando en directorio...</div>';
+    }
+
+    try {
+        let lista = [];
+        let totalPags = 1;
+
+        // 🔥 CORRECCIÓN: Usamos el ClienteService nativo de tu sistema para asegurar que la ruta sea exacta
+        if (typeof ClienteService !== 'undefined' && ClienteService.getAll) {
+            const res = await ClienteService.getAll(pagina, 15, busqueda);
+            lista = res.data || res;
+            totalPags = res.pagination ? res.pagination.totalPages : 1;
+        } else {
+            // Fallback de seguridad inyectando todas las variantes de parámetros de búsqueda
+            const token = localStorage.getItem('token');
+            const queryParams = new URLSearchParams({
+                page: pagina,
+                limit: 15,
+                search: busqueda,
+                busqueda: busqueda,
+                q: busqueda
+            });
+            
+            const resFetch = await fetch(`/api/clientes?${queryParams.toString()}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!resFetch.ok) throw new Error("Error de red");
+            const data = await resFetch.json();
+            lista = data.data || data;
+            totalPags = data.pagination ? data.pagination.totalPages : 1;
+        }
+
+        totalPaginasClientes = totalPags;
+        renderClientes(lista);
+        renderPaginacionClientes();
+
+    } catch (error) {
+        console.error("Error en cargarClientesModal:", error);
+        if (divResultados) {
+            divResultados.innerHTML = '<div class="text-center py-8 text-red-500 text-[10px] font-bold uppercase tracking-widest"><i class="fa-solid fa-triangle-exclamation text-xl mb-2"></i><br>Error al conectar con el directorio</div>';
+        }
+    }
+};
+
 window.cambiarModo = function(modo) {
     modoVista = modo;
     console.log("Cambiando modo a:", modo);
@@ -996,13 +1046,13 @@ window.switchTab = function(tab) {
     if(tab === 'buscar') {
         document.getElementById('viewBuscar').classList.remove('hidden');
         document.getElementById('viewCrear').classList.add('hidden');
-        document.getElementById('tabBuscar').className = "flex-1 pb-3 border-b-2 border-blue-600 font-bold text-blue-600 text-sm";
-        document.getElementById('tabCrear').className = "flex-1 pb-3 border-b-2 border-transparent text-gray-400 hover:text-blue-500 text-sm font-medium";
+        document.getElementById('tabBuscar').className = "flex-1 pb-4 border-b-4 border-neutral-950 font-black text-neutral-950 text-[10px] uppercase tracking-widest transition-colors";
+        document.getElementById('tabCrear').className = "flex-1 pb-4 border-b-4 border-transparent text-neutral-400 hover:text-neutral-950 font-bold text-[10px] uppercase tracking-widest transition-colors";
     } else {
         document.getElementById('viewBuscar').classList.add('hidden');
         document.getElementById('viewCrear').classList.remove('hidden');
-        document.getElementById('tabCrear').className = "flex-1 pb-3 border-b-2 border-blue-600 font-bold text-blue-600 text-sm";
-        document.getElementById('tabBuscar').className = "flex-1 pb-3 border-b-2 border-transparent text-gray-400 hover:text-blue-500 text-sm font-medium";
+        document.getElementById('tabCrear').className = "flex-1 pb-4 border-b-4 border-neutral-950 font-black text-neutral-950 text-[10px] uppercase tracking-widest transition-colors";
+        document.getElementById('tabBuscar').className = "flex-1 pb-4 border-b-4 border-transparent text-neutral-400 hover:text-neutral-950 font-bold text-[10px] uppercase tracking-widest transition-colors";
     }
 };
 
@@ -1073,7 +1123,6 @@ window.seleccionarCliente = function(id, nombre, doc) {
     window.cerrarModalCliente(); // Usamos window.cerrarModalCliente que ya definimos antes
 };
 
-
 window.guardarNuevoCliente = async function() {
     const data = {
         documento: document.getElementById('newDoc').value,
@@ -1081,11 +1130,32 @@ window.guardarNuevoCliente = async function() {
         telefono: document.getElementById('newTel').value,
         direccion: document.getElementById('newDir').value,
     };
-    if(!data.documento || !data.nombre) return Swal.fire('Faltan Datos', 'Campos obligatorios', 'warning');
+    
+    if(!data.documento || !data.nombre) {
+        return Swal.fire('Faltan Datos', 'La cédula/RIF y el nombre son obligatorios', 'warning');
+    }
 
-    const res = await ClienteService.crear(data);
-    if(res.error) Swal.fire('Error', res.error, 'error');
-    else {
+    try {
+        // Mostramos un indicador de carga mientras espera
+        Swal.fire({
+            title: 'Guardando...',
+            text: 'Registrando cliente en la base de datos',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        const res = await ClienteService.crear(data);
+        
+        // Si el API devuelve un error estructurado sin lanzar excepción
+        if(res && res.error) {
+            return Swal.fire('Error', res.error, 'error');
+        }
+        
+        // Cerramos el loading
+        Swal.close();
+
         // Al crear, seleccionamos automáticamente
         window.seleccionarCliente(res.id, res.nombre, res.documento);
         
@@ -1096,6 +1166,17 @@ window.guardarNuevoCliente = async function() {
         document.getElementById('newDir').value = '';
         
         Swal.fire({ toast: true, position: 'top', icon: 'success', title: 'Cliente Creado', timer: 1500, showConfirmButton: false});
+
+    } catch (error) {
+        // 🔥 AQUÍ ATRAPAMOS EL ERROR QUE LANZA api.js Y LO MOSTRAMOS EN PANTALLA
+        console.error("Error capturado al guardar cliente:", error);
+        
+        Swal.fire({
+            icon: 'error',
+            title: 'No se pudo registrar',
+            text: error.message || 'Ya existe un cliente con ese documento o hubo un error.',
+            confirmButtonColor: '#0a0a0a'
+        });
     }
 };
 
@@ -3678,15 +3759,16 @@ async function procesarBajarMercanciaMasa() {
 window.abrirModalCliente = async function() { 
     document.getElementById('modalCliente').classList.remove('hidden'); 
     
-    // Al abrir la modal, reseteamos la búsqueda y cargamos la primera página automáticamente (Página 1)
     paginaClienteActual = 1;
     busquedaClienteActual = "";
     const inputBuscador = document.getElementById('inputBuscarCliente');
     if (inputBuscador) inputBuscador.value = "";
     
-    await cargarClientesModal(1, "");
+    // 🔥 CORRECCIÓN: Forzamos el regreso a la pestaña "Buscar"
+    if (typeof switchTab === 'function') switchTab('buscar');
+    
+    await window.cargarClientesModal(1, "");
 };
-
 
 window.eliminarDelCarrito = eliminarDelCarrito; 
 window.abrirModalCobro = abrirModalCobro;
