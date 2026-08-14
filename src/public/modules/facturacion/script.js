@@ -57,7 +57,9 @@ export async function init() {
     console.log("Facturación Unificada - Iniciada");
 
     const borrador = recuperarBorradorGeneral();
-    if (borrador) {
+    
+    // 🔥 CORRECCIÓN 1: Solo mostrar la alerta si el borrador realmente tiene artículos
+    if (borrador && borrador.carrito && borrador.carrito.length > 0) {
         const result = await Swal.fire({
             title: '¿Pedido pendiente encontrado?',
             text: `Tienes un pedido de ${borrador.carrito.length} items guardado el ${new Date(borrador.fecha_guardado).toLocaleTimeString()}. ¿Deseas recuperarlo?`,
@@ -75,11 +77,22 @@ export async function init() {
             // Restaurar visuales
             renderCarrito();
             // Restaurar cliente visualmente
-            document.getElementById('infoCliente').innerText = clienteActual.nombre;
-            document.getElementById('docCliente').innerText = clienteActual.documento;
+            const infoCliente = document.getElementById('infoCliente');
+            const docCliente = document.getElementById('docCliente');
+            if (infoCliente) infoCliente.innerText = clienteActual.nombre;
+            if (docCliente) docCliente.innerText = clienteActual.documento;
         } else {
+            // 🔥 CORRECCIÓN 2: Si el usuario dice "No", destruimos todos los respaldos y limpiamos las variables
             localStorage.removeItem('pos_state_draft');
+            localStorage.removeItem('carrito_pos_respaldo');
+            carrito = [];
+            pagosRealizados = [];
+            clienteActual = { id: 1, nombre: 'Consumidor Final', documento: '00000000' };
+            renderCarrito(); // Refresca la pantalla para mostrar el ticket vacío
         }
+    } else if (borrador) {
+        // Si hay un borrador guardado pero tiene 0 items, lo eliminamos silenciosamente
+        localStorage.removeItem('pos_state_draft');
     }
 
     try {
@@ -93,7 +106,6 @@ export async function init() {
             const inputTasa = document.getElementById('tasaCobro');
             if(inputTasa) inputTasa.value = tasaCambio.toFixed(2);
         }
-
 
         configurarBuscador();
         configurarBuscadorClientes();
@@ -2231,7 +2243,7 @@ window.confirmarPromoLote = function() {
     const totalBotellas = loteEsenciasPromo.reduce((acc, item) => acc + item.cantidad, 0);
     const vol = formula.volumen_total;
 
-    // 🛡️ VERIFICACIÓN INTELIGENTE DE STOCK (Suma stock_unidades + stock_estante)
+    // 🛡️ VERIFICACIÓN INTELIGENTE DE STOCK 
     for (const item of loteEsenciasPromo) {
         const prodEsencia = todosLosProductos.find(p => p.id == item.id);
         if (!prodEsencia) continue;
@@ -2239,11 +2251,11 @@ window.confirmarPromoLote = function() {
         const cod = (prodEsencia.codigo || '').toUpperCase();
         const esPT = cod.includes('-T');
 
-        // Si es Perfume Terminado (PT) no requiere gramos de esencia
         if (!esPT) {
-            const gEsenciaNecesariaItem = (parseFloat(formula.gramos_esencia || 0) + (item.gramos_extra || 0)) * item.cantidad;
+            // 🔥 CORRECCIÓN: Los gramos extra se dividen entre la cantidad de botellas para la matemática de stock
+            const gramosExtraPorBotella = parseFloat(item.gramos_extra || 0) / (item.cantidad || 1);
+            const gEsenciaNecesariaItem = (parseFloat(formula.gramos_esencia || 0) + gramosExtraPorBotella) * item.cantidad;
             
-            // 🎯 LECTURA COMBINADA DE DEPÓSITO Y ESTANTE
             const stockUnidades = parseFloat(prodEsencia.stock_unidades || prodEsencia.stock_real || 0);
             const stockEstante = parseFloat(prodEsencia.stock_estante || 0);
             const stockTotalDisponible = stockUnidades + stockEstante;
@@ -2258,7 +2270,7 @@ window.confirmarPromoLote = function() {
         }
     }
 
-    // 🎯 CÁLCULO DE PRECIO / ESCALA
+    // 🎯 CÁLCULO DE PRECIO BASE DE LA FÓRMULA
     let precioUnitarioBase = parseFloat(formula.precio || 0);
     let etiquetaTarifa = 'DETAL';
     let badgeColorTarifa = 'bg-slate-100 text-slate-700 border-slate-200';
@@ -2286,7 +2298,7 @@ window.confirmarPromoLote = function() {
 
     const itemsParaAgregar = [];
 
-    // Preparamos los artículos
+    // ⚙️ PREPARAMOS LOS ARTÍCULOS A INYECTAR
     loteEsenciasPromo.forEach((item, index) => {
         const prodEsencia = todosLosProductos.find(p => p.id == item.id);
         if (!prodEsencia) return;
@@ -2294,18 +2306,35 @@ window.confirmarPromoLote = function() {
         const cod = (prodEsencia.codigo || '').toUpperCase();
         const esPT = cod.includes('-T');
 
-        const gramosExtraItem = item.gramos_extra || 0;
-        const precioGramoExtraItem = item.precio_gramo_extra || 0;
-        const mlAlcoholPorBotella = Math.max(0, parseFloat(formula.ml_alcohol || 0) - gramosExtraItem);
+        // 🔥 1. DIVIDIR LOS GRAMOS EXTRA TOTALES ENTRE LA CANTIDAD DE FRASCOS
+        const gramosExtraTotalFila = parseFloat(item.gramos_extra || 0);
+        const gramosFijadorExtraTotalFila = parseFloat(item.gramos_fijador_extra || 0);
+        
+        // Obtenemos los gramos exactos que le tocan a cada botella
+        const gramosExtraPorBotella = gramosExtraTotalFila / (item.cantidad || 1);
+        const gramosFijadorExtraPorBotella = gramosFijadorExtraTotalFila / (item.cantidad || 1);
+        
+        // 🔥 2. LEEMOS EL COSTO DEL EXTRA DIRECTO DE LA BASE DE DATOS (FÓRMULA)
+        const precioGramoExtraDB = parseFloat(formula.precio_gramo_extra || 0);
+        const precioFijadorExtraDB = parseFloat(formula.precio_fijador_extra || 0);
 
-        const tagExtra = gramosExtraItem > 0 ? ` (+${gramosExtraItem}g Ext)` : '';
+        const mlAlcoholPorBotella = Math.max(0, parseFloat(formula.ml_alcohol || 0) - gramosExtraPorBotella - gramosFijadorExtraPorBotella);
+
+        // 🔥 3. CREAMOS LA ETIQUETA VISUAL REFLEJANDO LOS GRAMOS POR BOTELLA (Para el ticket)
+        let tagExtra = '';
+        if (gramosExtraPorBotella > 0 && gramosFijadorExtraPorBotella > 0) tagExtra = ` (+${gramosExtraPorBotella}g Ext, +${gramosFijadorExtraPorBotella}g Fij)`;
+        else if (gramosExtraPorBotella > 0) tagExtra = ` (+${gramosExtraPorBotella}g Ext)`;
+        else if (gramosFijadorExtraPorBotella > 0) tagExtra = ` (+${gramosFijadorExtraPorBotella}g Fij)`;
+
         const nomLimpio = typeof limpiarNombreEsencia === 'function' ? limpiarNombreEsencia(prodEsencia.nombre) : prodEsencia.nombre;
 
         const nombreFactura = modoRecargaActual 
             ? `♻️ REC ${vol}ML PERFUME ${nomLimpio}${tagExtra}` 
             : `${vol}ML PERFUME ${nomLimpio}${tagExtra}`;
 
-        const precioFinalUnitario = precioUnitarioBase + (gramosExtraItem * precioGramoExtraItem);
+        // 🔥 4. MATEMÁTICA PURA: Precio Base + Costos Extras por botella
+        const costoExtrasPorBotella = (gramosExtraPorBotella * precioGramoExtraDB) + (gramosFijadorExtraPorBotella * precioFijadorExtraDB);
+        const precioFinalUnitario = precioUnitarioBase + costoExtrasPorBotella;
 
         itemsParaAgregar.push({
             id: prodEsencia.id, 
@@ -2316,8 +2345,13 @@ window.confirmarPromoLote = function() {
             formula_id: formula.id,
             es_recarga: modoRecargaActual,
             es_pt: esPT,
-            gramos_extra: gramosExtraItem,
-            precio_gramo_extra: precioGramoExtraItem,
+            
+            // 🔥 GUARDAMOS EN EL CARRITO LOS VALORES "POR BOTELLA" PARA QUE LA MULTIPLICACIÓN TOTAL CUADRE EXACTA
+            gramos_extra: gramosExtraPorBotella,
+            gramos_fijador_extra: gramosFijadorExtraPorBotella,
+            precio_gramo_extra: precioGramoExtraDB,       
+            precio_fijador_extra: precioFijadorExtraDB,   
+            
             ml_alcohol_override: mlAlcoholPorBotella,
             monedaElegida: monedaElegida,
             isLocked: !esEstandarLibre,
@@ -2334,6 +2368,7 @@ window.confirmarPromoLote = function() {
     cancelarSeleccionPromo();
     
     if(document.getElementById('extraGramosEsencia')) document.getElementById('extraGramosEsencia').value = '';
+    if(document.getElementById('extraGramosFijador')) document.getElementById('extraGramosFijador').value = ''; 
     
     Swal.fire({ 
         toast: true, 
