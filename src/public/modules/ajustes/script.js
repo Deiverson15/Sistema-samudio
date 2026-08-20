@@ -83,7 +83,7 @@ async function cargarTasaActual() {
 }
 
 async function guardarTasaGlobal() {
-    const inputTasa = document.getElementById('inputTasaGlobal'); // Verifica que este ID coincida con tu HTML
+    const inputTasa = document.getElementById('inputTasaGlobal');
     if (!inputTasa) return;
 
     const nuevaTasa = parseFloat(inputTasa.value);
@@ -96,14 +96,14 @@ async function guardarTasaGlobal() {
         Swal.fire({ title: 'Guardando...', didOpen: () => Swal.showLoading() });
         const token = localStorage.getItem('token');
         
-        // Petición a tu backend (asegúrate de que la ruta sea correcta según tu API)
+        // Se cambió el método a PUT y el cuerpo a { nuevaTasa }
         const res = await fetch('/api/ajustes/tasa', {
-            method: 'POST',
+            method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ tasa: nuevaTasa })
+            body: JSON.stringify({ nuevaTasa: nuevaTasa })
         });
 
         if (!res.ok) throw new Error('No se pudo guardar la tasa');
