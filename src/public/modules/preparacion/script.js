@@ -222,91 +222,135 @@ function cargarEditarGrupo(nombre, volumen_total) {
 }
 
 window.limpiarFormulario = function() {
-    // Limpia los campos de texto
-    const inputGramos = document.getElementById('extraGramosEsencia');
-    const inputFijador = document.getElementById('extraGramosFijador');
-    const inputPrecioExtra = document.getElementById('precioGramoExtra'); // Si aún lo tienes
+    const form = document.getElementById('formFormula');
+    if (form) form.reset();
 
-    if (inputGramos) inputGramos.value = '';
-    if (inputFijador) inputFijador.value = '';
-    if (inputPrecioExtra) inputPrecioExtra.value = '';
-    
-    console.log("Formulario de extras limpiado con éxito.");
+    const inputId = document.getElementById('formulaId');
+    if (inputId) inputId.value = '';
+
+    formulaSeleccionadaActual = null;
+    idsPorEliminar = [];
+
+    const titulo = document.getElementById('tituloFormulario');
+    if (titulo) titulo.innerHTML = '<i class="fa-solid fa-flask text-neutral-400"></i> Nueva Fórmula';
+
+    const btnEliminar = document.getElementById('btnEliminar');
+    if (btnEliminar) btnEliminar.classList.add('hidden');
+
+    const btnLanzar = document.getElementById('btnLanzarPromo');
+    if (btnLanzar) btnLanzar.classList.add('hidden');
+
+    const contenedorPromo = document.getElementById('contenedorFilasPromo');
+    if (contenedorPromo) contenedorPromo.innerHTML = '';
+
+    cambiarTipoFormulario('ESTANDAR');
 };
 
 async function guardarFormula() {
-    const mainId = document.getElementById('formulaId').value;
     const token = localStorage.getItem('token');
     
-    // 🔥 CAPTURAMOS LOS VALORES DE NUESTROS INPUTS NUEVOS
-    const pGramoExtra = document.getElementById('precio_gramo_extra').value || 0;
-    const pFijadorExtra = document.getElementById('precio_fijador_extra').value || 0;
-    const pRecarga = document.getElementById('precio_recarga').value || 0;
-
     const basePayload = {
         nombre: document.getElementById('nombre').value.trim(),
-        volumen_total: document.getElementById('volumen_total').value,
-        gramos_esencia: document.getElementById('gramos_esencia').value || 0,
-        ml_alcohol: document.getElementById('ml_alcohol').value || 0,
-        gramos_fijador: document.getElementById('gramos_fijador').value || 0,
-        // 🔥 Los metemos a la base estructural del envío
-        precio_gramo_extra: pGramoExtra,
-        precio_fijador_extra: pFijadorExtra,
-        precio_recarga: pRecarga
+        volumen_total: parseInt(document.getElementById('volumen_total').value, 10) || 0,
+        gramos_esencia: parseFloat(document.getElementById('gramos_esencia').value) || 0,
+        ml_alcohol: parseFloat(document.getElementById('ml_alcohol').value) || 0,
+        gramos_fijador: parseFloat(document.getElementById('gramos_fijador').value) || 0,
+        precio_gramo_extra: parseFloat(document.getElementById('precio_gramo_extra').value) || 0,
+        precio_fijador_extra: parseFloat(document.getElementById('precio_fijador_extra').value) || 0,
+        precio_recarga: parseFloat(document.getElementById('precio_recarga').value) || 0
     };
 
     try {
+        Swal.fire({ title: 'Guardando...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+
+        // 1. Eliminar filas removidas por el usuario
         for (const deleteId of idsPorEliminar) {
-            await fetch(`/api/formulas/${deleteId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+            await fetch(`/api/formulas/${deleteId}`, { 
+                method: 'DELETE', 
+                headers: { 'Authorization': `Bearer ${token}` } 
+            });
         }
         idsPorEliminar = [];
 
         if (tipoFormularioActual === 'ESTANDAR') {
             const data = {
                 ...basePayload,
-                precio: document.getElementById('precio').value || 0,
-                precio_bs: document.getElementById('precio_bs').value || 0,
-                cantidad_mayor: document.getElementById('cantidad_mayor').value || 6,
-                precio_mayor: document.getElementById('precio_mayor').value || 0,
-                precio_mayor_bs: document.getElementById('precio_mayor_bs').value || 0,
-                cantidad_gran_mayor: document.getElementById('cantidad_gran_mayor').value || 50,
-                precio_gran_mayor: document.getElementById('precio_gran_mayor').value || 0,
-                precio_gran_mayor_bs: document.getElementById('precio_gran_mayor_bs').value || 0,
-                cantidad_promo: 0, precio_promo: 0
+                precio: parseFloat(document.getElementById('precio').value) || 0,
+                precio_bs: parseFloat(document.getElementById('precio_bs').value) || 0,
+                cantidad_mayor: parseInt(document.getElementById('cantidad_mayor').value, 10) || 6,
+                precio_mayor: parseFloat(document.getElementById('precio_mayor').value) || 0,
+                precio_mayor_bs: parseFloat(document.getElementById('precio_mayor_bs').value) || 0,
+                cantidad_gran_mayor: parseInt(document.getElementById('cantidad_gran_mayor').value, 10) || 50,
+                precio_gran_mayor: parseFloat(document.getElementById('precio_gran_mayor').value) || 0,
+                precio_gran_mayor_bs: parseFloat(document.getElementById('precio_gran_mayor_bs').value) || 0,
+                cantidad_promo: 0,
+                precio_promo: 0
             };
             
-            const targetId = formulaSeleccionadaActual?.standardId;
+            const targetId = formulaSeleccionadaActual?.standardId || formulaSeleccionadaActual?.ids?.[0];
             const method = targetId ? 'PUT' : 'POST';
             const url = targetId ? `/api/formulas/${targetId}` : '/api/formulas';
-            await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(data) });
+            
+            const res = await fetch(url, { 
+                method, 
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, 
+                body: JSON.stringify(data) 
+            });
+
+            if (!res.ok) throw new Error('Error al guardar fórmula estándar');
 
         } else {
             const filas = document.querySelectorAll('.fila-promo-dinamica');
+            
             for (let i = 0; i < filas.length; i++) {
-                const cant = filas[i].querySelector('.input-cant-promo').value || 0;
-                const prec = filas[i].querySelector('.input-precio-promo').value || 0;
-                const precBs = filas[i].querySelector('.input-precio-bs-promo').value || 0;
+                const cant = parseInt(filas[i].querySelector('.input-cant-promo').value, 10) || 0;
+                const prec = parseFloat(filas[i].querySelector('.input-precio-promo').value) || 0;
+                const precBs = parseFloat(filas[i].querySelector('.input-precio-bs-promo').value) || 0;
                 const currentDbId = filas[i].getAttribute('data-id');
 
                 const dataPromo = {
                     ...basePayload,
                     precio: 0, 
                     precio_bs: precBs, 
-                    cantidad_mayor: 6, precio_mayor: 0, precio_mayor_bs: 0, cantidad_gran_mayor: 50, precio_gran_mayor: 0, precio_gran_mayor_bs: 0,
-                    cantidad_promo: cant, precio_promo: prec
+                    cantidad_mayor: 6, 
+                    precio_mayor: 0, 
+                    precio_mayor_bs: 0, 
+                    cantidad_gran_mayor: 50, 
+                    precio_gran_mayor: 0, 
+                    precio_gran_mayor_bs: 0,
+                    cantidad_promo: cant, 
+                    precio_promo: prec
                 };
 
                 const method = currentDbId ? 'PUT' : 'POST';
                 const url = currentDbId ? `/api/formulas/${currentDbId}` : '/api/formulas';
-                await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(dataPromo) });
+                
+                const res = await fetch(url, { 
+                    method, 
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, 
+                    body: JSON.stringify(dataPromo) 
+                });
+
+                if (!res.ok) throw new Error('Error al guardar combo promocional');
             }
         }
 
-        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Configuración comercial unificada', showConfirmButton: false, timer: 1500 });
+        Swal.fire({ 
+            toast: true, 
+            position: 'top-end', 
+            icon: 'success', 
+            title: 'Configuración comercial guardada', 
+            showConfirmButton: false, 
+            timer: 1500 
+        });
+
         limpiarFormulario();
         await cargarTabla();
 
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error(e);
+        Swal.fire('Error', e.message || 'No se pudo guardar la fórmula', 'error');
+    }
 }
 
 async function abrirModalPrepararPromo() {
